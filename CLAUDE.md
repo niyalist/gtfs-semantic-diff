@@ -30,13 +30,13 @@ input (zip x N generations | gtfs-data.jp API)
 
 ## 現在の状態 (2026-07-04)
 
-roadmap M0–M5 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 99件、
+roadmap M0–M7 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 111件、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
-検証ログは docs/verification/ (M2〜M5)。未実装項目は detection.md §7 に列挙
+検証ログは docs/verification/ (M2〜M7)。未実装項目は detection.md §7 に列挙
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
-**次は M7: route_group (枝番系統の「路線ブランド」集約) の実装。**
-設計と確定仕様は docs/design/route_group.md (M6 の 80 フィード横断調査で
-「語幹一致のみ + 品質ガード、停留所 Jaccard はゲートでなく凝集度メタデータ」に確定)。
+route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
+仕様は docs/design/route_group.md と detection.md §2.5。
+以降の作業候補は roadmap.md「将来」節 (group 単位 TRIPS_TRUNCATED、多世代タイムライン等)。
 
 ## 過去プロジェクトからの資産移植 (完了)
 

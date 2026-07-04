@@ -38,7 +38,9 @@ def render_markdown(data: dict[str, Any]) -> str:
 
     _cover(lines, data, feed)
     _summary(lines, events)
-    _route_chapters(lines, events, data.get("context", {}))
+    _route_chapters(
+        lines, events, data.get("context", {}), data.get("config_snapshot", {})
+    )
     _stop_chapter(lines, events)
     _validation_chapter(lines, events, data.get("accounting", {}))
     return "\n".join(lines) + "\n"
@@ -129,40 +131,77 @@ def _summary(lines: list[str], events: list[dict]) -> None:
 # --- 3. 路線別詳細 ---
 
 
-def _route_chapters(lines: list[str], events: list[dict], context: dict) -> None:
-    by_family: dict[str, list[dict]] = defaultdict(list)
-    for e in events:
-        family = e["subject"].get("route_family")
-        if family and e["type"] not in _STOP_TYPES | _VALIDATION_TYPES:
-            by_family[family].append(e)
-    if not by_family:
+def _route_chapters(
+    lines: list[str], events: list[dict], context: dict, config_snapshot: dict
+) -> None:
+    """路線別章。route_group (路線ブランド) 単位で章立てし、group 内は family の
+    内訳を保つ。凝集度が低い group は「枝線構造」、低凝集 family は
+    「運行系統の構成」小見出しで系統の同居を明示する (docs/design/route_group.md)。"""
+    route_events = [
+        e
+        for e in events
+        if e["subject"].get("route_family")
+        and e["type"] not in _STOP_TYPES | _VALIDATION_TYPES
+    ]
+    if not route_events:
         return
 
-    profiles = context.get("band_profiles", [])
+    group_info = {g["name"]: g for g in context.get("route_groups", [])}
+    threshold = (
+        config_snapshot.get("identity", {})
+        .get("route_group", {})
+        .get("low_cohesion_note", 0.2)
+    )
+    structure_by_family = {
+        s["route_family"]: s for s in context.get("family_structure", [])
+    }
     prof_by_family: dict[str, list[dict]] = defaultdict(list)
-    for p in profiles:
+    for p in context.get("band_profiles", []):
         prof_by_family[p["route_family"]].append(p)
+
+    by_group: dict[str, list[dict]] = defaultdict(list)
+    for e in route_events:
+        by_group[e["subject"].get("route_group", e["subject"]["route_family"])].append(e)
 
     lines.append("## 2. 路線別詳細")
     lines.append("")
-    # major を含む family を先に
     order = sorted(
-        by_family,
-        key=lambda f: (
-            0 if any(e["severity"] == "major" for e in by_family[f]) else 1,
-            f,
+        by_group,
+        key=lambda g: (
+            0 if any(e["severity"] == "major" for e in by_group[g]) else 1,
+            g,
         ),
     )
-    for i, family in enumerate(order, 1):
-        lines.append(f"### 2.{i} {family}")
+    for i, group in enumerate(order, 1):
+        group_events = by_group[group]
+        lines.append(f"### 2.{i} {group}")
         lines.append("")
-        for e in sorted(by_family[family], key=lambda e: e["event_id"]):
+
+        # group 構成 (複数 family の場合のみ)。凝集度が低ければ枝線構造の注記
+        info = group_info.get(group, {})
+        member_families = info.get("families") or sorted(
+            {e["subject"]["route_family"] for e in group_events}
+        )
+        multi = len(member_families) >= 2
+        if multi:
+            cohesion = info.get("cohesion")
+            note = f"構成系統: {', '.join(member_families)}"
+            if cohesion is not None:
+                note += f" (凝集度 {cohesion:.2f}"
+                if cohesion < threshold:
+                    note += " — 枝線構造: 系統ごとに経路が大きく異なる"
+                note += ")"
+            lines.append(note)
+            lines.append("")
+
+        for e in sorted(group_events, key=lambda e: e["event_id"]):
             mark = _SEVERITY_MARK.get(e["severity"], "")
-            lines.append(f"- {mark} **{e['display_name_ja']}**: {_event_line(e)}")
+            prefix = f"[{e['subject']['route_family']}] " if multi else ""
+            lines.append(f"- {mark} {prefix}**{e['display_name_ja']}**: {_event_line(e)}")
         lines.append("")
 
         pattern_changes = [
-            e for e in by_family[family]
+            e for e in group_events
             if e.get("old_ref", {}) and "pattern" in (e.get("old_ref") or {})
         ]
         for e in pattern_changes[:1]:  # 代表1件の系統図
@@ -172,11 +211,33 @@ def _route_chapters(lines: list[str], events: list[dict], context: dict) -> None
             lines.append(f"- 新: {_pattern_text(e['new_ref']['pattern'])}")
             lines.append("")
 
-        changed_groups = {
-            (e["subject"].get("direction", ""), e["subject"].get("day_type", ""))
-            for e in by_family[family]
+        # 低凝集 family の運行系統構成 (同名 route 内の別系統同居を明示)
+        for family in member_families:
+            structure = structure_by_family.get(family)
+            if structure and structure["min_cluster_jaccard"] < threshold:
+                label = f": {family}" if multi else ""
+                lines.append(
+                    f"運行系統の構成{label} (停車地がほぼ重ならない系統が同居):"
+                )
+                lines.append("")
+                for c in structure["clusters"]:
+                    direction = {"0": "往路", "1": "復路", "": ""}.get(
+                        c["direction"], c["direction"]
+                    )
+                    suffix = f" [{direction}]" if direction else ""
+                    lines.append(
+                        f"- {c['first_stop']} → {c['last_stop']} "
+                        f"({c['stop_count']}停・{c['trip_count']}便){suffix}"
+                    )
+                lines.append("")
+
+        changed = {
+            (e["subject"]["route_family"], e["subject"].get("direction", ""),
+             e["subject"].get("day_type", ""))
+            for e in group_events
         }
-        table = _band_table(prof_by_family.get(family, []), changed_groups)
+        rows = [p for f in member_families for p in prof_by_family.get(f, [])]
+        table = _band_table(rows, changed, show_family=multi)
         if table:
             lines.append("時間帯別本数 (旧→新):")
             lines.append("")
@@ -184,16 +245,19 @@ def _route_chapters(lines: list[str], events: list[dict], context: dict) -> None
             lines.append("")
 
 
-def _band_table(profiles: list[dict], changed_groups: set) -> list[str]:
+def _band_table(profiles: list[dict], changed: set, show_family: bool = False) -> list[str]:
     rows = [
         p for p in profiles
-        if (p["direction"], p["day_type"]) in changed_groups or not changed_groups
+        if (p["route_family"], p["direction"], p["day_type"]) in changed or not changed
     ] or profiles
     if not rows:
         return []
     bands = sorted({b for p in rows for b in p["bands"]})
-    out = ["| 方向 | 曜日 | " + " | ".join(bands) + " | 計 |",
-           "|---|---|" + "--:|" * (len(bands) + 1)]
+    family_col = "| 系統 " if show_family else ""
+    out = [
+        f"{family_col}| 方向 | 曜日 | " + " | ".join(bands) + " | 計 |",
+        ("|---" if show_family else "") + "|---|---|" + "--:|" * (len(bands) + 1),
+    ]
     for p in rows:
         cells = []
         total_old = total_new = 0
@@ -204,8 +268,11 @@ def _band_table(profiles: list[dict], changed_groups: set) -> list[str]:
             cells.append(f"{old_n}→{new_n}" if old_n != new_n else str(new_n))
         total = f"{total_old}→{total_new}" if total_old != total_new else str(total_new)
         direction = {"0": "往路", "1": "復路", "": "-"}.get(p["direction"], p["direction"])
+        family_cell = f"| {p['route_family']} " if show_family else ""
         out.append(
-            f"| {direction} | {_day_ja(p['day_type'])} | " + " | ".join(cells) + f" | {total} |"
+            f"{family_cell}| {direction} | {_day_ja(p['day_type'])} | "
+            + " | ".join(cells)
+            + f" | {total} |"
         )
     return out
 

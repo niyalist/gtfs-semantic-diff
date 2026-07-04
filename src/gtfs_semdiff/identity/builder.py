@@ -31,6 +31,7 @@ from .route_family import (
     link_route_families,
     route_to_family_map,
 )
+from .route_group import RouteGroup, build_route_groups
 from .stop_clustering import StopCluster, build_stop_clusters, link_stop_clusters
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ class IdentityResult:
     new_pattern_clusters: list[PatternCluster] = field(default_factory=list)
     old_day_types: set[str] = field(default_factory=set)
     new_day_types: set[str] = field(default_factory=set)
+    old_groups: list[RouteGroup] = field(default_factory=list)
+    new_groups: list[RouteGroup] = field(default_factory=list)
+    old_family_to_group: dict[str, str] = field(default_factory=dict)
+    new_family_to_group: dict[str, str] = field(default_factory=dict)
     graph: MatchGraph = field(default_factory=MatchGraph)
 
 
@@ -70,10 +75,17 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
     }
     old_patterns = extract_patterns(old, old_r2f, old_stop_to_base)
     new_patterns = extract_patterns(new, new_r2f, new_stop_to_base)
+    old_family_stops: dict[str, set[str]] = {name: set() for name in old_families}
+    new_family_stops: dict[str, set[str]] = {name: set() for name in new_families}
     for p in old_patterns:
         old_families[p.family].pattern_keys.add(p.pattern_key)
+        old_family_stops[p.family].update(p.base_names)
     for p in new_patterns:
         new_families[p.family].pattern_keys.add(p.pattern_key)
+        new_family_stops[p.family].update(p.base_names)
+
+    old_f2g, old_groups = build_route_groups(old_family_stops, config)
+    new_f2g, new_groups = build_route_groups(new_family_stops, config)
 
     family_edges = link_route_families(old_families, new_families, config)
 
@@ -103,6 +115,10 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
         new_pattern_clusters=new_pcs,
         old_day_types=set(old.day_types.values()),
         new_day_types=set(new.day_types.values()),
+        old_groups=old_groups,
+        new_groups=new_groups,
+        old_family_to_group=old_f2g,
+        new_family_to_group=new_f2g,
         graph=graph,
     )
 

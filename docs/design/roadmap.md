@@ -2,10 +2,10 @@
 
 原則: **DoD を満たすまで次のマイルストーンに着手しない。** 「動いた気がする」は完了ではない。
 
-> 状態 (2026-07-04): **M0〜M6 完了。** 各 DoD の実行結果は docs/verification/ と
+> 状態 (2026-07-04): **M0〜M7 完了。** 各 DoD の実行結果は docs/verification/ と
 > docs/perf/ に記録済み。M0: 673d24e / M1: 036cb0c / M2: 3e04dce / M3: 9168e6f /
-> M4: 7150471 / M5: 9733446 / M6: 調査ログ docs/verification/M6_route_group_survey.md。
-> **次は M7 (route_group 実装)。**
+> M4: 7150471 / M5: 9733446 / M6: f4cfc6e / M7: 完了 (docs/verification/M7_route_group.md)。
+> **M0〜M7 完了。以降は「将来」節が作業対象。**
 
 ## M0: 骨格と読み込み
 
@@ -57,7 +57,7 @@
   (最小長・ストップワード)、Jaccard は凝集度メタデータとしてレポートに明示する
   仕様に確定し route_group.md へ反映済み。
 
-## M7: route_group 実装
+## M7: route_group 実装 【完了 2026-07-04】
 
 - identity/route_group.py: 語幹一致による family のグループ化 (M6 で確定した仕様:
   NFKC + 先頭コード除去 + 最小長/ストップワードガード。停留所 Jaccard はゲートに使わず
