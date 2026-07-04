@@ -34,6 +34,8 @@ roadmap M0–M5 **全完了**。検証3フィードで explained_ratio 1.0000、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
 検証ログは docs/verification/ (M2〜M5)。未実装項目は detection.md §7 に列挙
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
+**次は M6: route_group (枝番系統の「路線ブランド」集約) の横断調査 —
+設計は docs/design/route_group.md、タスクと DoD は roadmap.md M6/M7。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 
@@ -75,6 +77,10 @@ M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / 
 - 「完了」と記録してよいのは、検証フィードでの実行結果を確認したときのみ。
 - 各 ChangeEvent ルールには必ず: 検出条件のドキュメント、合成 GTFS による単体テスト、実フィードでの目視確認例、の3点を付ける。
 - 閾値(距離、類似度、時間帯ビン等)は `config/default.toml` に集約。コード内リテラル禁止。
+- **GTFS-JP 固有フィールドに依存しない**: routes_jp の jp_parent_route_id 等は GTFS-JP の
+  今後の改訂で非推奨方向にあるため、データに存在しても同定・分類ロジックの入力には
+  使わない。標準 GTFS の内容 (名称・座標・停車列・時刻) から再構成する。
+  ※ L0 diff がこれらのファイルを列挙・会計すること自体は網羅性の要請であり継続する。
 - 日本語出力が第一級。イベントタイプは英語 ID + 日本語表示名を対で管理 (model/event_types.py)。
 - イベントタイプの追加は「残差の精査 → ontology.md への採録 (バージョン注記) →
   event_types.py → ルール実装 + 合成テスト → detection.md 更新」の順で行う

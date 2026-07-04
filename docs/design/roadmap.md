@@ -2,9 +2,9 @@
 
 原則: **DoD を満たすまで次のマイルストーンに着手しない。** 「動いた気がする」は完了ではない。
 
-> 状態 (2026-07-04): **M0〜M5 すべて完了。** 各 DoD の実行結果は docs/verification/ と
+> 状態 (2026-07-04): **M0〜M5 完了。** 各 DoD の実行結果は docs/verification/ と
 > docs/perf/ に記録済み。M0: 673d24e / M1: 036cb0c / M2: 3e04dce / M3: 9168e6f /
-> M4: 7150471 / M5: 9733446。以降の作業対象は「将来」節。
+> M4: 7150471 / M5: 9733446。**次は M6 (route_group 横断調査)。**
 
 ## M0: 骨格と読み込み
 
@@ -42,8 +42,32 @@
 - SHAPE_CHANGED, TRAVEL_TIME_CHANGED 詳細, DEMAND_RESPONSIVE_CHANGE, FARE_CHANGED, カレンダー群
 - DoD: 3フィードで explained_ratio ≥ 0.99。臨港バス(大規模)で実用時間内(目安: 5分以内)に完走。
 
+## M6: route_group 横断調査 (設計: docs/design/route_group.md)
+
+- 動機: 枝番系統 (30A/30B/… 前橋玉村線) が別 family になりレポートの納得感を欠く問題。
+  family の上に「路線ブランド」集約層を足す前に、シグナルと閾値を実データで裏付ける
+- scripts/survey_route_groups.py (読み取り専用): gtfs-data.jp から 50〜100 フィードを
+  サンプリングし、route_id → 同名 family → 語幹 group の集約率分布、語幹一致 family 対の
+  停留所 Jaccard 分布、誤結合リスク実例、family 内パターン非重複 (分割候補) 頻度を計測
+- **GTFS-JP 固有フィールド (routes_jp / jp_parent_route_id 等) は調査対象にも判定材料にも
+  しない** (CLAUDE.md 開発ルール参照)
+- DoD: docs/verification/M6_route_group_survey.md に分布・実例・閾値提案が記録され、
+  route_group.md の閾値 (語幹抽出規則・stop_jaccard_min) が実測で決定されている。
+
+## M7: route_group 実装
+
+- identity/route_group.py: 語幹一致 + 停留所集合 Jaccard の AND による family の
+  連結成分化 (全 family がいずれかの group に所属、単独 group も可)
+- events: subject に route_group を追加 (additive)。context.band_profiles にも併記
+- report: 路線別章を route_group 単位に変更 (group 内は family / 方向 / パターンの内訳を維持、
+  章冒頭に構成 family と根拠を明示)
+- DoD: 永井運輸で 30A〜30K 前橋玉村線が1章に集約され、富山地鉄・臨港で誤結合ゼロを
+  目視確認 (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
+  合成 GTFS の単体テスト (結合・非結合・語幹衝突の3ケース以上)。
+
 ## 将来 (スコープ外だが JSON 互換を壊さない)
 
+- group 単位の TRIPS_TRUNCATED・family 間振替検出 (M7 の動作実績を見てから)
 - 多世代タイムライン分析 (events/timeline.py)
 - HTML/Web ビューア、地図表示
 - LLM による自然言語レポート生成 (report/narrative.py, 任意機能)
