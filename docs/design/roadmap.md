@@ -2,6 +2,10 @@
 
 原則: **DoD を満たすまで次のマイルストーンに着手しない。** 「動いた気がする」は完了ではない。
 
+> 状態 (2026-07-04): **M0〜M5 すべて完了。** 各 DoD の実行結果は docs/verification/ と
+> docs/perf/ に記録済み。M0: 673d24e / M1: 036cb0c / M2: 3e04dce / M3: 9168e6f /
+> M4: 7150471 / M5: 9733446。以降の作業対象は「将来」節。
+
 ## M0: 骨格と読み込み
 
 - model/ のデータクラス定義 (GtfsSnapshot, RawDiff, MatchGraph, ChangeEvent)

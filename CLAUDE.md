@@ -23,16 +23,24 @@ input (zip x N generations | gtfs-data.jp API)
   → 出力: ChangeEvent JSON (正) + report/ で Markdown レポート
 ```
 
-詳細は docs/design/architecture.md、イベント定義は docs/design/ontology.md を必ず読むこと。
+必読ドキュメント:
+- docs/design/architecture.md — モジュール構成と JSON スキーマ
+- docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.1)
+- **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 過去プロジェクトからの資産移植
+## 現在の状態 (2026-07-04)
 
-前身: `/Users/niya/Documents/itolab/2025/gtfsdiff/GTFSDiff` (読み取り参照のみ。共存させず、必要部分を本リポジトリの新モデルに合わせて移植する)。対応表は docs/PORTING.md。特に価値が高いもの:
+roadmap M0–M5 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 99件、
+性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
+検証ログは docs/verification/ (M2〜M5)。未実装項目は detection.md §7 に列挙
+(ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
 
-- `src/gtfs_diff/analysis/pattern_clustering.py` — 停車パターンの LCS 類似度クラスタリング (O(patterns²) 最適化済み)
-- `src/gtfs_diff/analysis/route_analyzer.py` — Route Family 概念 (route_id でなく路線名でグループ化)
-- `src/gtfs_diff/analysis/stop_analyzer.py` — 2段階 Stop Clustering (世代内名寄せ+近接 → 世代間リンク)
-- `src/gtfs_diff/repository.py` — gtfs-data.jp API v2 クライアント
+## 過去プロジェクトからの資産移植 (完了)
+
+前身: `/Users/niya/Documents/itolab/2025/gtfsdiff/GTFSDiff` (読み取り参照のみ)。
+M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / stop_analyzer
+(2段階クラスタリング部) / repository.py。対応表と移植方針は docs/PORTING.md。
+以後、旧リポジトリを参照する必要が生じるのは trip_matcher など「原則不使用」とした部分のみ。
 
 ## gtfs-data.jp API メモ (2026-07 動作確認済み)
 
@@ -43,9 +51,23 @@ input (zip x N generations | gtfs-data.jp API)
 
 ## 検証フィード (回帰テストの基準)
 
-1. 永井運輸 `nagai-unyu / Nagaibus` (API 取得可・小規模)
-2. 富山地方鉄道 (API)
-3. 川崎鶴見臨港バス (ローカル zip、大規模・性能検証用)
+1. 永井運輸 `nagai-unyu / Nagaibus` (API・小規模)。基準ペア prev_2→prev_1
+   (2025-10-01 改正: 運賃改定・ココルンシティ乗り入れ・表町一丁目改称)
+2. 富山地方鉄道バス `chitetsu / chitetsubus` (API)。基準ペア prev_2→prev_1
+   (令和8年4月1日改正: フィーダーバス水橋延伸・浜黒崎小学校改称・ぶりかにバス終了)
+   ※ rid は世代が進むとずれるため、有効期間 (from_date) で当該改正ペアを特定し直すこと
+3. 川崎鶴見臨港バス (ローカル zip)。`~/Downloads/gtfs-臨港テストデータ(*).zip` を
+   data/ にコピーして使用 (ダイヤ01 が基準、系統路線増減/増便減便/ダイヤ時分変更01 と比較)
+
+## 開発環境
+
+- venv は **`.venv.nosync`** に作る (`uv venv .venv.nosync --python 3.14` →
+  `ln -s .venv.nosync .venv`)。リポジトリが iCloud 同期下にあり、`.venv` 直下だと
+  site-packages の .pth に hidden フラグが復元され続け Python 3.14 が無視して壊れる。
+  `.venv` シンボリックリンクも iCloud に消されることがあるため、コマンドは
+  `.venv.nosync/bin/...` を直接使うのが確実。
+- テスト: `.venv.nosync/bin/python -m pytest -q` / リント: `.venv.nosync/bin/ruff check src tests`
+- 生成物 (events.json 等) は data/ へ (gitignore 済み)
 
 ## 開発ルール
 
@@ -53,4 +75,8 @@ input (zip x N generations | gtfs-data.jp API)
 - 「完了」と記録してよいのは、検証フィードでの実行結果を確認したときのみ。
 - 各 ChangeEvent ルールには必ず: 検出条件のドキュメント、合成 GTFS による単体テスト、実フィードでの目視確認例、の3点を付ける。
 - 閾値(距離、類似度、時間帯ビン等)は `config/default.toml` に集約。コード内リテラル禁止。
-- 日本語出力が第一級。イベントタイプは英語 ID + 日本語表示名を対で管理。
+- 日本語出力が第一級。イベントタイプは英語 ID + 日本語表示名を対で管理 (model/event_types.py)。
+- イベントタイプの追加は「残差の精査 → ontology.md への採録 (バージョン注記) →
+  event_types.py → ルール実装 + 合成テスト → detection.md 更新」の順で行う
+  (例: v0.2.1 の HEADSIGN_CHANGED)。
+- 検出ロジック・閾値を変更したら docs/spec/detection.md を同期更新する。

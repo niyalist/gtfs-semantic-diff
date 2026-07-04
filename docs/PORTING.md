@@ -1,5 +1,7 @@
 # 旧 GTFSDiff からの移植対応表
 
+> 状態: M2 (3e04dce) で移植完了。本表は経緯の記録として維持する。
+
 旧リポジトリ: `/Users/niya/Documents/itolab/2025/gtfsdiff/GTFSDiff` (読み取り専用の参照元。コードの共存はしない)
 
 | 旧 (src/gtfs_diff/) | 新 (src/gtfs_semdiff/) | 移植方針 |
