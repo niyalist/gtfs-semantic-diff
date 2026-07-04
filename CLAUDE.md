@@ -34,8 +34,9 @@ roadmap M0–M5 **全完了**。検証3フィードで explained_ratio 1.0000、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
 検証ログは docs/verification/ (M2〜M5)。未実装項目は detection.md §7 に列挙
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
-**次は M6: route_group (枝番系統の「路線ブランド」集約) の横断調査 —
-設計は docs/design/route_group.md、タスクと DoD は roadmap.md M6/M7。**
+**次は M7: route_group (枝番系統の「路線ブランド」集約) の実装。**
+設計と確定仕様は docs/design/route_group.md (M6 の 80 フィード横断調査で
+「語幹一致のみ + 品質ガード、停留所 Jaccard はゲートでなく凝集度メタデータ」に確定)。
 
 ## 過去プロジェクトからの資産移植 (完了)
 
