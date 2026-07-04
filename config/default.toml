@@ -8,6 +8,12 @@ calendar_dates_majority = 0.8
 [identity.stop_clustering]
 intra_generation_radius_m = 100   # 世代内クラスタリングの近接半径
 inter_generation_radius_m = 300   # 世代間リンクの近接半径
+link_floor = 0.25                 # 世代間リンク仮説を保持する最低スコア
+# 世代間リンクスコアの重み (合計 1.0)
+weight_shared_platform = 0.35     # stop_id (プラットフォーム) の共有率
+weight_route_similarity = 0.25    # 接続 route family 集合の Jaccard
+weight_distance = 0.25            # 距離スコア (1 - d/inter_radius)
+weight_name_similarity = 0.15     # 名称の文字列類似度
 
 [identity.pattern_clustering]
 similarity_threshold = 0.5        # 同一クラスタ判定
@@ -15,9 +21,11 @@ lcs_weight = 0.6
 direction_weight = 0.3
 containment_weight = 0.1
 hierarchical_switch_patterns = 50 # これ以上で階層的クラスタリングへ
+link_floor = 0.3                  # 世代間リンク仮説を保持する最低類似度
 
 [identity.route_family]
 pattern_jaccard_renamed = 0.7     # ROUTE_RENAMED 判定
+link_floor = 0.3                  # 名称不一致 family のパターン Jaccard リンク保持下限
 
 [events.frequency]
 time_bands = ["05:00-07:00", "07:00-09:00", "09:00-16:00", "16:00-19:00", "19:00-22:00", "22:00-29:00"]

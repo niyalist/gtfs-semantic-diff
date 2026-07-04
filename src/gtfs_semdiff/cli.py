@@ -70,6 +70,39 @@ def _max_prev(*rids: str) -> int:
     return max((int(r.split("_")[1]) for r in rids if r.startswith("prev_")), default=1)
 
 
+def _load_snapshot_pair(
+    ctx: click.Context,
+    config: Config,
+    inputs: tuple[str, ...],
+    org: str | None,
+    feed: str | None,
+    old_rid: str,
+    new_rid: str,
+):
+    """compare / identity 共通の入力解決: ローカル zip 2つ or gtfs-data.jp。"""
+    if len(inputs) == 2:
+        return (
+            load_snapshot(inputs[0], config=config),
+            load_snapshot(inputs[1], config=config),
+        )
+    if len(inputs) == 0 and org and feed:
+        repo = GtfsDataRepository(config=config)
+        old_info, new_info = _resolve_pair(ctx, repo, org, feed, old_rid, new_rid)
+        old_fetched = repo.download(old_info)
+        new_fetched = repo.download(new_info)
+        return (
+            load_snapshot(
+                old_fetched.path, config=config, meta=old_info.snapshot_meta(old_fetched.path)
+            ),
+            load_snapshot(
+                new_fetched.path, config=config, meta=new_info.snapshot_meta(new_fetched.path)
+            ),
+        )
+    raise click.ClickException(
+        "入力を指定してください: ローカル zip 2つ、または --org と --feed"
+    )
+
+
 @main.command()
 @click.option("--org", required=True, help="gtfs-data.jp の組織 ID (例: nagai-unyu)")
 @click.option("--feed", required=True, help="フィード ID (例: Nagaibus)")
@@ -139,24 +172,7 @@ def compare(
     M1 時点ではルール未実装のため全 RawDiff が UNEXPLAINED_RESIDUAL になる。
     """
     config: Config = ctx.obj
-    if len(inputs) == 2:
-        old_snap = load_snapshot(inputs[0], config=config)
-        new_snap = load_snapshot(inputs[1], config=config)
-    elif len(inputs) == 0 and org and feed:
-        repo = GtfsDataRepository(config=config)
-        old_info, new_info = _resolve_pair(ctx, repo, org, feed, old_rid, new_rid)
-        old_fetched = repo.download(old_info)
-        new_fetched = repo.download(new_info)
-        old_snap = load_snapshot(
-            old_fetched.path, config=config, meta=old_info.snapshot_meta(old_fetched.path)
-        )
-        new_snap = load_snapshot(
-            new_fetched.path, config=config, meta=new_info.snapshot_meta(new_fetched.path)
-        )
-    else:
-        raise click.ClickException(
-            "入力を指定してください: ローカル zip 2つ、または --org と --feed"
-        )
+    old_snap, new_snap = _load_snapshot_pair(ctx, config, inputs, org, feed, old_rid, new_rid)
 
     event_set, rawdiffs = compare_snapshots(old_snap, new_snap, config)
 
@@ -186,6 +202,59 @@ def compare(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         console.print(f"RawDiff JSON: [cyan]{rawdiffs_out}[/cyan]")
+
+
+@main.command()
+@click.argument("inputs", nargs=-1, type=click.Path(exists=True))
+@click.option("--org", default=None, help="gtfs-data.jp の組織 ID")
+@click.option("--feed", default=None, help="フィード ID")
+@click.option("--old", "old_rid", default="prev_1", show_default=True, help="旧世代の RID")
+@click.option("--new", "new_rid", default="current", show_default=True, help="新世代の RID")
+@click.option("-o", "--output", type=click.Path(), default=None, help="統計 JSON の出力先")
+@click.pass_context
+def identity(
+    ctx: click.Context,
+    inputs: tuple[str, ...],
+    org: str | None,
+    feed: str | None,
+    old_rid: str,
+    new_rid: str,
+    output: str | None,
+) -> None:
+    """L1 世代間同定を実行し、MatchGraph の対応率と confidence 分布を表示する。"""
+    from .identity import build_identity, identity_stats
+
+    config: Config = ctx.obj
+    old_snap, new_snap = _load_snapshot_pair(ctx, config, inputs, org, feed, old_rid, new_rid)
+
+    result = build_identity(old_snap, new_snap, config)
+    stats = identity_stats(result)
+
+    table = Table(title=f"MatchGraph: {old_snap.meta.label()} → {new_snap.meta.label()}")
+    for col in ("エンティティ", "旧", "新", "エッジ", "旧対応率", "新対応率",
+                "conf=1.0", "0.75+", "0.5+", "<0.5"):
+        table.add_column(col, justify="right")
+    for entity, s in stats.items():
+        hist = s["confidence_hist"]
+        table.add_row(
+            entity,
+            str(s["old_count"]),
+            str(s["new_count"]),
+            str(s["edges"]),
+            f"{s['match_rate_old']:.1%}",
+            f"{s['match_rate_new']:.1%}",
+            str(hist["1.0"]),
+            str(hist["0.75-1.0"]),
+            str(hist["0.5-0.75"]),
+            str(hist["<0.5"]),
+        )
+    console.print(table)
+
+    if output:
+        Path(output).write_text(
+            json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        console.print(f"統計 JSON: [cyan]{output}[/cyan]")
 
 
 if __name__ == "__main__":
