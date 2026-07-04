@@ -11,7 +11,6 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import Config
-from .events import compare_snapshots
 from .load import GtfsDataRepository, load_snapshot
 from .load.repository import GtfsFileInfo, rid_order
 
@@ -157,6 +156,8 @@ def fetch(ctx: click.Context, org: str, feed: str, old_rid: str, new_rid: str, f
               help="RawDiff 全件 JSON の出力先")
 @click.option("--report", "report_out", type=click.Path(), default=None,
               help="Markdown レポートの出力先")
+@click.option("--html", "html_out", type=click.Path(), default=None,
+              help="自己完結 HTML レポートの出力先 (単一ファイル)")
 @click.pass_context
 def compare(
     ctx: click.Context,
@@ -168,16 +169,20 @@ def compare(
     output: str | None,
     rawdiffs_out: str | None,
     report_out: str | None,
+    html_out: str | None,
 ) -> None:
-    """2世代の GTFS を比較し ChangeEvent JSON を出力する。
+    """2世代の GTFS を比較し ChangeEvent JSON / Markdown / HTML レポートを出力する。
 
     入力はローカル zip 2つ (古い方が先) か、--org/--feed による API 取得。
-    M1 時点ではルール未実装のため全 RawDiff が UNEXPLAINED_RESIDUAL になる。
     """
+    from .events.pipeline import compare_snapshots_with_artifacts
+
     config: Config = ctx.obj
     old_snap, new_snap = _load_snapshot_pair(ctx, config, inputs, org, feed, old_rid, new_rid)
 
-    event_set, rawdiffs = compare_snapshots(old_snap, new_snap, config)
+    event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
+        old_snap, new_snap, config
+    )
 
     table = Table(title=f"L0 RawDiff: {old_snap.meta.label()} → {new_snap.meta.label()}")
     table.add_column("ファイル")
@@ -212,6 +217,22 @@ def compare(
             render_markdown(event_set.to_dict()), encoding="utf-8"
         )
         console.print(f"Markdown レポート: [cyan]{report_out}[/cyan]")
+    if html_out:
+        from .report.bundle import build_bundle, render_html
+
+        template_path = Path(__file__).parent / "report" / "viewer_template.html"
+        if not template_path.exists():
+            raise click.ClickException(
+                "ビューアテンプレートがありません。scripts/build_viewer.sh でビルドしてください"
+            )
+        bundle = build_bundle(
+            old_snap, new_snap, config, event_set, rawdiffs, identity, trip_delta
+        )
+        Path(html_out).write_text(
+            render_html(bundle, template_path.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+        console.print(f"HTML レポート: [cyan]{html_out}[/cyan]")
 
 
 @main.command()

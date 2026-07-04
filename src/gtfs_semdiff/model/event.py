@@ -48,6 +48,10 @@ class ChangeEvent:
     def display_name_ja(self) -> str:
         return EVENT_TYPES[self.type].display_name_ja
 
+    @property
+    def display_name_en(self) -> str:
+        return EVENT_TYPES[self.type].display_name_en
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_id": self.event_id,
@@ -60,6 +64,7 @@ class ChangeEvent:
             "confidence": self.confidence,
             "severity": self.severity,
             "display_name_ja": self.display_name_ja,
+            "display_name_en": self.display_name_en,
             "narrative_hints": self.narrative_hints,
         }
 

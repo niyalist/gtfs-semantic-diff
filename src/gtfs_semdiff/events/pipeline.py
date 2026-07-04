@@ -27,6 +27,17 @@ def compare_snapshots(
     old: GtfsSnapshot, new: GtfsSnapshot, config: Config
 ) -> tuple[ChangeEventSet, RawDiffSet]:
     """世代ペアを比較し、(ChangeEventSet, RawDiff 全件) を返す。"""
+    event_set, rawdiffs, _, _ = compare_snapshots_with_artifacts(old, new, config)
+    return event_set, rawdiffs
+
+
+def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, config: Config):
+    """compare_snapshots + 中間成果物 (identity, trip_delta)。
+
+    戻り値: (ChangeEventSet, RawDiffSet, IdentityResult, TripDelta)。
+    HTML バンドル生成 (report/bundle.py) など、幾何や時刻表の素材を必要とする
+    消費者向け。JSON の安定インタフェースには影響しない。
+    """
     rawdiffs = enumerate_rawdiffs(old, new)
     ledger = EvidenceLedger(rawdiffs)
     index = EvidenceIndex(rawdiffs)
@@ -104,7 +115,7 @@ def compare_snapshots(
             "family_structure": _family_structure(identity, config),
         },
     )
-    return event_set, rawdiffs
+    return event_set, rawdiffs, identity, trip_delta
 
 
 def _band_profiles(ctx: RuleContext, family_to_group: dict[str, str]) -> list[dict]:

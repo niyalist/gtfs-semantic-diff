@@ -1,0 +1,110 @@
+:root {
+  --fg: #1c1e21;
+  --fg-soft: #5c6470;
+  --bg: #ffffff;
+  --bg-soft: #f5f6f8;
+  --line: #e1e4e8;
+  --accent: #0b6e4f;
+  --major: #c62828;
+  --minor: #b07a00;
+  --info: #7a8391;
+  --added: #0b6e4f;
+  --removed: #c62828;
+  font-size: 15px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--fg);
+  background: var(--bg);
+  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+  line-height: 1.65;
+}
+
+#app { max-width: 980px; margin: 0 auto; padding: 0 1.2rem 4rem; }
+
+h1 { font-size: 1.35rem; margin: 1.4rem 0 0.4rem; }
+h2 {
+  font-size: 1.12rem;
+  margin: 2.2rem 0 0.8rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid var(--accent);
+}
+h3 { font-size: 1rem; margin: 1.2rem 0 0.5rem; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { border: 1px solid var(--line); padding: 0.3rem 0.55rem; text-align: left; }
+th { background: var(--bg-soft); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.meta { color: var(--fg-soft); font-size: 0.85rem; }
+.badge {
+  display: inline-block; padding: 0 0.45em; border-radius: 3px;
+  font-size: 0.75rem; color: #fff; vertical-align: 1px; margin-right: 0.4em;
+}
+.badge.major { background: var(--major); }
+.badge.minor { background: var(--minor); }
+.badge.info { background: var(--info); }
+
+details.chapter {
+  border: 1px solid var(--line); border-radius: 6px;
+  margin: 0.55rem 0; background: var(--bg);
+}
+details.chapter > summary {
+  cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600;
+  background: var(--bg-soft); border-radius: 6px;
+  display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap;
+}
+details.chapter[open] > summary { border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
+details.chapter > .body { padding: 0.6rem 0.9rem 0.9rem; }
+summary .count { color: var(--fg-soft); font-weight: 400; font-size: 0.85rem; }
+
+.event-row {
+  border-bottom: 1px dashed var(--line); padding: 0.4rem 0.2rem; cursor: pointer;
+}
+.event-row:hover { background: var(--bg-soft); }
+.event-row .line { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+.event-row .name { font-weight: 600; }
+.event-row .summary-text { color: var(--fg-soft); }
+.event-row .expander { color: var(--accent); font-size: 0.8rem; margin-left: auto; white-space: nowrap; }
+
+.detail {
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.7rem 0.9rem; margin: 0.5rem 0 0.7rem; cursor: default;
+}
+.detail h4 { margin: 0.7rem 0 0.35rem; font-size: 0.9rem; color: var(--fg-soft); }
+.detail h4:first-child { margin-top: 0; }
+
+.map-box { height: 340px; border: 1px solid var(--line); border-radius: 6px; margin: 0.4rem 0; }
+
+.pattern { display: flex; flex-wrap: wrap; gap: 0.25rem 0.4rem; font-size: 0.85rem; align-items: center; }
+.pattern .stop { padding: 0.05rem 0.4rem; border-radius: 3px; background: #fff; border: 1px solid var(--line); }
+.pattern .stop.added { border-color: var(--added); color: var(--added); font-weight: 600; }
+.pattern .stop.removed { border-color: var(--removed); color: var(--removed); text-decoration: line-through; }
+.pattern .arrow { color: var(--fg-soft); }
+
+.tt { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.tt .col h5 { margin: 0 0 0.3rem; font-size: 0.85rem; }
+.tt .hour { display: flex; gap: 0.4rem; font-size: 0.85rem; border-bottom: 1px dotted var(--line); }
+.tt .hour .h { width: 2.2em; color: var(--fg-soft); text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+.tt .hour .mins { display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; font-variant-numeric: tabular-nums; }
+.tt .dep.only-old { color: var(--removed); text-decoration: line-through; }
+.tt .dep.only-new { color: var(--added); font-weight: 600; }
+
+.lang-toggle {
+  float: right; margin-top: 1.5rem; font-size: 0.82rem;
+}
+.lang-toggle button {
+  border: 1px solid var(--line); background: var(--bg); padding: 0.15rem 0.6rem; cursor: pointer;
+}
+.lang-toggle button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lang-toggle button:first-child { border-radius: 4px 0 0 4px; }
+.lang-toggle button:last-child { border-radius: 0 4px 4px 0; }
+
+.note { font-size: 0.85rem; color: var(--fg-soft); }
+.scroll-x { overflow-x: auto; }
+.kv { font-size: 0.85rem; }
+.kv dt { font-weight: 600; float: left; clear: left; margin-right: 0.6em; }
+.kv dd { margin: 0 0 0.15rem 0; overflow-wrap: anywhere; }

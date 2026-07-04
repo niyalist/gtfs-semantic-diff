@@ -73,7 +73,7 @@
   (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
   合成 GTFS の単体テスト (結合・非結合・語幹衝突・低凝集分割の4ケース以上)。
 
-## W1: 結果バンドル + HTML ビューア (サーバ不要。設計: docs/design/web.md)
+## W1: 結果バンドル + HTML ビューア 【実装完了 2026-07-04・目視確認待ち】 (設計: docs/design/web.md)
 
 - report/bundle.py: ビューア用結果バンドル書き出し (events.json / rawdiffs.json /
   geometry.geojson (停留所座標・shape 新旧) / timetables.json / meta.json)
