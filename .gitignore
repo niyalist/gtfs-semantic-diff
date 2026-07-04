@@ -2,5 +2,6 @@ __pycache__/
 .DS_Store
 *.egg-info/
 .cache/
-.venv/
+.venv
+.venv.nosync/
 data/
