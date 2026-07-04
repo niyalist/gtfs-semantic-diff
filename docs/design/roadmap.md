@@ -73,7 +73,7 @@
   (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
   合成 GTFS の単体テスト (結合・非結合・語幹衝突・低凝集分割の4ケース以上)。
 
-## W1: 結果バンドル + HTML ビューア 【実装完了 2026-07-04・目視確認待ち】 (設計: docs/design/web.md)
+## W1: 結果バンドル + HTML ビューア 【完了 2026-07-04 (レビュー 2026-07-05)】 (設計: docs/design/web.md)
 
 - report/bundle.py: ビューア用結果バンドル書き出し (events.json / rawdiffs.json /
   geometry.geojson (停留所座標・shape 新旧) / timetables.json / meta.json)
@@ -87,14 +87,51 @@
   (説明会計の UI 化) ことを目視確認。単一 HTML として保存→再オープンできる。
   地図に停留所異動と shape 新旧が描画される。docs/verification/ に記録。
 
-## W2: 静的ホスティング (手動運用)
+> W1 のレビューで「内部データ表現がそのまま画面になっている」ギャップが明確になり、
+> **Web 化 (W2/W3) は先送り**して、認知単位のレポート再構築 (V1〜V3、設計:
+> docs/design/presentation.md) を先に行うことにした (2026-07-05)。
+
+## V1: diff パターンの実例収集と表示要件の確定
+
+- scripts/survey_diff_patterns.py (読み取り専用): gtfs-data.jp から世代ペアを
+  サンプリングして compare を回し、変化の組合せで機械分類する
+  (便数系のみ / 停車パターン変化あり / 路線増減 / 停留所再編 / カレンダー系のみ /
+  運賃のみ / 大規模改正 など)
+- 各類型の代表フィードで HTML レポートを生成し「実例ギャラリー」として提示 →
+  ユーザーレビューで表示要件を収集し presentation.md の要件表 (R11..) に追記
+- DoD: 類型分類と代表実例の一覧が docs/verification/ に記録され、
+  presentation.md の要件表と未確定事項がユーザーレビューを経て**凍結**されている
+  (V2 実装中の要件変更を原則しない状態にする)。
+
+## V2: プレゼンテーションモデルの生成 (Python 側)
+
+- report/presentation.py: events + identity + trip_delta → 認知単位のビューモデル
+  (①路線概要 / ②本数マトリクス (集計→内訳・変更なし行・増減量) /
+  ③方向×曜日単位の時刻表比較 + シフト特徴注釈 (一様成分+区間残差、表示用) /
+  ④パターン変化の統合ユニット)
+- bundle 拡張: 全系統の概要データ (パターン・座標・便数)、全グループの時刻表、
+  プレゼンテーションモデル本体を同梱
+- 制約: コア (L0/L1/L2・ChangeEvent スキーマ・説明会計) は変更しない。
+  注釈は新イベントタイプにしない (presentation.md 設計原則)
+- DoD: 3検証フィード + V1 代表実例でビューモデルが生成でき、単体テストがある。
+  events.json / accounting が W1 時点と互換であることをテストで保証。
+
+## V3: ビューア再構築 (認知単位 UI)
+
+- ①〜④の画面実装 (presentation.md の骨格と R1〜 の要件に従う)。
+  イベント羅列・RawDiff・explained_ratio は「検証モード」トグルへ退避 (削除しない)
+- DoD: 3検証フィード + V1 代表実例のすべてで新 UI が動作し、ユーザーレビュー合格。
+  検証モードから説明会計 (evidence → RawDiff 生値) に到達できることを確認。
+  docs/verification/ に記録。
+
+## W2: 静的ホスティング (手動運用) 【V3 完了後に再開】
 
 - S3 + CloudFront + 独自ドメイン + HTTPS。結果バンドルを手動アップロードし
   恒久 URL (/r/{id}) で共有する運用手順を確立
 - DoD: 第三者環境 (別ネットワーク・スマホ含む) で公開 URL の閲覧を確認。
   手順を docs/ops/ に記録。
 
-## W3: ジョブ API と公開運用
+## W3: ジョブ API と公開運用 【V3 完了後に再開】
 
 - 入力 UI: gtfs-data.jp の事業者・世代セレクタ / zip アップロード (上限サイズ)
 - ジョブ実行: Lambda (コンテナ) + API Gateway (非同期投入→ポーリング) + DynamoDB

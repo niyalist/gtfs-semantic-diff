@@ -36,11 +36,14 @@ roadmap M0–M7 **全完了**。検証3フィードで explained_ratio 1.0000、
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
-Web 化 (roadmap W1〜W3、設計: docs/design/web.md): W1 実装完了 —
-`gtfs-semdiff compare --html out.html` で自己完結 HTML レポートを生成できる。
+HTML レポート: `gtfs-semdiff compare --html out.html` (自己完結・単一ファイル、W1)。
 ビューアは viewer/ (Svelte 4 + Vite)、ビルド成果物を
 src/gtfs_semdiff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
-W1 の目視確認 (docs/verification/W1_html_viewer.md) が済んだら W2 (静的ホスティング) へ。
+**現在の作業トラック: 認知単位のレポート再構築 (roadmap V1〜V3、設計:
+docs/design/presentation.md)。W1 レビューで「内部データ表現がそのまま画面」という
+ギャップが特定された。コア・JSON スキーマ・説明会計は変更せず、プレゼンテーション
+モデル層で吸収するのが原則。Web 化 (W2/W3) は V3 完了後に再開。次は V1
+(diff パターン実例収集とユーザーレビューによる要件凍結)。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 

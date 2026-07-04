@@ -54,9 +54,11 @@ config_snapshot は events.json に既に含まれるため、バンドルだけ
      (vite-plugin-singlefile)。ダウンロード・保存・メール添付で完結する成果物。
      地図タイルだけはオンライン時のみ表示 (それ以外はオフラインで動く)。
   2. **ホスト版**: ビューア本体は共通アセット、/r/{id} のバンドルを fetch。
-- **画面構成 (progressive disclosure)**: 初期表示は現行 md 相当の概要
-  (サマリ + route_group 章 + **変更のない路線の一覧** + 停留所章 + データ検証章、
-  各章は折りたたみ)。
+- **画面構成**: W1 では md 相当の構成をイベント単位で描画したが、W1 レビューにより
+  **認知単位のプレゼンテーションモデルへ再構築する** (docs/design/presentation.md、
+  roadmap V1〜V3)。以下は W1 時点の記述 (V3 で置き換え):
+  初期表示は概要 (サマリ + route_group 章 + 変更のない路線の一覧 + 停留所章 +
+  データ検証章、各章は折りたたみ)。
   イベント行をクリック → 詳細パネル: 種別に応じて時刻表 before/after、地図
   (移設・新設廃止のプロット、shape 新旧の重ね描き)、evidence の生値テーブル
   (RawDiff の old→new)。残差 (UNEXPLAINED_RESIDUAL) も同じ流儀でクリック可能。
