@@ -84,10 +84,33 @@ def compare_snapshots(
             "new_rid": new.meta.rid,
             "old_source": old.meta.source,
             "new_source": new.meta.source,
+            "old_period": [old.meta.from_date, old.meta.to_date],
+            "new_period": [new.meta.from_date, new.meta.to_date],
         },
         generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         config_snapshot=config.raw,
         events=events,
         accounting=accounting,
+        context={"band_profiles": _band_profiles(ctx)},
     )
     return event_set, rawdiffs
+
+
+def _band_profiles(ctx: RuleContext) -> list[dict]:
+    """(family, 方向, day_type) ごとの時間帯別本数 (旧→新)。レポートの本数表用。"""
+    profiles: dict[tuple[str, str, str], dict[str, list[int]]] = {}
+    for trips, side in ((ctx.trip_delta.old_trips, 0), (ctx.trip_delta.new_trips, 1)):
+        for t in trips.values():
+            key = (t.family, t.direction, t.day_type)
+            bands = profiles.setdefault(key, {})
+            band = ctx.time_bands.band_of(t.first_departure)
+            bands.setdefault(band, [0, 0])[side] += 1
+    return [
+        {
+            "route_family": family,
+            "direction": direction,
+            "day_type": day_type,
+            "bands": {b: counts for b, counts in sorted(bands.items())},
+        }
+        for (family, direction, day_type), bands in sorted(profiles.items())
+    ]

@@ -96,6 +96,7 @@ class TestAccounting:
             "config_snapshot",
             "events",
             "accounting",
+            "context",
         }
 
 

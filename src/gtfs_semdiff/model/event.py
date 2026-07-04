@@ -104,13 +104,18 @@ class Accounting:
 
 @dataclass
 class ChangeEventSet:
-    """世代ペア1組の比較結果全体。CLI / report / 将来の Web はすべてこの JSON の消費者。"""
+    """世代ペア1組の比較結果全体。CLI / report / 将来の Web はすべてこの JSON の消費者。
+
+    context はレポート描画等の消費者向け補助データ (時間帯別本数プロファイル等)。
+    events / accounting が正であり、context は再計算可能な派生情報に限る。
+    """
 
     feed: dict[str, Any] = field(default_factory=dict)
     generated_at: str = ""
     config_snapshot: dict[str, Any] = field(default_factory=dict)
     events: list[ChangeEvent] = field(default_factory=list)
     accounting: Accounting = field(default_factory=Accounting)
+    context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -120,4 +125,5 @@ class ChangeEventSet:
             "config_snapshot": self.config_snapshot,
             "events": [e.to_dict() for e in self.events],
             "accounting": self.accounting.to_dict(),
+            "context": self.context,
         }

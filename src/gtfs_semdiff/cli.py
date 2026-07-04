@@ -155,6 +155,8 @@ def fetch(ctx: click.Context, org: str, feed: str, old_rid: str, new_rid: str, f
               help="ChangeEventSet JSON の出力先")
 @click.option("--rawdiffs", "rawdiffs_out", type=click.Path(), default=None,
               help="RawDiff 全件 JSON の出力先")
+@click.option("--report", "report_out", type=click.Path(), default=None,
+              help="Markdown レポートの出力先")
 @click.pass_context
 def compare(
     ctx: click.Context,
@@ -165,6 +167,7 @@ def compare(
     new_rid: str,
     output: str | None,
     rawdiffs_out: str | None,
+    report_out: str | None,
 ) -> None:
     """2世代の GTFS を比較し ChangeEvent JSON を出力する。
 
@@ -202,6 +205,13 @@ def compare(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         console.print(f"RawDiff JSON: [cyan]{rawdiffs_out}[/cyan]")
+    if report_out:
+        from .report import render_markdown
+
+        Path(report_out).write_text(
+            render_markdown(event_set.to_dict()), encoding="utf-8"
+        )
+        console.print(f"Markdown レポート: [cyan]{report_out}[/cyan]")
 
 
 @main.command()
