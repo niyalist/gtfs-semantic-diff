@@ -64,10 +64,14 @@
   凝集度メタデータとして算出)
 - events: subject に route_group を追加 (additive)。context.band_profiles にも併記
 - report: 路線別章を route_group 単位に変更 (group 内は family / 方向 / パターンの内訳を維持、
-  章冒頭に構成 family と根拠を明示)
+  章冒頭に構成 family と凝集度を明示)
+- report: **低凝集 family の小見出し分割** (M6 発見 4 の分割方向): family 内の
+  パターンクラスタ間凝集度が low_cohesion_note を下回る場合、パターンクラスタ単位の
+  小見出しに分割 (例: 琴参バス美合線 → 本線 / 落合橋接続の区間便)
 - DoD: 永井運輸で 30A〜30K 前橋玉村線が1章に集約され、富山地鉄・臨港で誤結合ゼロを
-  目視確認 (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
-  合成 GTFS の単体テスト (結合・非結合・語幹衝突の3ケース以上)。
+  目視確認。分割方向は美合線型の実例 (M6 調査フィード) で小見出し分割を目視確認
+  (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
+  合成 GTFS の単体テスト (結合・非結合・語幹衝突・低凝集分割の4ケース以上)。
 
 ## 将来 (スコープ外だが JSON 互換を壊さない)
 

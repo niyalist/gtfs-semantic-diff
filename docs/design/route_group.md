@@ -90,7 +90,14 @@ config (M7 で追加):
 - `context.band_profiles` に route_group を併記 → report の路線別章を group 単位に変更
   (group 内では family / 方向 / パターンごとの内訳を小見出しで維持)。
 - events: subject に `route_group` を追加 (全 A/B/C 群イベント)。
-- 将来 (M7 の DoD 外): group 単位の TRIPS_TRUNCATED、group 内 family 間の振替検出。
+- **低凝集 family の小見出し分割** (M6 発見 4): family 内のパターンクラスタ間
+  凝集度 (停留所集合 Jaccard) が `low_cohesion_note` を下回るクラスタがある場合、
+  family 章をパターンクラスタ単位の小見出しに分割する
+  (例: 美合線 → 「本線 (琴平営業所〜落合橋)」「区間便 (落合橋〜三角)」)。
+  統合 (group 凝集度の注記) と分割 (family 内凝集度の小見出し化) を
+  同じ凝集度メタデータで対称に扱う。
+- 将来 (M7 の DoD 外): group 単位の TRIPS_TRUNCATED、group 内 family 間の振替検出、
+  C群 subject へのパターンクラスタ付与 (「区間便だけ減便」の直接表現)。
 
 ## 検証計画 (M6: gtfs-data.jp 横断調査)
 
