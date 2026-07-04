@@ -94,6 +94,6 @@ gtfs-semdiff compare ... -o events.json --report report.md
 
 1. 表紙: フィード名・比較世代・有効期間
 2. 全体サマリ: 新設/廃止路線、停留所新設/廃止/改称、運賃改定、major イベント一覧
-3. 路線ごとの章 (route family 単位、京都市交通局別紙風): 系統図的な停車パターン変化、時間帯別本数表 (旧→新)、当該路線の全イベント
+3. 路線ごとの章 (route_group 単位、京都市交通局別紙風): 構成系統と凝集度、系統図的な停車パターン変化、時間帯別本数表 (旧→新)、当該路線の全イベント、低凝集 family の運行系統構成。末尾に**変更のない路線の一覧** (網羅性の明示 — 「載っていない」と「変更なしと確認した」を区別する)
 4. 停留所の章: 乗り場変更・移設・改称の一覧表
 5. データ検証章: TECHNICAL_ID_CHURN の要約、FEED_VALIDITY_CHANGED、explained_ratio、UNEXPLAINED_RESIDUAL の全件

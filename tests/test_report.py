@@ -55,6 +55,42 @@ def test_report_stop_chapter_and_band_table(tmp_path, config):
     assert "| 平日 |" in md
 
 
+def test_unchanged_routes_section(tmp_path, config):
+    from .test_rules import EXTRA_ROUTE_OLD
+
+    # family「99」廃止 / family「1」は無変更 → 変更のない路線一覧に「1」が載る
+    md = render_from(
+        tmp_path, config,
+        old_files=EXTRA_ROUTE_OLD,
+        new_files={"stops.txt": EXTRA_ROUTE_OLD["stops.txt"]},
+    )
+    assert "変更のない路線" in md
+    assert "| 1 | 1 | 2 |" in md  # 路線 1、構成系統 1、便数 2 (旧=新)
+    # 変更のあった路線 (99) は一覧に入らない
+    section = md.split("変更のない路線")[1]
+    assert "| 99 |" not in section
+
+
+def test_no_unchanged_section_when_all_routes_changed(tmp_path, config):
+    from .conftest import MINIMAL_FEED
+
+    # 唯一の路線に減便イベント → 「変更のない路線」は出ない
+    md = render_from(
+        tmp_path, config,
+        new_files={
+            "trips.txt": "route_id,service_id,trip_id\nR1,WD,T1\n",
+            "stop_times.txt": (
+                "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+                "T1,08:00:00,08:00:00,S1,1\n"
+                "T1,08:05:00,08:05:00,S2,2\n"
+                "T1,08:10:00,08:10:00,S3,3\n"
+            ),
+        },
+    )
+    assert "変更のない路線" not in md
+    _ = MINIMAL_FEED
+
+
 def test_report_residual_listing(tmp_path, config):
     # 未知ファイルの差分は残差になる → データ検証章に全件表
     md = render_from(

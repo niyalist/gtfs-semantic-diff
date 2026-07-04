@@ -143,7 +143,7 @@ def _route_chapters(
         if e["subject"].get("route_family")
         and e["type"] not in _STOP_TYPES | _VALIDATION_TYPES
     ]
-    if not route_events:
+    if not route_events and not context.get("route_groups"):
         return
 
     group_info = {g["name"]: g for g in context.get("route_groups", [])}
@@ -243,6 +243,44 @@ def _route_chapters(
             lines.append("")
             lines.extend(table)
             lines.append("")
+
+    _unchanged_routes(lines, context, set(by_group), prof_by_family, len(order) + 1)
+
+
+def _unchanged_routes(
+    lines: list[str],
+    context: dict,
+    changed_group_names: set[str],
+    prof_by_family: dict[str, list[dict]],
+    section_no: int,
+) -> None:
+    """路線・パターン・便数時刻の変化が検出されなかった路線の一覧。
+
+    網羅性の明示 (説明会計と同じ思想): 「載っていない = 見ていない」ではなく
+    「変更なしと確認した」ことをレポート上で区別できるようにする。
+    停留所レベルの変化 (改称等) は停留所の章に載るため、この一覧の対象外。
+    """
+    all_groups = context.get("route_groups", [])
+    unchanged = [g for g in all_groups if g["name"] not in changed_group_names]
+    if not unchanged:
+        return
+    lines.append(f"### 2.{section_no} 変更のない路線")
+    lines.append("")
+    lines.append("以下の路線では路線・運行パターン・便数時刻の変化は検出されていない。")
+    lines.append("")
+    lines.append("| 路線 | 構成系統 | 便数 |")
+    lines.append("|---|---|--:|")
+    for g in sorted(unchanged, key=lambda g: g["name"]):
+        total_old = total_new = 0
+        for family in g["families"]:
+            for p in prof_by_family.get(family, []):
+                for old_n, new_n in p["bands"].values():
+                    total_old += old_n
+                    total_new += new_n
+        trips = f"{total_old}→{total_new}" if total_old != total_new else str(total_new)
+        families = ", ".join(g["families"]) if len(g["families"]) > 1 else g["families"][0]
+        lines.append(f"| {g['name']} | {families} | {trips} |")
+    lines.append("")
 
 
 def _band_table(profiles: list[dict], changed: set, show_family: bool = False) -> list[str]:
