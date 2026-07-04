@@ -73,9 +73,43 @@
   (docs/verification/ に記録)。explained_ratio が M5 水準を維持。
   合成 GTFS の単体テスト (結合・非結合・語幹衝突・低凝集分割の4ケース以上)。
 
+## W1: 結果バンドル + HTML ビューア (サーバ不要。設計: docs/design/web.md)
+
+- report/bundle.py: ビューア用結果バンドル書き出し (events.json / rawdiffs.json /
+  geometry.geojson (停留所座標・shape 新旧) / timetables.json / meta.json)
+- viewer/ (Svelte + Vite): 概要 → クリックでドリルダウンの SPA。
+  イベント種別に応じた詳細パネル (時刻表 before/after、MapLibre 地図、
+  evidence の生値テーブル)。残差もクリック可能。単一 HTML ファイル出力対応
+- model/event_types.py に display_name_en を追加、UI 文字列の ja/en 切替
+- CLI: `gtfs-semdiff compare ... --html out/` (+ 単一ファイルオプション)
+- DoD: 検証3フィード (永井 prev_2→prev_1、地鉄 R8、臨港テスト) のレポートを
+  ブラウザで開き、**全イベントをクリックすると何らかの詳細が表示される**
+  (説明会計の UI 化) ことを目視確認。単一 HTML として保存→再オープンできる。
+  地図に停留所異動と shape 新旧が描画される。docs/verification/ に記録。
+
+## W2: 静的ホスティング (手動運用)
+
+- S3 + CloudFront + 独自ドメイン + HTTPS。結果バンドルを手動アップロードし
+  恒久 URL (/r/{id}) で共有する運用手順を確立
+- DoD: 第三者環境 (別ネットワーク・スマホ含む) で公開 URL の閲覧を確認。
+  手順を docs/ops/ に記録。
+
+## W3: ジョブ API と公開運用
+
+- 入力 UI: gtfs-data.jp の事業者・世代セレクタ / zip アップロード (上限サイズ)
+- ジョブ実行: Lambda (コンテナ) + API Gateway (非同期投入→ポーリング) + DynamoDB
+- Google ログイン (Cognito federation): 匿名 = 結果30日で自動削除、
+  ログイン = 恒久 URL + アップロード zip 保存
+- フィードバック: 結果ページから {結果URL, event_id, 記述} を記録 + SES 通知
+- コストガード: サイズ上限・レート制限・AWS Budgets アラート (設計: web.md)
+- DoD: 公開 URL で一連 (選択/アップロード → 閲覧 → フィードバック) が動作。
+  匿名結果の30日削除をライフサイクル設定で確認。月額コスト実績を docs/ops/ に記録。
+
 ## 将来 (スコープ外だが JSON 互換を壊さない)
 
 - group 単位の TRIPS_TRUNCATED・family 間振替検出 (M7 の動作実績を見てから)
+- 時刻変化の分解精緻化 (一様成分 + 区間残差の合成表現、time_band 次元。
+  現状の TIMETABLE_SHIFTED は「±2分程度に収まる小幅な時刻調整」を含む —
+  会計上の見落としはなく表現粒度の問題であることを実データで確認済み)
 - 多世代タイムライン分析 (events/timeline.py)
-- HTML/Web ビューア、地図表示
 - LLM による自然言語レポート生成 (report/narrative.py, 任意機能)

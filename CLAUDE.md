@@ -36,7 +36,9 @@ roadmap M0–M7 **全完了**。検証3フィードで explained_ratio 1.0000、
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
-以降の作業候補は roadmap.md「将来」節 (group 単位 TRIPS_TRUNCATED、多世代タイムライン等)。
+**次は Web 化 (roadmap W1〜W3、設計: docs/design/web.md)。方針は静的ファースト —
+結果を静的バンドルとして書き出し、ビューア (Svelte + Vite、単一 HTML 対応) が
+クライアント側で描画。W1 はサーバ不要 (`--html` 出力) から着手する。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 
