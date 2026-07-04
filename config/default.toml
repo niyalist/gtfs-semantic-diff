@@ -1,5 +1,10 @@
 # すべての検出閾値はここに集約する。コード内リテラル禁止 (CLAUDE.md 参照)。
 
+[load.day_types]
+# calendar_dates のみで定義される service の day_type 判定:
+# 運行日の曜日分布のうち、この比率以上が単一区分 (平日/土曜/日曜) に収まれば採用
+calendar_dates_majority = 0.8
+
 [identity.stop_clustering]
 intra_generation_radius_m = 100   # 世代内クラスタリングの近接半径
 inter_generation_radius_m = 300   # 世代間リンクの近接半径
