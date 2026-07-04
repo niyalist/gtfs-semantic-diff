@@ -40,6 +40,7 @@ relocated_threshold_m = 300
 
 [events.shape]
 frechet_threshold_m = 150
+max_polyline_points = 200         # Fréchet 計算前の間引き上限 (性能)
 
 [events.timetable]
 uniform_shift_max_std_sec = 120   # TIMETABLE_SHIFTED 判定

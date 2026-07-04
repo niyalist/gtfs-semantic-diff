@@ -69,6 +69,7 @@ _DEFS = [
     ("AGENCY_INFO_CHANGED", "事業者情報変更", "F", SEVERITY_INFO),
     ("TRANSLATION_CHANGED", "翻訳データ変更", "F", SEVERITY_INFO),
     ("ACCESSIBILITY_CHANGED", "バリアフリー情報変更", "F", SEVERITY_MINOR),
+    ("HEADSIGN_CHANGED", "行先表示変更", "F", SEVERITY_INFO),
     ("TECHNICAL_ID_CHURN", "ID 張り替え(意味変化なし)", "F", SEVERITY_INFO),
     ("UNEXPLAINED_RESIDUAL", "未説明の残差", "F", SEVERITY_INFO),
 ]

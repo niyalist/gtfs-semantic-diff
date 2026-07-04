@@ -209,22 +209,66 @@ def _modified_trip_events(ctx: RuleContext) -> None:
         else:
             key = (new_trip.family, new_trip.direction, new_trip.day_type,
                    "TRAVEL_TIME_CHANGED", 0)
-        grouped[key].append((new_trip.trip_id, time_ids))
+        grouped[key].append((old_trip, new_trip, time_ids))
 
     for key in sorted(grouped, key=str):
         family, direction, day_type, type_, shift_min = key
         members = grouped[key]
-        evidence = [i for _, ids in members for i in ids]
+        evidence = [i for _, _, ids in members for i in ids]
         quantification = {"trip_count": len(members)}
         if type_ == "TIMETABLE_SHIFTED":
             quantification["shift_min"] = shift_min
             quantification["uniform"] = True
+        else:
+            segments = _segment_stats(members)
+            if segments:
+                quantification["segments"] = segments
         ctx.emit(
             type_,
             subject={"route_family": family, "direction": direction, "day_type": day_type},
             evidence=evidence,
             quantification=quantification,
         )
+
+
+def _segment_stats(members: list, top_n: int = 5) -> list[dict]:
+    """区間 (連続停留所ペア) 別の所要時間分布変化。|中央値の差| 上位 top_n。
+
+    quantification 形式は ontology C群 TRAVEL_TIME_CHANGED の定義に従う:
+    {segment, old_median_sec, new_median_sec, old_p90, new_p90}
+    """
+    old_runs: dict[str, list[int]] = defaultdict(list)
+    new_runs: dict[str, list[int]] = defaultdict(list)
+    for old_trip, new_trip, _ in members:
+        for trip, runs in ((old_trip, old_runs), (new_trip, new_runs)):
+            for i in range(len(trip.base_seq) - 1):
+                dep = parse_gtfs_time(trip.times[i][1] or trip.times[i][0])
+                arr = parse_gtfs_time(trip.times[i + 1][0] or trip.times[i + 1][1])
+                if dep is None or arr is None:
+                    continue
+                runs[f"{trip.base_seq[i]}→{trip.base_seq[i + 1]}"].append(arr - dep)
+
+    def p90(values: list[int]) -> int:
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))]
+
+    stats = []
+    for segment in old_runs.keys() & new_runs.keys():
+        old_med = int(statistics.median(old_runs[segment]))
+        new_med = int(statistics.median(new_runs[segment]))
+        if old_med == new_med:
+            continue
+        stats.append(
+            {
+                "segment": segment,
+                "old_median_sec": old_med,
+                "new_median_sec": new_med,
+                "old_p90": p90(old_runs[segment]),
+                "new_p90": p90(new_runs[segment]),
+            }
+        )
+    stats.sort(key=lambda s: -abs(s["new_median_sec"] - s["old_median_sec"]))
+    return stats[:top_n]
 
 
 def _time_deltas(old_trip: TripInfo, new_trip: TripInfo) -> list[int]:

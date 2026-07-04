@@ -192,18 +192,30 @@ def link_stop_clusters(
     for c in new_clusters.values():
         grid[(int(c.lat / cell_deg), int(c.lon / cell_deg))].append(c)
 
+    # プラットフォーム (stop_id) を共有するクラスタは距離に関係なく候補に含める。
+    # 同一 stop_id のまま inter_radius を超えて移設されるケース (実データで確認) のため。
+    new_by_platform: dict[str, StopCluster] = {}
+    for c in new_clusters.values():
+        for pid in c.platform_ids:
+            new_by_platform[pid] = c
+
     edges: list[MatchEdge] = []
     for old in old_clusters.values():
         ci, cj = int(old.lat / cell_deg), int(old.lon / cell_deg)
-        candidates = [
-            c
+        candidates = {
+            c.cluster_id: c
             for di in (-1, 0, 1)
             for dj in (-1, 0, 1)
             for c in grid.get((ci + di, cj + dj), ())
-        ]
-        for new in candidates:
+        }
+        for pid in old.platform_ids:
+            shared = new_by_platform.get(pid)
+            if shared is not None:
+                candidates[shared.cluster_id] = shared
+        for new in candidates.values():
             dist = haversine_m(old.lat, old.lon, new.lat, new.lon)
-            if dist > inter_radius:
+            has_shared_platform = bool(set(old.platform_ids) & set(new.platform_ids))
+            if dist > inter_radius and not has_shared_platform:
                 continue
             shared = len(set(old.platform_ids) & set(new.platform_ids))
             platform_ratio = shared / max(len(old.platform_ids), len(new.platform_ids))

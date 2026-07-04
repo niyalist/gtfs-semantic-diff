@@ -88,6 +88,7 @@ trip_id の連続性は一切仮定しない。時間帯ビン既定値: 5–7 /
 | `FEED_VALIDITY_CHANGED` | feed_info の期限・calendar 末尾の書き換え | info |
 | `AGENCY_INFO_CHANGED` / `TRANSLATION_CHANGED` | agency / translations の差分 | info |
 | `ACCESSIBILITY_CHANGED` | wheelchair_boarding / wheelchair_accessible の変化 | minor |
+| `HEADSIGN_CHANGED` | trip_headsign / stop_headsign の表記変更のみ (経路・時刻は不変)。v0.2.1 で追加: 地鉄 R8 改正の残差 (「富山駅前」→「富山駅」120件) から採録 | info |
 | `TECHNICAL_ID_CHURN` | **意味的変化を伴わない ID 張り替え**(例: trip_id 全交換だがダイヤ同一)。L1 同定で同一と判定された対の ID 差分をまとめて説明する。データ更新の健全性検証に使う | info |
 | `UNEXPLAINED_RESIDUAL` | どのルールでも説明されなかった RawDiff。**ここの件数と内訳がルールカタログ育成の KPI** | — |
 

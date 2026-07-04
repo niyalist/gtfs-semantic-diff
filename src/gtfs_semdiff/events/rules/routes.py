@@ -25,6 +25,23 @@ def _family_trip_ids(trips_by_family: dict[str, list[str]], family: str) -> list
     return trips_by_family.get(family, [])
 
 
+def _all_irregular(trips: dict, trip_ids: list[str]) -> bool:
+    day_types = {trips[t].day_type for t in trip_ids if t in trips}
+    return bool(day_types) and day_types == {"irregular"}
+
+
+def _classify_disappearance(trips: dict, trip_ids: list[str]) -> tuple[str, float]:
+    if _all_irregular(trips, trip_ids):
+        return "SEASONAL_SERVICE_CHANGED", 0.6
+    return "ROUTE_DISCONTINUED", 1.0
+
+
+def _classify_appearance(trips: dict, trip_ids: list[str]) -> tuple[str, float]:
+    if _all_irregular(trips, trip_ids):
+        return "SEASONAL_SERVICE_CHANGED", 0.6
+    return "ROUTE_ADDED", 1.0
+
+
 def extract(ctx: RuleContext) -> None:
     renamed_threshold = ctx.config.get(
         "identity", "route_family", "pattern_jaccard_renamed", default=0.7
@@ -101,7 +118,10 @@ def extract(ctx: RuleContext) -> None:
                 },
             )
 
-    # 3) 消滅 family → ROUTE_DISCONTINUED (trip カスケードごと消費)
+    # 3) 消滅 family → ROUTE_DISCONTINUED (trip カスケードごと消費)。
+    #    全 trip が特定日運行 (day_type=irregular) の family は季節・期間限定
+    #    サービスの消滅の可能性が高いため SEASONAL_SERVICE_CHANGED として
+    #    報告する (confidence 0.6 の仮説。例: 冬季限定の観光路線)。
     for name in sorted(old_families.keys() - new_families.keys() - handled_old):
         old_f = old_families[name]
         trip_ids = _family_trip_ids(old_trips_by_family, name)
@@ -110,15 +130,17 @@ def extract(ctx: RuleContext) -> None:
             for rid in sorted(old_f.route_ids)
             for d in ctx.index.for_key("routes.txt", rid)
         ] + ctx.index.trip_cascade_ids(trip_ids)
+        type_, confidence = _classify_disappearance(ctx.trip_delta.old_trips, trip_ids)
         ctx.emit(
-            "ROUTE_DISCONTINUED",
+            type_,
             subject={"route_family": name},
             evidence=evidence,
             old_ref={"route_ids": sorted(old_f.route_ids), "trip_count": len(trip_ids)},
-            quantification={"trip_count": len(trip_ids)},
+            quantification={"trip_count": len(trip_ids), "change": "disappeared"},
+            confidence=confidence,
         )
 
-    # 4) 出現 family → ROUTE_ADDED
+    # 4) 出現 family → ROUTE_ADDED (同様に特定日のみなら SEASONAL)
     for name in sorted(new_families.keys() - old_families.keys() - handled_new):
         new_f = new_families[name]
         trip_ids = _family_trip_ids(new_trips_by_family, name)
@@ -127,12 +149,14 @@ def extract(ctx: RuleContext) -> None:
             for rid in sorted(new_f.route_ids)
             for d in ctx.index.for_key("routes.txt", rid)
         ] + ctx.index.trip_cascade_ids(trip_ids)
+        type_, confidence = _classify_appearance(ctx.trip_delta.new_trips, trip_ids)
         ctx.emit(
-            "ROUTE_ADDED",
+            type_,
             subject={"route_family": name},
             evidence=evidence,
             new_ref={"route_ids": sorted(new_f.route_ids), "trip_count": len(trip_ids)},
-            quantification={"trip_count": len(trip_ids)},
+            quantification={"trip_count": len(trip_ids), "change": "appeared"},
+            confidence=confidence,
         )
 
     # 5) 対応済み family 内の routes.txt field_changed (長名変更等) → ROUTE_RENAMED (minor)

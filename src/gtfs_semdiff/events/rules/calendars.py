@@ -69,29 +69,72 @@ def _validity(ctx: RuleContext) -> None:
     )
 
 
+def _service_period(snapshot) -> tuple[str, str] | None:
+    """スナップショットの運行有効期間 (YYYYMMDD)。API メタ → calendar の順で解決。"""
+    meta_from = snapshot.meta.from_date.replace("-", "")
+    meta_to = snapshot.meta.to_date.replace("-", "")
+    if meta_from and meta_to:
+        return meta_from, meta_to
+    dates: list[str] = []
+    cal = snapshot.table("calendar")
+    if cal is not None and {"start_date", "end_date"} <= set(cal.columns):
+        dates += [d.strip() for d in cal["start_date"]] + [d.strip() for d in cal["end_date"]]
+    cd = snapshot.table("calendar_dates")
+    if cd is not None and "date" in getattr(cd, "columns", ()):
+        dates += [d.strip() for d in cd["date"]]
+    dates = [d for d in dates if d]
+    if not dates:
+        return None
+    return min(dates), max(dates)
+
+
 def _holiday_exceptions(ctx: RuleContext) -> None:
+    """calendar_dates の例外差分。
+
+    M5: 新旧フィードの有効期間の**重なり窓**で正規化する。重なり窓の外の
+    日付差分はフィード期間のスライドに伴う機械的な差 (旧期間にしかない日の
+    削除等) であり、窓内の差分だけが実質的な運行例外の変更。
+    """
     diffs = ctx.index.by_file.get("calendar_dates.txt", [])
     if not diffs:
         return
-    # service の day_type (旧→新の順で解決) ごとにまとめる
+    old_period = _service_period(ctx.old)
+    new_period = _service_period(ctx.new)
+    overlap = None
+    if old_period and new_period:
+        start = max(old_period[0], new_period[0])
+        end = min(old_period[1], new_period[1])
+        if start <= end:
+            overlap = (start, end)
+
     grouped: dict[str, list[str]] = defaultdict(list)
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for d in diffs:
         service_id = d.key[0] if d.key else ""
+        date = d.key[1] if len(d.key) > 1 else ""
         day_type = ctx.old.day_types.get(service_id) or ctx.new.day_types.get(
             service_id, "irregular"
         )
         grouped[day_type].append(d.rawdiff_id)
-        counts[day_type][d.kind] += 1
+        if overlap and date:
+            bucket = "within_overlap" if overlap[0] <= date <= overlap[1] else "outside_overlap"
+        else:
+            bucket = "unknown_window"
+        counts[day_type][bucket] += 1
 
     for day_type in sorted(grouped):
         evidence = ctx.unconsumed_ids(grouped[day_type])
         if not evidence:
             continue
+        q = dict(sorted(counts[day_type].items()))
+        if overlap:
+            q["overlap_window"] = [overlap[0], overlap[1]]
+        # 窓内の実質変更が1件もなければ期間スライドに伴う機械差のみ
+        substantive = counts[day_type].get("within_overlap", 0) > 0
         ctx.emit(
             "HOLIDAY_EXCEPTION_CHANGED",
             subject={"day_type": day_type},
             evidence=evidence,
-            quantification=dict(sorted(counts[day_type].items())),
-            confidence=0.8,  # M5 で有効期間正規化するまでは粗い会計
+            quantification={**q, "substantive": substantive},
+            confidence=1.0 if overlap else 0.8,
         )
