@@ -1,0 +1,31 @@
+# すべての検出閾値はここに集約する。コード内リテラル禁止 (CLAUDE.md 参照)。
+
+[identity.stop_clustering]
+intra_generation_radius_m = 100   # 世代内クラスタリングの近接半径
+inter_generation_radius_m = 300   # 世代間リンクの近接半径
+
+[identity.pattern_clustering]
+similarity_threshold = 0.5        # 同一クラスタ判定
+lcs_weight = 0.6
+direction_weight = 0.3
+containment_weight = 0.1
+hierarchical_switch_patterns = 50 # これ以上で階層的クラスタリングへ
+
+[identity.route_family]
+pattern_jaccard_renamed = 0.7     # ROUTE_RENAMED 判定
+
+[events.frequency]
+time_bands = ["05:00-07:00", "07:00-09:00", "09:00-16:00", "16:00-19:00", "19:00-22:00", "22:00-29:00"]
+
+[events.stops]
+relocated_threshold_m = 300
+
+[events.shape]
+frechet_threshold_m = 150
+
+[events.timetable]
+uniform_shift_max_std_sec = 120   # TIMETABLE_SHIFTED 判定
+
+[repository]
+base_url = "https://api.gtfs-data.jp/v2"
+cache_dir = "~/.cache/gtfs-semdiff"
