@@ -196,9 +196,11 @@ class _Builder:
         systems = self._systems(group, old_trips, new_trips)
         dgroups = self._direction_groups(systems)
         band_matrix = self._band_matrix(dgroups, old_trips, new_trips)
+        # 時刻表を先に構築し、表示用ペアリング (廃止×新設の組) を summary と共有する。
+        # trip_id が張り替わるフィードでも Lev.3 / Lev.5 が経路・時刻変更を拾える
+        timetables, replaced_pairs = self._timetables(dgroups, old_trips, new_trips)
         summary = self._summary(group, dgroups, systems, band_matrix,
-                                len(old_trips), len(new_trips))
-        timetables = self._timetables(dgroups, old_trips, new_trips)
+                                len(old_trips), len(new_trips), replaced_pairs)
 
         has_changes = bool(
             summary["level1"] or summary["level2"] or summary["level3"]
@@ -512,7 +514,8 @@ class _Builder:
 
     # --- ② 変化サマリー (R12 カスケード) ---
 
-    def _summary(self, group, dgroups, systems, band_matrix, n_old, n_new) -> dict:
+    def _summary(self, group, dgroups, systems, band_matrix, n_old, n_new,
+                 replaced_pairs) -> dict:
         # Lev.1
         level1 = None
         if n_old == 0 and n_new > 0:
@@ -538,8 +541,8 @@ class _Builder:
                                "trips": s["trips_old"], "family": s["family"]})
                 lev2_system_ids.add(s["system_id"])
 
-        # Lev.3: 経由停変化ユニット (B群イベントを新旧パターン対で束ね、影響率 R13)
-        level3 = self._level3_units(group, systems, lev2_system_ids)
+        # Lev.3: 経由停変化ユニット (影響率 R13)。素材は modified + 表示ペアリング
+        level3 = self._level3_units(group, systems, lev2_system_ids, replaced_pairs)
 
         # Lev.4: 増減便 = 集計行のビン別差分の符号別合計 (R14)
         level4 = []
@@ -558,10 +561,18 @@ class _Builder:
                     "decreased": dec,
                 })
 
-        # Lev.5: 時刻の微調整 (同一 trip_id・同一停車列で時刻のみ変化) 等
+        # Lev.5: 時刻の微調整 (停車列は同一で時刻のみ変化)。
+        # 同一 trip_id (modified) と表示ペアリングで組めた対の両方を数える
+        pairs = [
+            (o, nw) for o, nw in list(self.delta.modified) + list(replaced_pairs)
+            if self.f2g.get(nw.family) == group
+        ]
         retimed = sum(
-            1 for o, nw in self.delta.modified
-            if self.f2g.get(nw.family) == group and o.base_seq == nw.base_seq
+            1 for o, nw in pairs
+            if o.base_seq == nw.base_seq and any(
+                self._minute(a and (a[1] or a[0])) != self._minute(b and (b[1] or b[0]))
+                for a, b in zip(o.times, nw.times)
+            )
         )
         notes = []
         shape_events = [
@@ -584,12 +595,13 @@ class _Builder:
                 "level4": level4,
                 "level5": {"retimed_trips": retimed, "notes": notes}}
 
-    def _level3_units(self, group, systems, lev2_ids) -> list[dict]:
+    def _level3_units(self, group, systems, lev2_ids, replaced_pairs) -> list[dict]:
         """経由停変化ユニット。
 
-        素材は trip_delta.modified (同一 trip_id で停車列が変わった便) を trip 単位で
-        直接集計する (B群イベント経由にしない — direction_id の無いフィードでは
-        イベントが両方向を1件に束ねるため、系統への帰属が不正確になる)。
+        素材は trip 単位の新旧対応: (a) trip_delta.modified (同一 trip_id) と
+        (b) 時刻表の表示用ペアリングで組めた対 (trip_id が張り替わるフィード)。
+        B群イベント経由にしない (direction_id の無いフィードではイベントが
+        両方向を1件に束ねるため、系統への帰属が不正確になる)。
         検出の正当性は B群イベント (説明会計) が担保し、ここは表示用の再集計。
         """
         sys_by_key = {}
@@ -597,7 +609,7 @@ class _Builder:
             sys_by_key[(s["family"], s["direction"], tuple(s["stops"]))] = s
 
         units: dict[tuple, dict] = {}
-        for old_t, new_t in self.delta.modified:
+        for old_t, new_t in list(self.delta.modified) + list(replaced_pairs):
             if self.f2g.get(new_t.family) != group or old_t.base_seq == new_t.base_seq:
                 continue
             key = (new_t.family, new_t.direction, old_t.base_seq, new_t.base_seq)
@@ -710,6 +722,7 @@ class _Builder:
                 dg_label[(g["id"], leg)] = label
 
         tables = []
+        all_replaced_pairs: list[tuple[TripInfo, TripInfo]] = []
         for (dg, leg, day) in sorted(buckets, key=lambda k: (k[0], k[1], day_sort_key(k[2]))):
             bucket = buckets[(dg, leg, day)]
             # 軸は経路変更 trip の旧停車列も含めた超列にする (差分表示で旧時刻も並べるため)
@@ -724,6 +737,9 @@ class _Builder:
             # (実例: direction_id 付与や trip_id 張り替えで厳密署名が組めないフィード、
             #  停留所再編を伴う経路変更)。events / accounting には影響しない
             replaced = self._pair_leftovers(bucket, pair_of_old, pair_of_new)
+            for n_id, o_t in replaced.items():
+                n_t = next(t for t in bucket["new"] if t.trip_id == n_id)
+                all_replaced_pairs.append((o_t, n_t))
 
             columns = []
             done_old = set()
@@ -765,7 +781,7 @@ class _Builder:
                 ],
                 "columns": columns,
             })
-        return tables
+        return tables, all_replaced_pairs
 
     def _pair_leftovers(self, bucket, pair_of_old, pair_of_new) -> dict[str, TripInfo]:
         """バケット内で対応の無い旧便×新便を発時刻の近さで貪欲に組む (決定的)。

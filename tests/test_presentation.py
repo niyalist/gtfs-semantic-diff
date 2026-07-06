@@ -292,6 +292,26 @@ def test_key_stops_tiers(tmp_path, config):
     assert "二丁目" not in keys  # 中間の非分岐停留所は主要でない
 
 
+def test_level3_includes_display_paired_trips(tmp_path, config):
+    # 回帰テスト (汎用性レビューで発見): trip_id が張り替わる経路変更 (removed+added
+    # を表示ペアリングで組んだ対) も Lev.3 の影響便数に入ること
+    stops = MINIMAL_FEED["stops.txt"] + "S5,新経由地,36.011,139.011\n"
+    old_files = {"stops.txt": stops}
+    new_files = {
+        "stops.txt": stops,
+        "trips.txt": MINIMAL_FEED["trips.txt"].replace("T1", "U1").replace("T2", "U2"),
+        "stop_times.txt": MINIMAL_FEED["stop_times.txt"]
+        .replace("T1", "U1").replace("T2", "U2").replace(",S2,", ",S5,"),
+    }
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    page = page_of(model, "1")
+    lev3 = page["summary"]["level3"]
+    assert len(lev3) == 1
+    assert lev3[0]["added_stops"] == ["新経由地"]
+    assert lev3[0]["removed_stops"] == ["市役所前"]
+    assert lev3[0]["affected_trips"] == 2  # ペアリング経由でも全便が影響に数えられる
+
+
 def test_level4_signed_band_sums(tmp_path, config):
     # 7-9時帯 +1、9-16時帯 -1 → net 0 だが 増1・減1 (R14: シフトと区別)
     new_files = {
