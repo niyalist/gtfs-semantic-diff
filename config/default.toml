@@ -60,6 +60,7 @@ uniform_shift_max_std_sec = 120   # TIMETABLE_SHIFTED 判定
 system_min_trips = 2              # Lev.2 (系統の出現・消滅) として報告する最小便数
 full_coverage = 0.9               # Lev.3 で「全便一貫」とみなす影響率
 direction_pair_jaccard = 0.6      # 往復ペア判定の停留所集合 Jaccard 下限
+pair_max_shift_min = 60           # 時刻表の表示用ペアリング (廃止便×新設便) の発時刻差上限 (分)
 
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"

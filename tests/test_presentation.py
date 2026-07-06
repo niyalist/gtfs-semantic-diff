@@ -209,6 +209,52 @@ def test_timetable_stop_axis_status(tmp_path, config):
     assert status["新経由地"] == "new_only"
 
 
+def test_display_pairing_of_removed_added(tmp_path, config):
+    # 畑線型: direction_id 付与 + trip_id 変更で厳密署名が組めないが時刻同一 →
+    # 表示用ペアリングで1列 (retimed) になり、分単位の変更はゼロ
+    old_files = {
+        "trips.txt": "route_id,service_id,trip_id\nR1,WD,畑1便 \nR1,WD,畑2便 \n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "畑1便 ,08:00:00,08:00:00,S1,1\n畑1便 ,08:05:00,08:05:00,S2,2\n"
+            "畑1便 ,08:10:00,08:10:00,S3,3\n"
+            "畑2便 ,09:00:00,09:00:00,S1,1\n畑2便 ,09:05:00,09:05:00,S2,2\n"
+            "畑2便 ,09:10:00,09:10:00,S3,3\n"
+        ),
+    }
+    new_files = {
+        "trips.txt": ("route_id,service_id,trip_id,direction_id\n"
+                      "R1,WD,畑1便,0\nR1,WD,畑2便,0\n"),
+        "stop_times.txt": old_files["stop_times.txt"].replace("便 ,", "便,"),
+    }
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    page = page_of(model, "1")
+    cols = [c for tb in page["timetables"] for c in tb["columns"]]
+    assert {c["status"] for c in cols} == {"retimed"}  # 廃/新に分裂しない
+    assert all(c["changed_positions"] == [] for c in cols)  # 実質無変化
+
+
+def test_display_pairing_respects_shift_limit(tmp_path, config):
+    # 発時刻差が pair_max_shift_min (60分) を超える組は作らない
+    new_files = {
+        "trips.txt": "route_id,service_id,trip_id\nR1,WD,T1\nR1,WD,TX\n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "T1,08:00:00,08:00:00,S1,1\nT1,08:05:00,08:05:00,S2,2\n"
+            "T1,08:10:00,08:10:00,S3,3\n"
+            "TX,12:00:00,12:00:00,S1,1\nTX,12:05:00,12:05:00,S2,2\n"
+            "TX,12:10:00,12:10:00,S3,3\n"
+        ),
+    }
+    # 旧 T2 (09:00) は削除、新 TX (12:00) は追加 — 差180分 → 組まない
+    model, _ = build(tmp_path, config, new_files=new_files)
+    page = page_of(model, "1")
+    statuses = sorted(
+        c["status"] for tb in page["timetables"] for c in tb["columns"]
+    )
+    assert statuses == ["added", "removed", "unchanged"]
+
+
 def test_level4_signed_band_sums(tmp_path, config):
     # 7-9時帯 +1、9-16時帯 -1 → net 0 だが 増1・減1 (R14: シフトと区別)
     new_files = {

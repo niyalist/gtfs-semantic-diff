@@ -645,6 +645,12 @@ class _Builder:
                 if pair:
                     seqs.append(pair[1].base_seq)
             axis = build_stop_axis(seqs)
+            # 表示用ペアリング: 会計上は removed+added でも、同一バケット内で
+            # 発時刻が近い便同士は「同じ便の置き換え」として1列に組む
+            # (実例: direction_id 付与や trip_id 張り替えで厳密署名が組めないフィード、
+            #  停留所再編を伴う経路変更)。events / accounting には影響しない
+            replaced = self._pair_leftovers(bucket, pair_of_old, pair_of_new)
+
             columns = []
             done_old = set()
             for nw in bucket["new"]:
@@ -652,6 +658,11 @@ class _Builder:
                 if pair:
                     status, o, _ = pair
                     done_old.add(o.trip_id)
+                    columns.append(self._column(status, o, nw, axis))
+                elif nw.trip_id in replaced:
+                    o = replaced[nw.trip_id]
+                    done_old.add(o.trip_id)
+                    status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
                     columns.append(self._column(status, o, nw, axis))
                 else:
                     columns.append(self._column("added", None, nw, axis))
@@ -678,6 +689,40 @@ class _Builder:
                 "columns": columns,
             })
         return tables
+
+    def _pair_leftovers(self, bucket, pair_of_old, pair_of_new) -> dict[str, TripInfo]:
+        """バケット内で対応の無い旧便×新便を発時刻の近さで貪欲に組む (決定的)。
+
+        戻り値: 新 trip_id → 旧 TripInfo。発時刻差が
+        [presentation] pair_max_shift_min を超える組は作らない。"""
+        from ..events.timebands import parse_gtfs_time
+
+        max_shift = self.config.get("presentation", "pair_max_shift_min", default=60) * 60
+        olds = [t for t in bucket["old"] if t.trip_id not in pair_of_old]
+        news = [t for t in bucket["new"] if t.trip_id not in pair_of_new]
+
+        def dep(t):
+            return parse_gtfs_time(t.first_departure)
+
+        candidates = []
+        for o in olds:
+            for n in news:
+                do, dn = dep(o), dep(n)
+                if do is None or dn is None:
+                    continue
+                diff = abs(dn - do)
+                if diff <= max_shift:
+                    candidates.append((diff, o.first_departure, n.first_departure,
+                                       o.trip_id, n.trip_id, o, n))
+        candidates.sort(key=lambda c: c[:5])
+        used_old: set[str] = set()
+        result: dict[str, TripInfo] = {}
+        for _, _, _, o_id, n_id, o, n in candidates:
+            if o_id in used_old or n_id in result:
+                continue
+            used_old.add(o_id)
+            result[n_id] = o
+        return result
 
     @staticmethod
     def _times_on_axis(trip: TripInfo, axis) -> list[str | None]:
