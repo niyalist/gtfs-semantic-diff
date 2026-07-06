@@ -17,8 +17,13 @@
         (b.trips_new + b.trips_old > a.trips_new + a.trips_old ? b : a)).stops
     : [];
   $: repStops = elide(canonicalStops, 9);
-  $: changedTables = page.timetables.filter((tb) =>
-    tb.columns.some((c) => c.status !== "unchanged" && c.status !== "id_changed"));
+  function columnChanged(c) {
+    if (c.status === "added" || c.status === "removed") return true;
+    if (c.status === "retimed" || c.status === "rerouted")
+      return (c.changed_positions?.length ?? 0) > 0;
+    return false;
+  }
+  $: changedTables = page.timetables.filter((tb) => tb.columns.some(columnChanged));
 
   function elide(stops, maxN) {
     if (stops.length <= maxN) return stops;

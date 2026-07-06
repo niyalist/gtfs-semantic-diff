@@ -674,6 +674,9 @@ class _Builder:
             columns.sort(key=lambda c: c["sort_key"])
             for c in columns:
                 del c["sort_key"]
+            if not columns:
+                # 旧側の便がすべて別バケットへ対応付いた場合など。空テーブルは出さない
+                continue
             tables.append({
                 "direction_group": dg,
                 "leg": leg,

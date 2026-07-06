@@ -171,7 +171,7 @@
   .tt-grid td, .tt-grid th { border: 1px solid var(--line); padding: 0.1rem 0.2rem; }
   /* 1便 = 1列の幅を固定 ("12:34" 5文字基準)。‖ 等の記号がセル中央に来る */
   .tt-grid td.num, .tt-grid thead th.num {
-    width: 3.4em; min-width: 3.4em; max-width: 3.4em; text-align: center;
+    width: 4em; min-width: 4em; max-width: 4em; text-align: center;
   }
   .tt-grid td { font-variant-numeric: tabular-nums; white-space: nowrap; }
   td.cell-chg { background: #fdf3d8; }   /* 補強のみ (太字+旧時刻が第1チャネル) */
@@ -179,6 +179,8 @@
   td.cell-new u, th.mark-added { color: #0b6e4f; }
   td.cell-cut { background: #d6d6d6; }   /* 廃止便の列: 濃いグレー */
   td.cell-cut s { color: #444; }
+  td.cell-dropped { background: #e2e2e2; }  /* 停まらなくなった箇所 (取り消し旧時刻) */
+  td.cell-dropped s { color: #444; }
   td.cell-new { background: #ebf3ef; }
   .skip { color: var(--fg-soft); display: block; text-align: center; }
   .gone { color: #a5adb8; display: block; text-align: center; }
