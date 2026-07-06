@@ -14,13 +14,14 @@
     const net = x.net > 0 ? tt("net_inc", x.net) : x.net < 0 ? tt("net_dec", -x.net) : tt("net_zero");
     return `${net} (${tt("inc_dec", x.increased, x.decreased)})`;
   }
-  function changeText(c) {
-    const names = {
-      PATTERN_EXTENDED: "延伸", PATTERN_TRUNCATED: "短縮",
-      STOP_INSERTED_IN_PATTERN: "経由地追加", DETOUR_ADDED: "経由地追加",
-      STOP_REMOVED_FROM_PATTERN: "経由地削除", DETOUR_REMOVED: "経由地削除",
-    };
-    return `${names[c.type] ?? c.type}: ${(c.stops || []).join("、")}`;
+  function unitText(u) {
+    const parts = [];
+    if (u.added_stops.length) parts.push(`${tt("stops_added")}: ${u.added_stops.join("、")}`);
+    if (u.removed_stops.length) parts.push(`${tt("stops_removed")}: ${u.removed_stops.join("、")}`);
+    return parts.join(" / ") || tt("via_change");
+  }
+  function legJa(leg) {
+    return leg === "reverse" ? tt("inbound") : leg === "forward" ? tt("outbound") : "";
   }
 </script>
 
@@ -34,8 +35,8 @@
     <div class="lev lev2">
       ◆ <strong>{item.kind === "system_added" ? tt("system_added") : tt("system_removed")}</strong>:
       {item.label} ({item.trips}{tt("trips_count")})
-      {#each s.level3.filter((u) => u.absorbed_into_level2 && u.system_id === item.system_id) as u}
-        <div class="sub">{#each u.changes as c}{changeText(c)} {/each}</div>
+      {#each s.level3.filter((u) => u.absorbed_into_level2 && u.systems.some((sy) => sy.system_id === item.system_id)) as u}
+        <div class="sub">{unitText(u)}</div>
       {/each}
     </div>
   {/each}
@@ -43,15 +44,18 @@
   {#each lev3visible as u}
     <details class="lev lev3">
       <summary>
-        ○ <strong>{tt("via_change")}</strong>: {u.system_label || u.family} —
-        {#each u.changes as c, i}{i > 0 ? " / " : ""}{changeText(c)}{/each}
+        ○ <strong>{tt("via_change")}</strong>: {unitText(u)}
         <span class="meta">
-          ({u.full_coverage ? tt("all_trips") : tt("coverage_of", u.affected_trips, u.system_trips)})
+          ({u.systems.map((sy) => legJa(sy.leg) || sy.label).filter((v, i, a) => a.indexOf(v) === i).join("・")},
+          {u.full_coverage ? tt("all_trips") : tt("coverage_of", u.affected_trips, u.system_trips)})
         </span>
       </summary>
-      <div class="sub">
-        <PatternDiff oldPattern={u.old_pattern} newPattern={u.new_pattern} />
-      </div>
+      {#each u.systems as sy}
+        <div class="sub">
+          <div class="meta">{sy.label} ({legJa(sy.leg)}, {sy.affected_trips}/{sy.system_trips}{tt("trips_count")})</div>
+          <PatternDiff oldPattern={sy.old_pattern} newPattern={sy.new_pattern} />
+        </div>
+      {/each}
     </details>
   {/each}
 

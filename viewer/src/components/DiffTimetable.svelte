@@ -45,13 +45,33 @@
   }
   $: ranges = new Map(visibleCols.map((c) => [c, rangeOf(arrOf(c))]));
 
+  // 表示中の世代 (列単位): その世代に存在しない停留所は ・・ にする
+  function genOf(c) {
+    if (mode === "old") return "old";
+    if (mode === "new") return "new";
+    return c.status === "removed" ? "old" : "new";
+  }
+  function stopMissing(status, gen) {
+    return (gen === "new" && status === "old_only") || (gen === "old" && status === "new_only");
+  }
+
   function cellFor(c, i) {
     // 戻り値: {text, old, cls, sym}
-    // sym: "blank"=運行区間外 / "skip"=区間内だが経由しない (＝) / "pass"=通過 (✓)
+    // sym: "blank"=運行区間外 / "skip"=区間内だが経由しない (‖) /
+    //      "pass"=通過 (✓) / "gone"=この世代に存在しない停留所 (・・)
     const arr = arrOf(c);
     const v = arr?.[i] ?? null;
+    const axisStatus = table.stop_axis_status?.[i] ?? "both";
     if (v === null) {
+      // 差分表示: 旧版に時刻があり新版で停まらなくなった箇所は取り消し旧時刻を見せる
+      if (mode === "diff" && c.status !== "removed" && c.status !== "added") {
+        const od = c.times_old?.[i];
+        if (od) return { text: fmtTime(od), old: null, cls: "dropped", sym: null };
+      }
       const [first, last] = ranges.get(c) ?? [-1, -1];
+      if (stopMissing(axisStatus, genOf(c))) {
+        return { text: "", old: null, cls: "", sym: "gone" };
+      }
       const sym = first >= 0 && i > first && i < last ? "skip" : "blank";
       return { text: "", old: null, cls: "", sym };
     }
@@ -62,7 +82,9 @@
     if (c.status === "added") return { ...base, cls: "new" };
     if (c.changed_positions?.includes(i)) {
       const od = c.times_old?.[i];
-      return { ...base, old: od ? fmtTime(od) : "—", cls: "chg" };
+      // 旧版で停まらなかった停留所に新たに停まる場合は「新規停車」扱い
+      if (od == null || od === "") return { ...base, cls: "new" };
+      return { ...base, old: fmtTime(od), cls: "chg" };
     }
     return { ...base, cls: "" };
   }
@@ -95,8 +117,11 @@
     </thead>
     <tbody>
       {#each table.stop_axis as stop, i}
+        {@const st = table.stop_axis_status?.[i] ?? "both"}
         <tr>
-          <th class="stopname">{stop}</th>
+          <th class="stopname" class:gone-stop={st !== "both"}>
+            {stop}{#if st === "old_only"}【{tt("col_removed")}】{/if}{#if st === "new_only"}【{tt("col_added")}】{/if}
+          </th>
           {#each visibleCols as c}
             {@const cell = cellFor(c, i)}
             <td class="num cell-{cell.cls}">
@@ -104,8 +129,12 @@
                 <span class="skip">‖</span>
               {:else if cell.sym === "pass"}
                 <span class="skip">✓</span>
+              {:else if cell.sym === "gone"}
+                <span class="gone">・・</span>
               {:else if cell.sym === "blank"}
                 {""}
+              {:else if cell.cls === "dropped"}
+                <s>{cell.text}</s>
               {:else if cell.cls === "chg"}
                 <b>{cell.text}</b><br /><s>{cell.old}</s>
               {:else if cell.cls === "cut"}
@@ -146,4 +175,7 @@
   td.cell-cut { background: #f3ecec; }
   td.cell-new { background: #ebf3ef; }
   .skip { color: var(--fg-soft); display: block; text-align: center; }
+  .gone { color: #a5adb8; display: block; text-align: center; }
+  th.gone-stop { color: #8a929e; }
+  td.cell-dropped s { color: #8a1c1c; }
 </style>

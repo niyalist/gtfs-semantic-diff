@@ -143,6 +143,9 @@ class _Builder:
         for clusters in (identity.old_stop_clusters, identity.new_stop_clusters):
             for c in clusters.values():
                 self.coords.setdefault(c.base_name, (c.lat, c.lon))
+        # 停留所の世代別存在 (時刻表の軸ステータス用)
+        self.old_stop_names = {c.base_name for c in identity.old_stop_clusters.values()}
+        self.new_stop_names = {c.base_name for c in identity.new_stop_clusters.values()}
 
     @staticmethod
     def _seq_to_cluster(clusters) -> dict:
@@ -508,66 +511,81 @@ class _Builder:
                 "level5": {"retimed_trips": retimed, "notes": notes}}
 
     def _level3_units(self, group, systems, lev2_ids) -> list[dict]:
+        """経由停変化ユニット。
+
+        素材は trip_delta.modified (同一 trip_id で停車列が変わった便) を trip 単位で
+        直接集計する (B群イベント経由にしない — direction_id の無いフィードでは
+        イベントが両方向を1件に束ねるため、系統への帰属が不正確になる)。
+        検出の正当性は B群イベント (説明会計) が担保し、ここは表示用の再集計。
+        """
         sys_by_key = {}
         for s in systems:
             sys_by_key[(s["family"], s["direction"], tuple(s["stops"]))] = s
 
         units: dict[tuple, dict] = {}
-        for e in self.events:
-            if e.type not in _PATTERN_EVENT_TYPES:
+        for old_t, new_t in self.delta.modified:
+            if self.f2g.get(new_t.family) != group or old_t.base_seq == new_t.base_seq:
                 continue
-            family = e.subject.get("route_family", "")
-            if self.f2g.get(family) != group:
-                continue
-            old_p = tuple((e.old_ref or {}).get("pattern", ()))
-            new_p = tuple((e.new_ref or {}).get("pattern", ()))
-            key = (family, e.subject.get("direction", ""), old_p, new_p)
+            key = (new_t.family, new_t.direction, old_t.base_seq, new_t.base_seq)
             unit = units.setdefault(key, {
-                "family": family,
-                "changes": [],
-                "affected_by_day": defaultdict(int),
-                "old_pattern": list(old_p),
-                "new_pattern": list(new_p),
+                "family": new_t.family,
+                "affected": 0,
+                "old_pattern": list(old_t.base_seq),
+                "new_pattern": list(new_t.base_seq),
             })
-            unit["changes"].append({
-                "type": e.type,
-                "stops": e.quantification.get("stops", []),
-                "end": e.quantification.get("end"),
-            })
-            day = e.subject.get("day_type", "")
-            unit["affected_by_day"][day] = max(
-                unit["affected_by_day"][day], e.quantification.get("trip_count", 0)
-            )
+            unit["affected"] += 1
 
-        result = []
+        # 第2段階マージ: 人が認識する変化の単位 = (追加停留所集合, 削除停留所集合)。
+        # 方向・系統・変形の種類 (延伸/挿入/迂回) の違いは「対象系統の内訳」に降格する
+        # (一般ルール。豊前市の実例: 上り下り×複数パターン対が同一の追加/削除集合に束なる)
+        merged: dict[tuple, dict] = {}
         for (family, direction, old_p, new_p), unit in sorted(units.items(), key=str):
             system = sys_by_key.get((family, direction, new_p)) \
                 or sys_by_key.get((family, direction, old_p))
-            affected = sum(unit["affected_by_day"].values())
+            affected = unit["affected"]
             total = (system["trips_new"] or system["trips_old"]) if system else affected
-            # 変化内容の重複除去 (同一 type×stops は曜日違いで複数出る)
-            seen = set()
-            changes = []
-            for c in unit["changes"]:
-                k = (c["type"], tuple(c["stops"]), c.get("end"))
-                if k not in seen:
-                    seen.add(k)
-                    changes.append(c)
-            item = {
-                "family": family,
+            added = set(new_p) - set(old_p)
+            removed = set(old_p) - set(new_p)
+            key = (tuple(sorted(added)), tuple(sorted(removed)))
+            m = merged.setdefault(key, {
+                "added_stops": sorted(added),
+                "removed_stops": sorted(removed),
+                "systems": [],
+                "affected_trips": 0,
+                "system_trips": 0,
+                "_seen_systems": set(),
+            })
+            m["systems"].append({
                 "system_id": system["system_id"] if system else None,
-                "system_label": (f"{system['first_stop']}→{system['last_stop']}"
-                                 if system else ""),
-                "changes": changes,
+                "label": (f"{system['first_stop']}→{system['last_stop']}"
+                          if system else family),
+                "family": family,
+                "leg": system.get("leg", "") if system else "",
                 "affected_trips": affected,
                 "system_trips": total,
-                "coverage": round(affected / total, 3) if total else None,
-                "full_coverage": bool(total and affected / total >= self.full_coverage),
                 "old_pattern": unit["old_pattern"],
                 "new_pattern": unit["new_pattern"],
-                "absorbed_into_level2": bool(system and system["system_id"] in lev2_ids),
-            }
-            result.append(item)
+            })
+            m["affected_trips"] += affected
+            if system and system["system_id"] not in m["_seen_systems"]:
+                m["_seen_systems"].add(system["system_id"])
+                m["system_trips"] += total
+            elif not system:
+                m["system_trips"] += total
+
+        result = []
+        for key in sorted(merged, key=str):
+            m = merged[key]
+            seen_systems = m.pop("_seen_systems")
+            total = m["system_trips"]
+            m["coverage"] = round(m["affected_trips"] / total, 3) if total else None
+            m["full_coverage"] = bool(
+                total and m["affected_trips"] / total >= self.full_coverage
+            )
+            m["absorbed_into_level2"] = bool(
+                seen_systems and seen_systems <= lev2_ids
+            )
+            result.append(m)
         return result
 
     # --- ④ 新旧時刻表 (R17) ---
@@ -651,6 +669,12 @@ class _Builder:
                 "label": dg_label.get((dg, leg), ""),
                 "day_type": day,
                 "stop_axis": list(axis),
+                # both / old_only (廃止) / new_only (新設) — 行名の表示と ・・ 判定に使う
+                "stop_axis_status": [
+                    "both" if (stop in self.old_stop_names and stop in self.new_stop_names)
+                    else ("old_only" if stop in self.old_stop_names else "new_only")
+                    for stop in axis
+                ],
                 "columns": columns,
             })
         return tables

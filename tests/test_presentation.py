@@ -163,7 +163,50 @@ def test_level3_coverage(tmp_path, config):
     assert lev3[0]["affected_trips"] == 1
     assert lev3[0]["coverage"] == 0.5
     assert lev3[0]["full_coverage"] is False
-    assert lev3[0]["changes"][0]["stops"] == ["経由地"]
+    assert lev3[0]["added_stops"] == ["経由地"]
+    assert lev3[0]["removed_stops"] == []
+    assert len(lev3[0]["systems"]) == 1
+
+
+def test_level3_merges_directions_with_same_change(tmp_path, config):
+    # 上り下りで同じ「S2→S5 置き換え」→ (追加集合, 削除集合) キーで1ユニットに束なる
+    stops = MINIMAL_FEED["stops.txt"] + "S5,新経由地,36.011,139.011\n"
+    old_files = {
+        "stops.txt": stops,
+        "trips.txt": BIDIRECTIONAL["trips.txt"],
+        "stop_times.txt": BIDIRECTIONAL["stop_times.txt"],
+    }
+    new_files = {
+        "stops.txt": stops,
+        "trips.txt": BIDIRECTIONAL["trips.txt"],
+        "stop_times.txt": BIDIRECTIONAL["stop_times.txt"].replace(",S2,", ",S5,"),
+    }
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    page = page_of(model, "1")
+    lev3 = page["summary"]["level3"]
+    assert len(lev3) == 1  # 上り・下りが1ユニットに
+    assert lev3[0]["added_stops"] == ["新経由地"]
+    assert lev3[0]["removed_stops"] == ["市役所前"]
+    assert len(lev3[0]["systems"]) == 2  # 対象系統の内訳として往復が残る
+    assert lev3[0]["coverage"] == 1.0 and lev3[0]["full_coverage"]
+
+
+def test_timetable_stop_axis_status(tmp_path, config):
+    # S2 → S5 置き換え: 軸に両方残り、S2=old_only / S5=new_only / 他=both
+    stops = MINIMAL_FEED["stops.txt"] + "S5,新経由地,36.011,139.011\n"
+    old_files = {"stops.txt": MINIMAL_FEED["stops.txt"]}
+    new_files = {
+        "stops.txt": stops.replace(
+            "S2,市役所前,36.0100,139.0100\n", ""),  # S2 は新世代に存在しない
+        "stop_times.txt": MINIMAL_FEED["stop_times.txt"].replace(",S2,", ",S5,"),
+    }
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    page = page_of(model, "1")
+    tb = page["timetables"][0]
+    status = dict(zip(tb["stop_axis"], tb["stop_axis_status"]))
+    assert status["駅前"] == "both"
+    assert status["市役所前"] == "old_only"
+    assert status["新経由地"] == "new_only"
 
 
 def test_level4_signed_band_sums(tmp_path, config):
