@@ -16,7 +16,8 @@
     ? allSystems.reduce((a, b) =>
         (b.trips_new + b.trips_old > a.trips_new + a.trips_old ? b : a)).stops
     : [];
-  $: repStops = elide(canonicalStops, 9);
+  $: keyStops = page.overview.key_stops ?? {};
+  $: repStops = elideByKeyStops(canonicalStops, keyStops, 11);
   function columnChanged(c) {
     if (c.status === "added" || c.status === "removed") return true;
     if (c.status === "retimed" || c.status === "rerouted")
@@ -25,11 +26,30 @@
   }
   $: changedTables = page.timetables.filter((tb) => tb.columns.some(columnChanged));
 
-  function elide(stops, maxN) {
+  // 主要停留所 (key_stops の tier) を残して間を省略。地図のラベル段階と同じ基準を共有
+  function elideByKeyStops(stops, keys, maxN) {
     if (stops.length <= maxN) return stops;
-    const head = stops.slice(0, Math.ceil(maxN / 2));
-    const tail = stops.slice(-Math.floor(maxN / 2));
-    return [...head, `…(${stops.length - maxN}停)…`, ...tail];
+    let keepTier = 2;
+    let kept = stops.map((s, i) => ({ s, i })).filter(
+      ({ s, i }) => i === 0 || i === stops.length - 1 || (keys[s] ?? 3) <= keepTier);
+    if (kept.length > maxN) {
+      keepTier = 1;
+      kept = stops.map((s, i) => ({ s, i })).filter(
+        ({ s, i }) => i === 0 || i === stops.length - 1 || (keys[s] ?? 3) <= keepTier);
+    }
+    if (kept.length > maxN) {
+      // それでも多ければ等間隔に間引く (先頭末尾は保持)
+      const step = (kept.length - 1) / (maxN - 1);
+      kept = Array.from({ length: maxN }, (_, k) => kept[Math.round(k * step)]);
+    }
+    const out = [];
+    let prev = -1;
+    for (const { s, i } of kept) {
+      if (prev >= 0 && i > prev + 1) out.push(`…(${i - prev - 1}停)…`);
+      out.push(s);
+      prev = i;
+    }
+    return out;
   }
   function dayJa(d) {
     return tt(d) === d ? d : tt(d);
@@ -79,7 +99,7 @@
     <details bind:open={showMap}>
       <summary class="meta" style="cursor:pointer">{tt("show_map")}</summary>
       {#if showMap}
-        <SystemMap systems={allSystems} />
+        <SystemMap systems={allSystems} keyStops={keyStops} />
       {/if}
     </details>
 

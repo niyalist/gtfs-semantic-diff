@@ -5,7 +5,8 @@
   import { t } from "../lib/i18n.js";
 
   export let systems = []; // presentation の systems (polyline: [[lat,lon],...])
-  export let highlightStops = []; // 強調する停留所基底名
+  export let keyStops = {}; // 停留所名 → tier (1|2)。無指定は 3 (全停留所)
+  export let highlightStops = [];
 
   let container;
   let map;
@@ -24,6 +25,8 @@
       container,
       style: {
         version: 8,
+        // 日本語ラベル用グリフ (オンライン時のみ。タイルと同様の外部依存)
+        glyphs: "https://glyphs.geolonia.com/{fontstack}/{range}.pbf",
         sources: {
           gsi: {
             type: "raster",
@@ -38,6 +41,7 @@
     });
     map.on("load", () => {
       let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90, found = false;
+      const n = systems.length;
       systems.forEach((s, i) => {
         const coords = (s.polyline || []).map(([lat, lon]) => [lon, lat]);
         if (coords.length < 2) return;
@@ -47,9 +51,21 @@
           minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
         }
         const { color, dash } = styleOf(i);
+        // 複数系統が重ならないよう中心から対称にオフセット (ズームに応じて拡大)
+        const f = i - (n - 1) / 2;
         const paint = {
           "line-color": color,
-          "line-width": s.status === "removed" ? 2 : 3.5,
+          // 線幅: ズーム連動 (拡大時に細すぎる問題への対応)
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            10, s.status === "removed" ? 2 : 3,
+            13, s.status === "removed" ? 3.5 : 5,
+            16, s.status === "removed" ? 6 : 9,
+          ],
+          "line-offset": [
+            "interpolate", ["linear"], ["zoom"],
+            10, f * 1.5, 13, f * 4, 16, f * 9,
+          ],
           "line-opacity": s.status === "removed" ? 0.6 : 0.9,
         };
         if (dash) paint["line-dasharray"] = dash;
@@ -60,18 +76,22 @@
         map.addLayer({ id: `sys${i}`, type: "line", source: `sys${i}`, paint });
       });
 
-      // 停留所点 (系統の停留所を薄く、highlight を強く)
+      // 停留所点 + tier 付きラベル
       const stopFeatures = [];
       const seen = new Set();
       systems.forEach((s) => {
         (s.polyline || []).forEach(([lat, lon], idx) => {
           const name = s.stops[idx] ?? "";
-          if (seen.has(name)) return;
+          if (!name || seen.has(name)) return;
           seen.add(name);
           stopFeatures.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: [lon, lat] },
-            properties: { name, hi: highlightStops.includes(name) },
+            properties: {
+              name,
+              tier: keyStops[name] ?? 3,
+              hi: highlightStops.includes(name),
+            },
           });
         });
       });
@@ -82,12 +102,38 @@
       map.addLayer({
         id: "stops", type: "circle", source: "stops",
         paint: {
-          "circle-radius": ["case", ["get", "hi"], 7, 3],
-          "circle-color": ["case", ["get", "hi"], "#c62828", "#555"],
+          "circle-radius": [
+            "interpolate", ["linear"], ["zoom"],
+            10, ["case", ["get", "hi"], 6, ["==", ["get", "tier"], 1], 4, 2.5],
+            15, ["case", ["get", "hi"], 9, ["==", ["get", "tier"], 1], 6, 4],
+          ],
+          "circle-color": ["case", ["get", "hi"], "#c62828", "#333"],
           "circle-stroke-color": "#fff",
-          "circle-stroke-width": ["case", ["get", "hi"], 2, 0.5],
+          "circle-stroke-width": ["case", ["get", "hi"], 2, 1],
         },
       });
+      // 停留所名: ズーム段階で tier1 → tier2 → 全停留所
+      const labelLayer = (id, filter, minzoom, size) => ({
+        id, type: "symbol", source: "stops", minzoom, filter,
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Noto Sans Regular"],
+          "text-size": size,
+          "text-offset": [0, 1.0],
+          "text-anchor": "top",
+          "text-optional": false,
+          "text-allow-overlap": false,
+        },
+        paint: {
+          "text-color": "#1c1e21",
+          "text-halo-color": "#fff",
+          "text-halo-width": 1.6,
+        },
+      });
+      map.addLayer(labelLayer("labels1", ["==", ["get", "tier"], 1], 0, 12));
+      map.addLayer(labelLayer("labels2", ["==", ["get", "tier"], 2], 12, 11));
+      map.addLayer(labelLayer("labels3", ["==", ["get", "tier"], 3], 14, 11));
+
       map.on("click", "stops", (ev) => {
         new maplibregl.Popup()
           .setLngLat(ev.lngLat)

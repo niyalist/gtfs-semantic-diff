@@ -146,6 +146,17 @@ class _Builder:
         # 停留所の世代別存在 (時刻表の軸ステータス用)
         self.old_stop_names = {c.base_name for c in identity.old_stop_clusters.values()}
         self.new_stop_names = {c.base_name for c in identity.new_stop_clusters.values()}
+        # 停留所 → 通る route_group 集合 (主要停留所=ハブ判定用)
+        self.hub_min_groups = config.get("presentation", "hub_min_groups", default=3)
+        self.stop_groups: dict[str, set[str]] = defaultdict(set)
+        for clusters in (identity.old_pattern_clusters, identity.new_pattern_clusters):
+            for c in clusters:
+                g = self.f2g.get(c.family)
+                if not g:
+                    continue
+                for pattern in c.patterns:
+                    for stop in pattern.base_names:
+                        self.stop_groups[stop].add(g)
 
     @staticmethod
     def _seq_to_cluster(clusters) -> dict:
@@ -201,6 +212,9 @@ class _Builder:
             "overview": {
                 "trip_totals": {"old": len(old_trips), "new": len(new_trips)},
                 "direction_groups": dgroups,
+                # 主要停留所: 名前 → tier (1=起終点・ハブ / 2=系統端点・分岐点)。
+                # 地図のズーム段階表示と路線概要の停車列省略の両方で共有する
+                "key_stops": self._key_stops(group, dgroups),
             },
             "summary": summary,
             "band_matrix": band_matrix,
@@ -358,6 +372,66 @@ class _Builder:
             for s in g["systems"]:
                 s["direction_group"] = g["id"]
         return dgroups
+
+    def _key_stops(self, group: str, dgroups: list[dict]) -> dict[str, int]:
+        """主要停留所の tier 判定 (決定的)。
+
+        tier1: 方向グループ canonical の起終点、および hub_min_groups 以上の
+               route_group が通る停留所 (ターミナル・中心市街地の近似)
+        tier2: 全停車パターンの始終点 (区間便・便ごとの途中始終点を含む)、
+               および分岐・合流点 (同一 leg 内で後続または先行の停留所が
+               2種以上に分かれる点)。系統代表でなく**クラスタ内の全パターン**で
+               判定する (類似パターンが1系統に束なっても端点・分岐を拾う)
+        """
+        tiers: dict[str, int] = {}
+
+        def mark(stop: str, tier: int) -> None:
+            if stop not in tiers or tier < tiers[stop]:
+                tiers[stop] = tier
+
+        cluster_by_id = {c.cluster_id: c
+                         for c in (self.identity.old_pattern_clusters
+                                   + self.identity.new_pattern_clusters)}
+
+        for dg in dgroups:
+            # canonical (ラベルの両端) は tier1
+            for stop in (dg["systems"][0]["first_stop"], dg["systems"][0]["last_stop"]):
+                mark(stop, 1)
+            successors: dict[str, set[str]] = defaultdict(set)
+            predecessors: dict[str, set[str]] = defaultdict(set)
+            for sy in dg["systems"]:
+                same_leg = sy["leg"] == dg["systems"][0]["leg"]
+                patterns = []
+                for cid in (sy["system_id"].removeprefix("old:"), sy["old_system_id"]):
+                    cluster = cluster_by_id.get(cid)
+                    if cluster:
+                        patterns.extend(cluster.patterns)
+                if not patterns:
+                    patterns = [None]
+                for pattern in patterns:
+                    stops = list(pattern.base_names) if pattern else sy["stops"]
+                    if not stops:
+                        continue
+                    mark(stops[0], 2)
+                    mark(stops[-1], 2)
+                    if not same_leg:
+                        continue  # 分岐判定は同一 leg 内でのみ
+                    for i in range(len(stops) - 1):
+                        successors[stops[i]].add(stops[i + 1])
+                        predecessors[stops[i + 1]].add(stops[i])
+            for stop, nxt in successors.items():
+                if len(nxt) >= 2:
+                    mark(stop, 2)
+            for stop, prv in predecessors.items():
+                if len(prv) >= 2:
+                    mark(stop, 2)
+
+        # ネットワークハブ (このグループ以外も含め hub_min_groups 路線以上が通る)
+        group_stops = {s for dg in dgroups for sy in dg["systems"] for s in sy["stops"]}
+        for stop in group_stops:
+            if len(self.stop_groups.get(stop, ())) >= self.hub_min_groups:
+                mark(stop, 1)
+        return dict(sorted(tiers.items()))
 
     # --- ③ 本数マトリクス (R3, R14 の土台) ---
 

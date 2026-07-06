@@ -255,6 +255,43 @@ def test_display_pairing_respects_shift_limit(tmp_path, config):
     assert statuses == ["added", "removed", "unchanged"]
 
 
+def test_key_stops_tiers(tmp_path, config):
+    # 本線 A-B-C-D-E + C から分岐する区間便 A-B-C-X。別路線 (99) も B を通る →
+    # tier1: 起終点 (駅前/病院前) + ハブ判定は hub_min_groups=3 未満なので B は対象外
+    # tier2: 分岐点 C (後続 D/X)、区間便端点 X
+    files = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "A,駅前,36.00,139.00\nB,二丁目,36.01,139.01\nC,分岐前,36.02,139.02\n"
+            "D,四丁目,36.03,139.03\nE,病院前,36.04,139.04\nX,支線終点,36.05,139.00\n"
+        ),
+        "routes.txt": (
+            "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+            "R1,A1,本線,,3\n"
+        ),
+        "trips.txt": "route_id,service_id,trip_id\nR1,WD,M1\nR1,WD,M2\nR1,WD,B1\nR1,WD,B2\n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "M1,08:00:00,08:00:00,A,1\nM1,08:05:00,08:05:00,B,2\nM1,08:10:00,08:10:00,C,3\n"
+            "M1,08:15:00,08:15:00,D,4\nM1,08:20:00,08:20:00,E,5\n"
+            "M2,10:00:00,10:00:00,A,1\nM2,10:05:00,10:05:00,B,2\nM2,10:10:00,10:10:00,C,3\n"
+            "M2,10:15:00,10:15:00,D,4\nM2,10:20:00,10:20:00,E,5\n"
+            "B1,09:00:00,09:00:00,A,1\nB1,09:05:00,09:05:00,B,2\nB1,09:10:00,09:10:00,C,3\n"
+            "B1,09:15:00,09:15:00,X,4\n"
+            "B2,11:00:00,11:00:00,A,1\nB2,11:05:00,11:05:00,B,2\nB2,11:10:00,11:10:00,C,3\n"
+            "B2,11:15:00,11:15:00,X,4\n"
+        ),
+    }
+    model, _ = build(tmp_path, config, old_files=files, new_files=files)
+    page = page_of(model, "本線")
+    keys = page["overview"]["key_stops"]
+    assert keys["駅前"] == 1  # canonical 起点
+    assert keys["病院前"] <= 2  # 本線パターンの終点 (クラスタ束ね後も拾う)
+    assert keys["分岐前"] == 2  # 分岐点 (後続が 四丁目/支線終点)
+    assert keys["支線終点"] <= 2  # 区間便パターンの端点
+    assert "二丁目" not in keys  # 中間の非分岐停留所は主要でない
+
+
 def test_level4_signed_band_sums(tmp_path, config):
     # 7-9時帯 +1、9-16時帯 -1 → net 0 だが 増1・減1 (R14: シフトと区別)
     new_files = {
