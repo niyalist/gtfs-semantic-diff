@@ -11,7 +11,8 @@
 
   let showMap = false;
   $: tt = $t;
-  $: allSystems = page.overview.direction_groups.flatMap((g) => g.systems);
+  $: allSystems = page.overview.direction_groups.flatMap((g) =>
+    g.systems.map((s) => ({ ...s, dg_kind: g.kind })));
   $: canonicalStops = allSystems.length
     ? allSystems.reduce((a, b) =>
         (b.trips_new + b.trips_old > a.trips_new + a.trips_old ? b : a)).stops

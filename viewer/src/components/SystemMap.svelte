@@ -41,7 +41,18 @@
     });
     map.on("load", () => {
       let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90, found = false;
-      const n = systems.length;
+      // オフセット = 「進行方向の右側レーン」方式。
+      // line-offset は線の進行方向基準 (正=右) なので、各 leg 内で 0,1,2… の
+      // レーン番号を割り当てると、対向方向 (reverse) は自動的に反対側の路肩に並ぶ。
+      // 双方向グループは両 leg ともレーン1から (0だと往復が中心線上で重なる)。
+      // ネットワーク全体の交錯最少化は狙わない (要件通りの簡便法)。
+      const legRank = new Map();
+      const laneOf = systems.map((s) => {
+        const key = `${s.direction_group}|${s.leg}`;
+        const rank = legRank.get(key) ?? 0;
+        legRank.set(key, rank + 1);
+        return rank + (s.dg_kind === "bidirectional" ? 1 : 0);
+      });
       systems.forEach((s, i) => {
         const coords = (s.polyline || []).map(([lat, lon]) => [lon, lat]);
         if (coords.length < 2) return;
@@ -51,20 +62,20 @@
           minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
         }
         const { color, dash } = styleOf(i);
-        // 複数系統が重ならないよう中心から対称にオフセット (ズームに応じて拡大)
-        const f = i - (n - 1) / 2;
+        const lane = laneOf[i];
         const paint = {
           "line-color": color,
-          // 線幅: ズーム連動 (拡大時に細すぎる問題への対応)
+          // 線幅: ズーム連動を強めに (拡大時に細すぎる問題への対応)
           "line-width": [
             "interpolate", ["linear"], ["zoom"],
-            10, s.status === "removed" ? 2 : 3,
-            13, s.status === "removed" ? 3.5 : 5,
-            16, s.status === "removed" ? 6 : 9,
+            10, s.status === "removed" ? 2.5 : 3.5,
+            13, s.status === "removed" ? 4 : 6,
+            15, s.status === "removed" ? 6 : 9,
+            17, s.status === "removed" ? 9 : 14,
           ],
           "line-offset": [
             "interpolate", ["linear"], ["zoom"],
-            10, f * 1.5, 13, f * 4, 16, f * 9,
+            10, lane * 2, 13, lane * 5, 15, lane * 8, 17, lane * 13,
           ],
           "line-opacity": s.status === "removed" ? 0.6 : 0.9,
         };
