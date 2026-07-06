@@ -24,7 +24,9 @@ def _bundle(tmp_path, config):
 
 def test_bundle_structure(tmp_path, config):
     bundle = _bundle(tmp_path, config)
-    assert set(bundle) == {"events", "rawdiffs", "geometry", "timetables", "catalog", "meta"}
+    assert set(bundle) == {
+        "events", "rawdiffs", "presentation", "geometry", "timetables", "catalog", "meta",
+    }
     # JSON 直列化可能
     payload = json.dumps(bundle, ensure_ascii=False)
     assert "表町一丁目" in payload

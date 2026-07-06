@@ -52,6 +52,12 @@ max_polyline_points = 200         # Fréchet 計算前の間引き上限 (性能
 [events.timetable]
 uniform_shift_max_std_sec = 120   # TIMETABLE_SHIFTED 判定
 
+[presentation]
+# プレゼンテーションモデル (docs/design/presentation.md) の境界閾値
+system_min_trips = 2              # Lev.2 (系統の出現・消滅) として報告する最小便数
+full_coverage = 0.9               # Lev.3 で「全便一貫」とみなす影響率
+direction_pair_jaccard = 0.6      # 往復ペア判定の停留所集合 Jaccard 下限
+
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"
 cache_dir = "~/.cache/gtfs-semdiff"

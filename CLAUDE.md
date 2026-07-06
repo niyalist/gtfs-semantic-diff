@@ -43,8 +43,10 @@ src/gtfs_semdiff/report/viewer_template.html に同梱 (再ビルド: scripts/bu
 docs/design/presentation.md)。V1 完了・要件凍結済み (R1〜R17、2026-07-06) —
 スコープは「路線に紐付く変更」に限定 (運賃・メタデータ等の表現は後回し)。
 コア・JSON スキーマ・説明会計は変更せず、プレゼンテーションモデル層で吸収する。
-次は V2 (report/presentation.py: Lev.1〜5 カスケード、出版時刻表形式の
-新旧差分、停留所軸の LCS 併合)。Web 化 (W2/W3) は V3 完了後に再開。**
+V2 完了 (report/presentation.py: Lev.1〜5 カスケード、方向グループ、
+停留所軸 LCS 併合、バンドルの presentation キー)。
+次は V3 (ビューア再構築 — 4部構成 UI、検証モード、色弱原則の徹底)。
+Web 化 (W2/W3) は V3 完了後に再開。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 

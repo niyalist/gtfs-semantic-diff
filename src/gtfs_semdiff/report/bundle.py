@@ -35,9 +35,12 @@ def build_bundle(
     trip_delta,
 ) -> dict[str, Any]:
     """ビューアに埋め込む全データ (JSON 化可能な dict)。"""
+    from .presentation import build_presentation
+
     return {
         "events": event_set.to_dict(),
         "rawdiffs": [d.to_dict() for d in rawdiffs.diffs],
+        "presentation": build_presentation(event_set, identity, trip_delta, config),
         "geometry": _geometry(event_set, identity, old, new, config),
         "timetables": _timetables(event_set, trip_delta),
         "catalog": {
