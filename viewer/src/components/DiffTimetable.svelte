@@ -101,7 +101,7 @@
             {@const cell = cellFor(c, i)}
             <td class="num cell-{cell.cls}">
               {#if cell.sym === "skip"}
-                <span class="skip">＝</span>
+                <span class="skip">‖</span>
               {:else if cell.sym === "pass"}
                 <span class="skip">✓</span>
               {:else if cell.sym === "blank"}
@@ -145,5 +145,5 @@
   td.cell-new u, th.mark-added { color: #0b6e4f; }
   td.cell-cut { background: #f3ecec; }
   td.cell-new { background: #ebf3ef; }
-  .skip { color: var(--fg-soft); }
+  .skip { color: var(--fg-soft); display: block; text-align: center; }
 </style>
