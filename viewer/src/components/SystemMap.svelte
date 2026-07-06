@@ -42,19 +42,20 @@
     map.on("load", () => {
       let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90, found = false;
       // オフセット = 「進行方向の右側レーン」方式。
-      // line-offset は線の進行方向基準 (正=右) なので、各 leg 内で 0,1,2… の
-      // レーン番号を割り当てると、対向方向 (reverse) は自動的に反対側の路肩に並ぶ。
-      // 双方向グループは両 leg ともレーン1から (0だと往復が中心線上で重なる)。
+      // line-offset は線の進行方向基準 (正=右) なので、全系統にページ内で一意の
+      // レーン番号 (1始まり) を割り当てて右側へずらす。これで
+      //  (a) 対向方向の系統は自動的に反対側へ並ぶ (起終点が完全逆転でなく
+      //      別方向グループに分類された往復でも、レーンが異なるため分離)
+      //  (b) 循環線が同じ道路を往復する区間は、進行方向が逆なので同一線内でも
+      //      左右に分かれる (レーン0だと自分自身と重なる — これが循環線の重なりの原因)
+      //  (c) 同方向で区間を共有する系統同士もレーン差で分離
       // ネットワーク全体の交錯最少化は狙わない (要件通りの簡便法)。
-      const legRank = new Map();
-      const laneOf = systems.map((s) => {
-        const key = `${s.direction_group}|${s.leg}`;
-        const rank = legRank.get(key) ?? 0;
-        legRank.set(key, rank + 1);
-        return rank + (s.dg_kind === "bidirectional" ? 1 : 0);
-      });
+      const laneOf = systems.map((_, i) => i + 1);
       systems.forEach((s, i) => {
-        const coords = (s.polyline || []).map(([lat, lon]) => [lon, lat]);
+        // 連続する同一座標を除去 (乗り場が同一クラスタ座標の場合の offset 計算の乱れ防止)
+        const coords = (s.polyline || [])
+          .map(([lat, lon]) => [lon, lat])
+          .filter((c, k, arr) => k === 0 || c[0] !== arr[k - 1][0] || c[1] !== arr[k - 1][1]);
         if (coords.length < 2) return;
         for (const [lon, lat] of coords) {
           found = true;
@@ -75,7 +76,7 @@
           ],
           "line-offset": [
             "interpolate", ["linear"], ["zoom"],
-            10, lane * 2, 13, lane * 5, 15, lane * 8, 17, lane * 13,
+            10, lane * 1.8, 13, lane * 4, 15, lane * 6.5, 17, lane * 10,
           ],
           "line-opacity": s.status === "removed" ? 0.6 : 0.9,
         };
