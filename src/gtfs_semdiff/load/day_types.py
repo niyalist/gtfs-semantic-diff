@@ -60,8 +60,12 @@ def _classify_day_flags(flags: tuple[bool, ...]) -> str:
     return DAY_TYPE_IRREGULAR
 
 
-def _classify_dates(dates: list[str], majority: float) -> str:
-    """calendar_dates の運行日リスト (YYYYMMDD) から曜日分布で day_type を判定する。"""
+def _classify_dates(dates: list[str], majority: float, short_max_days: int) -> str:
+    """calendar_dates の運行日リスト (YYYYMMDD) から day_type を判定する。
+
+    運行日数が short_max_days 以下なら曜日分布に関わらず特定日 (irregular) とする
+    (年末年始・お盆等の短期間専用ダイヤが平日等の時刻表に混ざるのを防ぐ)。
+    それ以外は曜日分布の多数決。"""
     weekday_bins = {DAY_TYPE_WEEKDAY: 0, DAY_TYPE_SATURDAY: 0, DAY_TYPE_SUNDAY_HOLIDAY: 0}
     valid = 0
     for text in dates:
@@ -78,7 +82,7 @@ def _classify_dates(dates: list[str], majority: float) -> str:
             weekday_bins[DAY_TYPE_SATURDAY] += 1
         else:
             weekday_bins[DAY_TYPE_SUNDAY_HOLIDAY] += 1
-    if valid == 0:
+    if valid == 0 or valid <= short_max_days:
         return DAY_TYPE_IRREGULAR
     best_type, best_count = max(weekday_bins.items(), key=lambda kv: kv[1])
     if best_count / valid >= majority:
@@ -90,6 +94,7 @@ def normalize_day_types(
     calendar: pd.DataFrame | None,
     calendar_dates: pd.DataFrame | None,
     calendar_dates_majority: float,
+    short_service_max_days: int = 10,
 ) -> dict[str, str]:
     """service_id → day_type の辞書を返す。
 
@@ -120,7 +125,8 @@ def normalize_day_types(
                 if service_id in result:
                     continue  # 曜日フラグでの判定を優先
                 result[str(service_id)] = _classify_dates(
-                    group["date"].tolist(), calendar_dates_majority
+                    group["date"].tolist(), calendar_dates_majority,
+                    short_service_max_days,
                 )
         else:
             logger.warning("calendar_dates.txt に必須カラムがありません")

@@ -657,18 +657,33 @@ class _Builder:
 
     @staticmethod
     def _times_on_axis(trip: TripInfo, axis) -> list[str | None]:
+        """軸上の時刻列。None = その便の経路外、"" = 経路上だが時刻なし (通過)。"""
         row: list[str | None] = [None] * len(axis)
         for pos, (arr, dep) in zip(align_to_axis(trip.base_seq, axis), trip.times):
             if pos >= 0:
-                row[pos] = dep or arr or None
+                row[pos] = dep or arr or ""
         return row
+
+    @staticmethod
+    def _minute(value: str | None) -> int | None:
+        """表示粒度 (分) での時刻。None/空/不正は None。"""
+        from ..events.timebands import parse_gtfs_time
+
+        if not value:
+            return None
+        sec = parse_gtfs_time(value)
+        return sec // 60 if sec is not None else None
 
     def _column(self, status, old: TripInfo | None, new: TripInfo | None, axis) -> dict:
         times_old = self._times_on_axis(old, axis) if old else None
         times_new = self._times_on_axis(new, axis) if new else None
         changed = []
         if times_old and times_new:
-            changed = [i for i, (a, b) in enumerate(zip(times_old, times_new)) if a != b]
+            # 表示粒度 (分) で比較する。秒だけの差は表示が変わらないため変更扱いしない
+            changed = [
+                i for i, (a, b) in enumerate(zip(times_old, times_new))
+                if self._minute(a) != self._minute(b)
+            ]
         ref = new or old
         return {
             "status": status,  # unchanged / id_changed / retimed / rerouted / added / removed

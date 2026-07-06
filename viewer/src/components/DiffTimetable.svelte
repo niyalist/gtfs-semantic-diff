@@ -12,41 +12,66 @@
     return true;
   });
 
+  // 表示粒度 (分) で変更が残らない retimed は「変更なし」として扱う
+  function effectiveStatus(c) {
+    if ((c.status === "retimed" || c.status === "rerouted") && !c.changed_positions?.length) {
+      return "unchanged";
+    }
+    return c.status;
+  }
   function headMark(c) {
     if (mode !== "diff") return "";
-    if (c.status === "added") return tt("col_added");
-    if (c.status === "removed") return tt("col_removed");
-    if (c.status === "retimed" || c.status === "rerouted") return "＊";
+    const st = effectiveStatus(c);
+    if (st === "added") return tt("col_added");
+    if (st === "removed") return tt("col_removed");
+    if (st === "retimed" || st === "rerouted") return "＊";
     return "";
   }
+  // 各列の表示元配列と、運行区間 (最初〜最後の経路上停留所) を求める
+  function arrOf(c) {
+    if (mode === "old") return c.times_old;
+    if (mode === "new") return c.times_new;
+    return c.status === "removed" ? c.times_old : c.times_new;
+  }
+  function rangeOf(arr) {
+    let first = -1, last = -1;
+    (arr || []).forEach((v, i) => {
+      if (v !== null) {
+        if (first < 0) first = i;
+        last = i;
+      }
+    });
+    return [first, last];
+  }
+  $: ranges = new Map(visibleCols.map((c) => [c, rangeOf(arrOf(c))]));
+
   function cellFor(c, i) {
-    // 戻り値: {text, old, cls}
-    if (mode === "old") {
-      return { text: fmtTime(c.times_old?.[i] ?? ""), old: null, cls: "" };
+    // 戻り値: {text, old, cls, sym}
+    // sym: "blank"=運行区間外 / "skip"=区間内だが経由しない (＝) / "pass"=通過 (✓)
+    const arr = arrOf(c);
+    const v = arr?.[i] ?? null;
+    if (v === null) {
+      const [first, last] = ranges.get(c) ?? [-1, -1];
+      const sym = first >= 0 && i > first && i < last ? "skip" : "blank";
+      return { text: "", old: null, cls: "", sym };
     }
-    if (mode === "new") {
-      return { text: fmtTime(c.times_new?.[i] ?? ""), old: null, cls: "" };
-    }
-    // diff
-    if (c.status === "removed") {
-      return { text: fmtTime(c.times_old?.[i] ?? ""), old: null, cls: "cut" };
-    }
-    if (c.status === "added") {
-      return { text: fmtTime(c.times_new?.[i] ?? ""), old: null, cls: "new" };
-    }
-    const nw = c.times_new?.[i] ?? "";
-    const od = c.times_old?.[i] ?? "";
+    if (v === "") return { text: "", old: null, cls: "", sym: "pass" };
+    const base = { text: fmtTime(v), old: null, sym: null };
+    if (mode !== "diff") return { ...base, cls: "" };
+    if (c.status === "removed") return { ...base, cls: "cut" };
+    if (c.status === "added") return { ...base, cls: "new" };
     if (c.changed_positions?.includes(i)) {
-      return { text: fmtTime(nw), old: fmtTime(od) || "—", cls: "chg" };
+      const od = c.times_old?.[i];
+      return { ...base, old: od ? fmtTime(od) : "—", cls: "chg" };
     }
-    return { text: fmtTime(nw), old: null, cls: "" };
+    return { ...base, cls: "" };
   }
 </script>
 
 <div class="tt-head">
   <span class="meta">
     {visibleCols.length} {tt("trips_count")} /
-    {tt("changed_cols", table.columns.filter((c) => c.status !== "unchanged" && c.status !== "id_changed").length)}
+    {tt("changed_cols", table.columns.filter((c) => !["unchanged", "id_changed"].includes(effectiveStatus(c))).length)}
   </span>
   <span class="mode-toggle">
     {#each ["old", "new", "diff"] as m}
@@ -75,14 +100,20 @@
           {#each visibleCols as c}
             {@const cell = cellFor(c, i)}
             <td class="num cell-{cell.cls}">
-              {#if cell.cls === "chg"}
+              {#if cell.sym === "skip"}
+                <span class="skip">＝</span>
+              {:else if cell.sym === "pass"}
+                <span class="skip">✓</span>
+              {:else if cell.sym === "blank"}
+                {""}
+              {:else if cell.cls === "chg"}
                 <b>{cell.text}</b><br /><s>{cell.old}</s>
               {:else if cell.cls === "cut"}
                 <s>{cell.text}</s>
               {:else if cell.cls === "new"}
                 <u>{cell.text}</u>
               {:else}
-                {cell.text || "‥"}
+                {cell.text}
               {/if}
             </td>
           {/each}
@@ -114,4 +145,5 @@
   td.cell-new u, th.mark-added { color: #0b6e4f; }
   td.cell-cut { background: #f3ecec; }
   td.cell-new { background: #ebf3ef; }
+  .skip { color: var(--fg-soft); }
 </style>

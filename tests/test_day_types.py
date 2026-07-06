@@ -43,30 +43,50 @@ def test_calendar_flag_classification():
     }
 
 
+def _weekdays_of_april(service_id, n):
+    """2026-04 の平日を先頭から n 日 (月〜金: 4/1〜)。"""
+    days = ["20260401", "20260402", "20260403", "20260406", "20260407", "20260408",
+            "20260409", "20260410", "20260413", "20260414", "20260415", "20260416",
+            "20260417", "20260420", "20260421", "20260422"]
+    return [(service_id, d, "1") for d in days[:n]]
+
+
 def test_calendar_dates_only_service():
-    # 2026-04 の月〜金 (4/6=月 ... 4/10=金) → weekday
-    dates = dates_df([("CD1", f"2026040{d}", "1") for d in range(6, 10)] + [("CD1", "20260410", "1")])
+    # 平日12日分 (short_service_max_days=10 超) → weekday
+    dates = dates_df(_weekdays_of_april("CD1", 12))
     result = normalize_day_types(None, dates, 0.8)
     assert result == {"CD1": "weekday"}
 
 
 def test_calendar_dates_saturday_service():
-    # 2026-04 の土曜: 4/4, 4/11, 4/18, 4/25
-    dates = dates_df([("CD2", d, "1") for d in ["20260404", "20260411", "20260418", "20260425"]])
+    # 土曜のみ12日分 → saturday
+    sats = ["20260404", "20260411", "20260418", "20260425", "20260502", "20260509",
+            "20260516", "20260523", "20260530", "20260606", "20260613", "20260620"]
+    dates = dates_df([("CD2", d, "1") for d in sats])
     assert normalize_day_types(None, dates, 0.8) == {"CD2": "saturday"}
 
 
 def test_calendar_dates_mixed_is_irregular():
-    # 平日と土曜が半々 → majority 0.8 に届かず irregular
+    # 平日と土曜が半々 (12日) → majority 0.8 に届かず irregular
+    mixed = _weekdays_of_april("CD3", 6) + [
+        ("CD3", d, "1") for d in ["20260404", "20260411", "20260418",
+                                   "20260425", "20260502", "20260509"]
+    ]
+    assert normalize_day_types(None, dates_df(mixed), 0.8) == {"CD3": "irregular"}
+
+
+def test_short_period_service_is_irregular():
+    # 年末年始型: 平日中心でも10日以下なら特定日 (平日時刻表への混入防止)
     dates = dates_df(
-        [("CD3", d, "1") for d in ["20260406", "20260407", "20260404", "20260411"]]
+        [("NY", d, "1") for d in ["20261229", "20261230", "20261231",
+                                   "20270104", "20270105", "20270106"]]
     )
-    assert normalize_day_types(None, dates, 0.8) == {"CD3": "irregular"}
+    assert normalize_day_types(None, dates, 0.8) == {"NY": "irregular"}
 
 
 def test_exception_type_2_removals_ignored():
-    dates = dates_df([("CD4", "20260406", "2"), ("CD4", "20260407", "1")])
-    assert normalize_day_types(None, dates, 0.8) == {"CD4": "weekday"}
+    rows = [("CD4", "20260406", "2")] + _weekdays_of_april("CD4", 12)
+    assert normalize_day_types(None, dates_df(rows), 0.8) == {"CD4": "weekday"}
 
 
 def test_calendar_flags_take_precedence_over_dates():
@@ -77,7 +97,9 @@ def test_calendar_flags_take_precedence_over_dates():
 
 def test_zero_flag_service_falls_back_to_dates():
     cal = calendar_df({"Z1": "0000000"})
-    dates = dates_df([("Z1", "20260404", "1"), ("Z1", "20260411", "1")])
+    sats = ["20260404", "20260411", "20260418", "20260425", "20260502", "20260509",
+            "20260516", "20260523", "20260530", "20260606", "20260613", "20260620"]
+    dates = dates_df([("Z1", d, "1") for d in sats])
     assert normalize_day_types(cal, dates, 0.8) == {"Z1": "saturday"}
 
 

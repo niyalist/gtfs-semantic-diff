@@ -108,6 +108,9 @@ def load_snapshot(
         calendar_dates_majority=config.get(
             "load", "day_types", "calendar_dates_majority", default=0.8
         ),
+        short_service_max_days=config.get(
+            "load", "day_types", "short_service_max_days", default=10
+        ),
     )
 
     snapshot = GtfsSnapshot(meta=meta, tables=tables, day_types=day_types)
