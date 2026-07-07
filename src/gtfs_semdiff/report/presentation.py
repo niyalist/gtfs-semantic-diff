@@ -70,6 +70,85 @@ def order_agreement(stops_a: list[str], stops_b: list[str]) -> tuple[float | Non
     return same / total, len(shared)
 
 
+# --- 時刻表の列ソート (参考: LibreDiaNet timetable-column-sort) ---
+
+
+def _cell_minute(value: str | None) -> int | None:
+    from ..events.timebands import parse_gtfs_time
+
+    if not value:
+        return None
+    sec = parse_gtfs_time(value)
+    return sec // 60 if sec is not None else None
+
+
+def _compare_columns(ta: list[int | None], tb: list[int | None]) -> int:
+    """時刻表2列の前後関係。-1: a が左 / 1: a が右 / 0: 同値・判断不能。
+
+    - 共有停留所 (両列に時刻がある軸行) があれば、最初の共有行の時刻で比較。
+      同時刻なら次の共有行へ (全行同時刻なら 0 = 元の順序を保つ)
+    - 共有が無く、停車区間が軸上で離れている場合は境界時刻で比較する:
+      a の区間が上流側で終わるなら「a の最終時刻 ≤ b の最初の時刻」のとき a が左
+      (LibreDiaNet の colSpan>1 分岐に相当)
+    """
+    shared = [
+        i for i in range(min(len(ta), len(tb)))
+        if ta[i] is not None and tb[i] is not None
+    ]
+    if shared:
+        for i in shared:
+            if ta[i] != tb[i]:
+                return -1 if ta[i] < tb[i] else 1
+        return 0
+    a_idx = [i for i, v in enumerate(ta) if v is not None]
+    b_idx = [i for i, v in enumerate(tb) if v is not None]
+    if not a_idx or not b_idx:
+        return 0
+    if a_idx[-1] < b_idx[0]:
+        return -1 if ta[a_idx[-1]] <= tb[b_idx[0]] else 1
+    if b_idx[-1] < a_idx[0]:
+        return 1 if tb[b_idx[-1]] <= ta[a_idx[0]] else -1
+    return 0  # 互い違いの欠け (通過等) — 判断不能
+
+
+def sort_timetable_columns(columns: list[dict]) -> list[dict]:
+    """列 (1列=1便) を「どの停留所でも時刻が左→右で単調」になるよう並べる。
+
+    途中始発・途中止まりの便は始発時刻 (自分の最初の停留所の時刻) だけでは
+    比較できない — 全便が1つの停留所を共有するとは限らないため、単一キーの
+    ソートでは交差が生じる。軸上の時刻ベクトルの対比較 + 挿入ソートで解く。
+    初期順序は始発時刻順 (決定的)、比較不能な対は初期順序を保つ。
+    """
+
+    def minutes(col: dict) -> list[int | None]:
+        times = col["times_new"] if col["times_new"] is not None else col["times_old"]
+        return [_cell_minute(v) if v else None for v in (times or [])]
+
+    pre = sorted(columns, key=lambda c: (c["sort_key"], c["trip_id_new"] or
+                                         c["trip_id_old"] or ""))
+    vecs = [minutes(c) for c in pre]
+    ordered: list[tuple[dict, list[int | None]]] = []
+    for c, vec in zip(pre, vecs):
+        pos = len(ordered)
+        for j, (_, svec) in enumerate(ordered):
+            if _compare_columns(vec, svec) < 0:
+                pos = j
+                break
+        ordered.insert(pos, (c, vec))
+    # 隣接バブル整定: 挿入だけでは解けない交差 (非推移な対や後から入った列) を
+    # 比較関数が逆転を報告しなくなるまで解消する。パス数は列数で上限
+    # (追い越し便など本質的に単調化できない対は 0 を返すため動かない)
+    for _ in range(len(ordered)):
+        swapped = False
+        for i in range(len(ordered) - 1):
+            if _compare_columns(ordered[i][1], ordered[i + 1][1]) > 0:
+                ordered[i], ordered[i + 1] = ordered[i + 1], ordered[i]
+                swapped = True
+        if not swapped:
+            break
+    return [c for c, _ in ordered]
+
+
 def _is_subsequence(a: tuple, b: tuple) -> bool:
     """a が b の (連続とは限らない) 部分列か。区間便・通過便の完全包含判定に使う。"""
     it = iter(b)
@@ -1017,7 +1096,7 @@ class _Builder:
                     # 対応先が別バケット (経路変更で系統移動) の場合も旧側は出さない
                     continue
                 columns.append(self._column("removed", o, None, axis))
-            columns.sort(key=lambda c: c["sort_key"])
+            columns = sort_timetable_columns(columns)
             for c in columns:
                 del c["sort_key"]
             if not columns:

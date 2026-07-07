@@ -268,6 +268,55 @@ def test_axis_rows_asymmetric_stays_two_rows(tmp_path, config):
     assert rows[1]["stops"][-1] == "営業所"  # 復路の別端点が行として現れる
 
 
+# --- 時刻表の列ソート (共有停留所ベース) ---
+
+
+def test_column_sort_short_turn_crossing(tmp_path, config):
+    # 途中始発の区間便: 自分の始発 (S2 08:10) は全区間便 (S1 08:00) より遅いが、
+    # 共有停留所 S2 では 08:10 < 08:20 なので左に来るべき
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,FULL\nR1,WD,SHORT\n"
+    )
+    feed["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        "FULL,08:00:00,08:00:00,S1,1\n"
+        "FULL,08:20:00,08:20:00,S2,2\n"
+        "FULL,08:40:00,08:40:00,S3,3\n"
+        "SHORT,08:10:00,08:10:00,S2,1\n"
+        "SHORT,08:25:00,08:25:00,S3,2\n"
+    )
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    cols = page["timetables"][0]["columns"]
+    assert [c["trip_id_new"] for c in cols] == ["SHORT", "FULL"]
+
+
+def test_column_sort_disjoint_sections_by_boundary(tmp_path, config):
+    # 停留所を共有しない2便 (上流区間のみ / 下流区間のみ):
+    # 上流便の最終時刻 08:20 ≤ 下流便の最初の時刻 09:00 → 上流便が左
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,FULL\nR1,WD,UP\nR1,WD,DOWN\n"
+    )
+    feed["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        # FULL が軸 (S1..S4) を確立し、UP/DOWN は互いに停留所を共有しない
+        "FULL,07:00:00,07:00:00,S1,1\n"
+        "FULL,07:10:00,07:10:00,S2,2\n"
+        "FULL,07:20:00,07:20:00,S3,3\n"
+        "FULL,07:30:00,07:30:00,S4,4\n"
+        "DOWN,09:00:00,09:00:00,S3,1\n"
+        "DOWN,09:10:00,09:10:00,S4,2\n"
+        "UP,08:10:00,08:10:00,S1,1\n"
+        "UP,08:20:00,08:20:00,S2,2\n"
+    )
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    cols = page["timetables"][0]["columns"]
+    assert [c["trip_id_new"] for c in cols] == ["FULL", "UP", "DOWN"]
+
+
 # --- 停留所の変化章 (V4) ---
 
 
