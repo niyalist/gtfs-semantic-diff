@@ -1,13 +1,12 @@
 <script>
   import { buildIndex } from "./lib/data.js";
   import { lang, t } from "./lib/i18n.js";
+  import CoverageSummary from "./components/CoverageSummary.svelte";
+  import EventsByDestination from "./components/EventsByDestination.svelte";
   import FeedOverview from "./components/FeedOverview.svelte";
+  import FileDiffBrowser from "./components/FileDiffBrowser.svelte";
   import RoutePage from "./components/RoutePage.svelte";
   import StopChangesPage from "./components/StopChangesPage.svelte";
-  import Summary from "./components/Summary.svelte";
-  import RouteChapters from "./components/RouteChapters.svelte";
-  import StopsChapter from "./components/StopsChapter.svelte";
-  import Validation from "./components/Validation.svelte";
 
   export let bundle = null;
   const index = bundle ? buildIndex(bundle) : null;
@@ -131,17 +130,16 @@
       {/if}
     {/if}
   {:else}
-    <!-- 検証モード: W1 のイベント単位 UI (説明会計への導線を維持) -->
-    <h2>{tt("summary")}</h2>
-    <Summary {index} />
-    <h2>{tt("routes")}</h2>
-    <RouteChapters {index} />
-    {#if index.stopEvents.length}
-      <h2>{tt("stops")}</h2>
-      <StopsChapter {index} />
-    {/if}
-    <h2>{tt("validation")}</h2>
-    <Validation {index} />
+    <!-- 検証モード = 網羅性ビュー (V5): 会計サマリー → イベント (表示先別) →
+         ファイル別の生差分。EventRow のドリルダウンで evidence → RawDiff 生値へ
+         到達できる (説明会計への導線を維持) -->
+    <h2>{tt("cov_title")}</h2>
+    <CoverageSummary {index} />
+    <h2>{tt("dest_title")}</h2>
+    <EventsByDestination {index} />
+    <h2>{tt("fdb_title")}</h2>
+    <p class="meta">{tt("fdb_note")}</p>
+    <FileDiffBrowser {index} />
   {/if}
 
   <p class="note">{tt("attribution_note")}</p>

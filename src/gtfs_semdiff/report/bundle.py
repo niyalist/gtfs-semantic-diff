@@ -43,6 +43,8 @@ def build_bundle(
     presentation["feed_overview"] = _feed_overview(
         old, new, event_set, rawdiffs, trip_delta
     )
+    # V5: 全イベントの表示先 (レポートのどの部に現れるか) とレポート被覆率
+    presentation["coverage"] = _coverage(event_set)
 
     return {
         "events": event_set.to_dict(),
@@ -74,6 +76,49 @@ _PART1_EVENT_TYPES = frozenset({
     "FEED_VALIDITY_CHANGED", "AGENCY_INFO_CHANGED", "TRANSLATION_CHANGED",
     "FARE_CHANGED", "DEMAND_RESPONSIVE_CHANGE",
 })
+
+
+def _event_destination(e) -> dict:
+    """イベントの表示先 (レポートのどの部が受け持つか) の決定的対応。
+
+    型と subject による粗粒度の対応付け (V5 第1段)。表示単位 (Lev.2 の何行目か等)
+    への精密な refs は将来の精緻化とし、まず「全イベントに表示先がある」ことを
+    保証する。第4部 = ここで 1〜3部に割り当てられなかった全て (件数のみの提示)。
+    """
+    t = EVENT_TYPES[e.type]
+    if e.type in _PART1_EVENT_TYPES:
+        return {"part": 1, "route_group": None}
+    if t.category == "D":
+        return {"part": 2, "route_group": None}
+    if (t.category in ("A", "B", "C") and e.type != "SHAPE_CHANGED") \
+            or e.type == "HEADSIGN_CHANGED":
+        g = e.subject.get("route_group") or e.subject.get("route_family")
+        if g:
+            return {"part": 3, "route_group": g}
+    return {"part": 4, "route_group": None}
+
+
+def _coverage(event_set) -> dict:
+    """V5: 表示先の台帳とレポート被覆率。
+
+    - destinations: event_id → {part, route_group}
+    - report_coverage_ratio: 第1〜3部で個別に説明されるイベントの割合
+      (第4部行き = 件数のみの提示、を「個別説明なし」とみなす)
+    """
+    destinations = {}
+    by_part = {1: 0, 2: 0, 3: 0, 4: 0}
+    for e in event_set.events:
+        d = _event_destination(e)
+        destinations[e.event_id] = d
+        by_part[d["part"]] += 1
+    total = len(event_set.events)
+    covered = total - by_part[4]
+    return {
+        "destinations": destinations,
+        "events_total": total,
+        "events_by_part": {str(k): v for k, v in by_part.items()},
+        "report_coverage_ratio": (covered / total) if total else 1.0,
+    }
 
 
 def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
@@ -139,18 +184,11 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
     ]
 
     # 第4部: 第1〜3部のどこにも現れないイベントの種類別件数。
-    # 路線ページが受け持つ A/B/C 群 (SHAPE_CHANGED は Lev.5 の件数のみで座標の
-    # 詳細を見せていないため第4部へ)、停留所章が受け持つ D 群、第1部、
-    # HEADSIGN_CHANGED (路線 Lev.5) を除いた残り全て — 将来のイベント追加も
-    # 自動的にここへ落ちる
-    route_covered = {
-        t.type_id for t in EVENT_TYPES.values() if t.category in ("A", "B", "C")
-    } - {"SHAPE_CHANGED"}
-    stop_covered = {t.type_id for t in EVENT_TYPES.values() if t.category == "D"}
-    covered = route_covered | stop_covered | _PART1_EVENT_TYPES | {"HEADSIGN_CHANGED"}
+    # 表示先の判定は _event_destination に一元化 (V5 の coverage と必ず一致する)。
+    # 将来のイベント追加も自動的にここへ落ちる
     others: dict[str, int] = {}
     for e in event_set.events:
-        if e.type not in covered:
+        if _event_destination(e)["part"] == 4:
             others[e.type] = others.get(e.type, 0) + 1
 
     return {

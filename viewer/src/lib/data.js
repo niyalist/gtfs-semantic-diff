@@ -14,6 +14,24 @@ export function buildIndex(bundle) {
 
   const rawdiffById = new Map(bundle.rawdiffs.map((d) => [d.rawdiff_id, d]));
 
+  // rawdiff_id → 説明イベント (最初に evidence として主張したイベント =
+  // 台帳の主説明とほぼ一致。UNEXPLAINED_RESIDUAL も1つのイベントとして現れる)
+  const explainerByRawdiff = new Map();
+  for (const e of events) {
+    for (const id of e.evidence || []) {
+      if (!explainerByRawdiff.has(id)) explainerByRawdiff.set(id, e);
+    }
+  }
+
+  // rawdiffs をファイル別・種類別に索引 (網羅性ビューの生差分ブラウザ用)
+  const rawdiffsByFile = new Map();
+  for (const d of bundle.rawdiffs) {
+    if (!rawdiffsByFile.has(d.file)) rawdiffsByFile.set(d.file, new Map());
+    const kinds = rawdiffsByFile.get(d.file);
+    if (!kinds.has(d.kind)) kinds.set(d.kind, []);
+    kinds.get(d.kind).push(d);
+  }
+
   const routeEvents = events.filter(
     (e) => e.subject?.route_family && !STOP_TYPES.has(e.type) && !VALIDATION_TYPES.has(e.type)
   );
@@ -61,7 +79,9 @@ export function buildIndex(bundle) {
 
   return {
     events, context,
-    rawdiffById,
+    rawdiffById, explainerByRawdiff, rawdiffsByFile,
+    coverage: bundle.presentation?.coverage ?? null,
+    rawdiffs: bundle.rawdiffs,
     routeEvents, stopEvents, validationEvents, feedEvents,
     byGroup, groupOrder, groupInfo, familyStructure, profilesByFamily,
     timetableByKey, unchangedGroups,

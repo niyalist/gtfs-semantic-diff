@@ -62,6 +62,28 @@ def test_feed_overview_structure(tmp_path, config):
                               "FEED_VALIDITY_CHANGED"}
 
 
+def test_coverage_destinations(tmp_path, config):
+    # V5: 全イベントに表示先 (part 1〜4) が付き、第4部の件数が feed_overview
+    # の others と一致する (同一の対応関数を共有)
+    bundle = _bundle(tmp_path, config)
+    cov = bundle["presentation"]["coverage"]
+    events = bundle["events"]["events"]
+    assert set(cov["destinations"]) == {e["event_id"] for e in events}
+    assert cov["events_total"] == len(events)
+    by_part = cov["events_by_part"]
+    assert sum(by_part.values()) == cov["events_total"]
+    n4 = sum(o["count"] for o in bundle["presentation"]["feed_overview"]["others"])
+    assert by_part["4"] == n4
+    # 表示先の型対応: 停留所イベント→第2部、路線イベント→第3部 (route_group 付き)
+    for e in events:
+        d = cov["destinations"][e["event_id"]]
+        if e["type"] == "STOP_RENAMED":
+            assert d["part"] == 2
+        if e["type"] in ("SERVICE_REDUCED", "SERVICE_INCREASED"):
+            assert d["part"] == 3 and d["route_group"]
+    assert 0.0 <= cov["report_coverage_ratio"] <= 1.0
+
+
 def test_bundle_geometry_statuses(tmp_path, config):
     bundle = _bundle(tmp_path, config)
     points = [f for f in bundle["geometry"]["features"] if f["geometry"]["type"] == "Point"]
