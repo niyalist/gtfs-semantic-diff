@@ -132,6 +132,7 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
             "quantification": e.quantification,
             "old_ref": e.old_ref,
             "new_ref": e.new_ref,
+            "evidence_count": len(e.evidence),
         }
         for e in event_set.events
         if e.type in _PART1_EVENT_TYPES

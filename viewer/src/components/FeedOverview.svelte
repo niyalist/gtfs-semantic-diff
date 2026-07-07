@@ -18,20 +18,76 @@
       f.row_added || f.row_removed || f.field_changed || f.column_changes
     );
   }
-  // フィード級イベントの読み下し: 旧→新の値があればそれを、なければ数値詳細を添える
+  // フィード級イベントの読み下し (イベント種別ごとの整形。原文は検証モードで)
+  const isoDate = (s) =>
+    String(s ?? "").replace(/\b(\d{4})(\d{2})(\d{2})\b/g, "$1-$2-$3");
+  function dayLabel(d) {
+    return tt(d) === d ? d : tt(d);
+  }
   function detail(e) {
-    const o = e.old_ref || {}, n = e.new_ref || {};
-    const parts = [];
-    for (const k of Object.keys({ ...o, ...n })) {
-      if (o[k] !== undefined || n[k] !== undefined)
-        parts.push(`${o[k] ?? "—"} → ${n[k] ?? "—"}`);
+    const q = e.quantification || {};
+    const files = (e.subject?.files || []).join(", ");
+    switch (e.type) {
+      case "FEED_VALIDITY_CHANGED": {
+        // calendar.txt (changed_rows) と feed_info.txt (changed_fields) の2系統
+        const parts = [];
+        if (q.changed_rows) parts.push(`${files}: ${tt("fo_ev_changes", q.changed_rows)}`);
+        for (const [col, ov] of Object.entries(q.changed_fields || {}))
+          parts.push(`${col}: ${isoDate(ov)}`);
+        return parts.join(" / ") || files;
+      }
+      case "HOLIDAY_EXCEPTION_CHANGED": {
+        const within = q.within_overlap || 0;
+        const outside = (q.outside_overlap || 0) + (q.unknown_window || 0);
+        const win = q.overlap_window;
+        const parts = [dayLabel(e.subject?.day_type ?? "")];
+        if (q.substantive && win) {
+          parts.push(`${tt("fo_hx_window", isoDate(win[0]), isoDate(win[1]))} ${within}件`);
+        } else {
+          parts.push(tt("fo_hx_none"));
+        }
+        if (outside) parts.push(tt("fo_hx_mechanical", outside));
+        return parts.filter(Boolean).join("、");
+      }
+      case "FARE_CHANGED": {
+        const parts = [];
+        const pc = q.price_changes || [];
+        if (pc.length) {
+          const ex = pc.slice(0, 3).map((c) => tt("fo_yen", c.old_price, c.new_price));
+          parts.push(`${tt("fo_fare_price", pc.length)} (${ex.join(", ")}${pc.length > 3 ? ", …" : ""})`);
+        }
+        if (q.removed_fares?.length) parts.push(tt("fo_fare_removed", q.removed_fares.length));
+        if (q.added_fares?.length) parts.push(tt("fo_fare_added", q.added_fares.length));
+        if (q.fare_rules_diffs) parts.push(tt("fo_fare_rules", q.fare_rules_diffs));
+        return parts.join("、");
+      }
+      case "DAYTYPE_RESTRUCTURED": {
+        const o = (e.old_ref?.day_types || []).map(dayLabel).join("・");
+        const n = (e.new_ref?.day_types || []).map(dayLabel).join("・");
+        return `${o}${tt("fo_daytypes_arrow")}${n}`;
+      }
+      case "AGENCY_INFO_CHANGED":
+      case "TRANSLATION_CHANGED": {
+        const parts = [];
+        for (const [col, ov] of Object.entries(q.changed_fields || {}))
+          parts.push(`${col}: ${isoDate(ov)}`);
+        if (!parts.length && e.evidence_count)
+          parts.push(tt("fo_ev_changes", e.evidence_count));
+        return [files, parts.join(" / ")].filter(Boolean).join(" — ");
+      }
+      default: {
+        // フォールバック: オブジェクトの生表示 ([object Object]) は避け、
+        // スカラー値と件数だけを出す。詳細は検証モードが受け持つ
+        const parts = [];
+        for (const [k, v] of Object.entries(q)) {
+          if (Array.isArray(v)) parts.push(`${k}: ${v.length}`);
+          else if (typeof v !== "object" || v === null) parts.push(`${k}: ${v}`);
+        }
+        const subj = Object.values(e.subject || {})
+          .filter((v) => typeof v === "string").join(" ");
+        return [subj, parts.join(" / ")].filter(Boolean).join(" — ");
+      }
     }
-    if (!parts.length && e.quantification) {
-      for (const [k, v] of Object.entries(e.quantification))
-        parts.push(`${k}: ${Array.isArray(v) ? v.join(", ") : v}`);
-    }
-    const subj = Object.values(e.subject || {}).join(" ");
-    return [subj, parts.join(" / ")].filter(Boolean).join(" — ");
   }
 </script>
 
