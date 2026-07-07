@@ -90,28 +90,18 @@
   <div class="body">
     <!-- ① 路線概要 -->
     <h3>{tt("overview")}</h3>
-    {#each axisRows as row}
-      <p class="pattern">
+    <!-- ラベル列とバス停列の2カラム。折り返し行はラベル列を空けたまま
+         バス停列の縦線が全行で揃う (grid の列幅は最長ラベルに合わせて共有) -->
+    <div class="axis-grid">
+      {#each axisRows as row}
         <span class="axis-label">{row.label}</span>
-        {#each elideByKeyStops(row.stops, keyStops, 11) as s, i}
-          {#if i > 0}<span class="arrow">{row.kind === "pair" ? "—" : "→"}</span>{/if}<span class="stop">{s}</span>
-        {/each}
-      </p>
-    {/each}
-    <ul class="meta systems-list">
-      {#each page.overview.direction_groups as dg}
-        {#if dg.systems.length > 1}
-          <li>
-            {dg.label}
-            — {dg.systems.length} {tt("systems")}:
-            {#each dg.systems as s, i}
-              {i > 0 ? " / " : ""}{s.first_stop}→{s.last_stop}
-              ({s.trips_old}→{s.trips_new}{tt("trips_count")}{#if s.status === "added"}・{tt("col_added")}{/if}{#if s.status === "removed"}・{tt("col_removed")}{/if})
-            {/each}
-          </li>
-        {/if}
+        <span class="axis-stops">
+          {#each elideByKeyStops(row.stops, keyStops, 11) as s, i}
+            {#if i > 0}<span class="arrow">{row.kind === "pair" ? "—" : "→"}</span>{/if}<span class="stop">{s}</span>
+          {/each}
+        </span>
       {/each}
-    </ul>
+    </div>
     <details bind:open={showMap}>
       <summary class="meta" style="cursor:pointer">{tt("show_map")}</summary>
       {#if showMap}
@@ -163,9 +153,15 @@
 </details>
 
 <style>
-  .systems-list { margin: 0.2rem 0 0.6rem; }
-  .axis-label { font-weight: 600; margin-right: 0.6em; white-space: nowrap; }
-  .pattern { margin: 0.25rem 0; }
+  .axis-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr; /* ラベル列幅は最長ラベルで全行共有 */
+    column-gap: 0.9em;
+    row-gap: 0.35em;
+    margin: 0.3rem 0 0.6rem;
+    align-items: baseline;
+  }
+  .axis-label { font-weight: 600; white-space: nowrap; }
   /* 曜日タブ: Excel のシート切替をページ左上寄せにした形。
      アクティブは太字+下線+実線枠 (色は補強のみ、原則5) */
   .day-tabs {
