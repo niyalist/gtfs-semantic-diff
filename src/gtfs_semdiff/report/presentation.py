@@ -247,10 +247,23 @@ class _Builder:
             or summary["level4"] or summary["level5"]["retimed_trips"]
             or summary["level5"]["notes"]
         )
+        # 曜日タブ用 (R18): 新旧いずれかに便がある day_type を固定順で列挙。
+        # 廃止された運行日 (old>0, new=0) もタブに残す — 消えたこと自体が情報
+        day_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        for t in old_trips:
+            day_counts[t.day_type][0] += 1
+        for t in new_trips:
+            day_counts[t.day_type][1] += 1
+        day_totals = [
+            {"day_type": d, "old": day_counts[d][0], "new": day_counts[d][1]}
+            for d in sorted(day_counts, key=day_sort_key)
+        ]
+
         return {
             "route_group": group,
             "families": sorted({t.family for t in old_trips + new_trips}),
             "has_changes": has_changes,
+            "day_totals": day_totals,
             "overview": {
                 "trip_totals": {"old": len(old_trips), "new": len(new_trips)},
                 "direction_groups": dgroups,

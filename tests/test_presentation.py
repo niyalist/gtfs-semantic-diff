@@ -496,6 +496,24 @@ def test_band_matrix_single_direction_has_no_leg_rows(tmp_path, config):
     assert not [r for r in page["band_matrix"]["rows"] if r["kind"] == "leg"]
 
 
+def test_day_totals_fixed_order_and_removed_day(tmp_path, config):
+    # R18: 曜日タブ用の day_totals。固定順で列挙し、廃止された運行日
+    # (old>0, new=0) も残す
+    old_files = {
+        "calendar.txt": MINIMAL_FEED["calendar.txt"]
+        + "SAT,0,0,0,0,0,1,0,20260401,20270331\n",
+        "trips.txt": MINIMAL_FEED["trips.txt"] + "R1,SAT,T7\n",
+        "stop_times.txt": MINIMAL_FEED["stop_times.txt"]
+        + "T7,10:00:00,10:00:00,S1,1\nT7,10:05:00,10:05:00,S2,2\nT7,10:10:00,10:10:00,S3,3\n",
+    }
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=None)
+    page = page_of(model, "1")
+    assert page["day_totals"] == [
+        {"day_type": "weekday", "old": 2, "new": 2},
+        {"day_type": "saturday", "old": 1, "new": 0},  # 廃止曜日もタブに残る
+    ]
+
+
 def test_timetable_diff_columns(tmp_path, config):
     # T1 時刻変更 + T2 廃止 + T9 新設 → 差分素材 (status / changed_positions)
     new_files = {

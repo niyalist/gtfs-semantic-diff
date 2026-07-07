@@ -25,7 +25,22 @@
       return (c.changed_positions?.length ?? 0) > 0;
     return false;
   }
-  $: changedTables = page.timetables.filter((tb) => tb.columns.some(columnChanged));
+
+  // R18: 曜日タブ。③本数表と④時刻表を選択曜日に絞る (①②は運行日横断なので対象外)
+  $: dayTabs = page.day_totals ?? [];
+  let selectedDay = null;
+  $: if (selectedDay === null && dayTabs.length) selectedDay = dayTabs[0].day_type;
+  function tabLabel(d) {
+    if (d.old === d.new) return `${dayJa(d.day_type)} ${d.new}${tt("trips_count")}`;
+    const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
+    return `${dayJa(d.day_type)} ${d.old}${tt("trips_count")}→${d.new}${tt("trips_count")}${sym}`;
+  }
+  $: dayMatrix = {
+    bands: page.band_matrix.bands,
+    rows: page.band_matrix.rows.filter((r) => r.day_type === selectedDay),
+  };
+  $: dayTimetables = page.timetables.filter((tb) => tb.day_type === selectedDay);
+  $: changedTables = dayTimetables.filter((tb) => tb.columns.some(columnChanged));
 
   // 主要停留所 (key_stops の tier) を残して間を省略。地図のラベル段階と同じ基準を共有
   function elideByKeyStops(stops, keys, maxN) {
@@ -108,20 +123,34 @@
     <h3>{tt("summary_changes")}</h3>
     <LevSummary {page} />
 
+    <!-- 曜日タブ (R18): ③④を選択曜日に絞る。①②は運行日横断なので対象外 -->
+    {#if dayTabs.length > 1}
+      <div class="day-tabs" role="tablist">
+        {#each dayTabs as d}
+          <button
+            type="button" role="tab" class="day-tab"
+            class:active={selectedDay === d.day_type}
+            aria-selected={selectedDay === d.day_type}
+            on:click={() => (selectedDay = d.day_type)}
+          >{tabLabel(d)}</button>
+        {/each}
+      </div>
+    {/if}
+
     <!-- ③ 時間帯別本数 -->
-    {#if page.band_matrix.rows.length}
+    {#if dayMatrix.rows.length}
       <h3>{tt("band_table")}</h3>
-      <BandMatrix matrix={page.band_matrix} />
+      <BandMatrix matrix={dayMatrix} />
     {/if}
 
     <!-- ④ 新旧時刻表 -->
-    {#if page.timetables.length}
+    {#if dayTimetables.length}
       <h3>{tt("timetables")}</h3>
-      {#each page.timetables as tb}
+      {#each dayTimetables as tb (`${tb.direction_group}|${tb.leg}|${tb.day_type}`)}
         {@const changed = changedTables.includes(tb)}
         <details class="tt-section" open={changed && changedTables.length <= 4}>
           <summary>
-            {tb.label} — {dayJa(tb.day_type)}
+            {tb.label}
             <span class="count">
               {tb.columns.length}{tt("trips_count")}{changed ? " ＊" : ""}
             </span>
@@ -135,6 +164,25 @@
 
 <style>
   .systems-list { margin: 0.2rem 0 0.6rem; }
+  /* 曜日タブ: Excel のシート切替をページ左上寄せにした形。
+     アクティブは太字+下線+実線枠 (色は補強のみ、原則5) */
+  .day-tabs {
+    display: flex; flex-wrap: wrap; gap: 0.3rem;
+    margin: 0.9rem 0 0.2rem; border-bottom: 2px solid var(--line);
+    padding: 0 0 0 0.2rem;
+  }
+  .day-tab {
+    font: inherit; font-size: 0.92em; cursor: pointer;
+    border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; background: var(--bg-soft);
+    color: inherit; padding: 0.3rem 0.8rem; margin-bottom: 0;
+  }
+  .day-tab.active {
+    font-weight: 700; text-decoration: underline;
+    text-underline-offset: 0.25em;
+    background: #fff; border: 2px solid #1a4f8b; border-bottom: 2px solid #fff;
+    margin-bottom: -2px;
+  }
   .tt-section { border: 1px solid var(--line); border-radius: 4px; margin: 0.35rem 0; }
   .tt-section > summary { cursor: pointer; padding: 0.3rem 0.6rem; background: var(--bg-soft); }
   .tt-section > :global(.tt-head), .tt-section > :global(p), .tt-section > :global(.tt-wrap) {
