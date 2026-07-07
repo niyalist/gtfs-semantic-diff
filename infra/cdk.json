@@ -1,0 +1,6 @@
+{
+  "app": "../.venv.nosync/bin/python app.py",
+  "context": {
+    "@aws-cdk/core:bootstrapQualifier": "hnb659fds"
+  }
+}
