@@ -1,6 +1,7 @@
 <script>
   import { buildIndex } from "./lib/data.js";
   import { lang, t } from "./lib/i18n.js";
+  import FeedOverview from "./components/FeedOverview.svelte";
   import RoutePage from "./components/RoutePage.svelte";
   import StopChangesPage from "./components/StopChangesPage.svelte";
   import Summary from "./components/Summary.svelte";
@@ -29,13 +30,9 @@
      stopChanges.added.length || stopChanges.removed.length ||
      stopChanges.platform.length)
   );
-  function stopChapterOpen() {
-    if (expandState === "open") return true;
-    if (expandState === "closed") return false;
-    // 改称・移設は重要なので既定で展開。新設・廃止のみ (路線側で説明済みが
-    // 多い) や乗り場のみなら折りたたみ
-    return Boolean(stopChanges?.renamed.length || stopChanges?.relocated.length);
-  }
+  $: feedOverview = presentation?.feed_overview;
+  const catalog = bundle?.catalog ?? {};
+  $: catName = (type) => catalog[type]?.[$lang === "ja" ? "ja" : "en"] ?? type;
 
   function defaultOpen(p) {
     // 既定の折りたたみ戦略: Lev.1/Lev.2 を含むページのみ展開 (大規模改正対策)
@@ -74,22 +71,35 @@
   </p>
 
   {#if mode === "report" && presentation}
-    <p class="meta">
-      {tt("verify_hint")}
-      <span style="float:right">
+    <p class="meta">{tt("verify_hint")}</p>
+
+    <!-- 第1部: フィード全体の変化 -->
+    {#if feedOverview}
+      <h2>{tt("part1_title")}</h2>
+      <FeedOverview overview={feedOverview} {feed} {catalog} />
+    {/if}
+
+    <!-- 第2部: 停留所の変化 (地図は最初から表示) -->
+    <h2>{tt("part2_title")}</h2>
+    {#if hasStopChanges}
+      <StopChangesPage changes={stopChanges} />
+    {:else}
+      <p class="meta">{tt("sc_none")}</p>
+    {/if}
+
+    <!-- 第3部: 路線毎の変化 (変更のない路線も含む) -->
+    <h2>
+      {tt("part3_title")}
+      <span style="float:right; font-size: 0.7em; font-weight: normal">
         <button class="linkish" on:click={() => (expandState = "open")}>{tt("expand_all")}</button>
         /
         <button class="linkish" on:click={() => (expandState = "closed")}>{tt("collapse_all")}</button>
       </span>
-    </p>
+    </h2>
     {#key expandState}
       {#each changedPages as p, i (p.route_group)}
-        <RoutePage page={p} index={i + 1} open={isOpen(p)} />
+        <RoutePage page={p} index={`3.${i + 1}`} open={isOpen(p)} />
       {/each}
-      {#if hasStopChanges}
-        <StopChangesPage changes={stopChanges} index={changedPages.length + 1}
-                         open={stopChapterOpen()} />
-      {/if}
       {#if unchangedPages.length}
         <details class="chapter">
           <summary>
@@ -99,12 +109,27 @@
           <div class="body">
             <p class="note">{tt("unchanged_note")}</p>
             {#each unchangedPages as p, i (p.route_group)}
-              <RoutePage page={p} index={changedPages.length + hasStopChanges + i + 1} open={false} />
+              <RoutePage page={p} index={`3.${changedPages.length + i + 1}`} open={false} />
             {/each}
           </div>
         </details>
       {/if}
     {/key}
+
+    <!-- 第4部: その他の変化 (第1〜3部で説明していない項目 — 網羅性の受け皿) -->
+    {#if feedOverview}
+      <h2>{tt("part4_title")}</h2>
+      {#if feedOverview.others.length}
+        <p class="meta">{tt("part4_note")}</p>
+        <ul>
+          {#each feedOverview.others as o}
+            <li><strong>{catName(o.type)}</strong>: {tt("count_unit", o.count)}</li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="meta">{tt("part4_none")}</p>
+      {/if}
+    {/if}
   {:else}
     <!-- 検証モード: W1 のイベント単位 UI (説明会計への導線を維持) -->
     <h2>{tt("summary")}</h2>

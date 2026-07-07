@@ -42,6 +42,26 @@ def test_bundle_structure(tmp_path, config):
     assert bundle["catalog"]["SERVICE_REDUCED"]["en"] == "Service reduced"
 
 
+def test_feed_overview_structure(tmp_path, config):
+    # 第1部 (ファイル対応表・曜日別便数) と第4部 (その他の集計) の素材
+    overview = _bundle(tmp_path, config)["presentation"]["feed_overview"]
+    files = {f["name"]: f for f in overview["files"]}
+    assert "stops.txt" in files and "trips.txt" in files
+    st = files["stops.txt"]
+    assert st["status"] == "continued"
+    assert st["rows_old"] is not None and st["rows_new"] is not None
+    # RawDiff 内訳がファイル別に集計されている (NEW_FILES は stops を改変する)
+    assert st["row_added"] + st["row_removed"] + st["field_changed"] > 0
+    # 曜日区分ごとの便数は固定順
+    days = [d["day_type"] for d in overview["day_types"]]
+    assert days == sorted(days, key=lambda d: ["weekday", "saturday", "sunday_holiday",
+                                               "weekend", "daily", "irregular"].index(d))
+    # 第4部: 第1〜3部で説明しないイベントのみが落ちる (route/stop/part1 は含まない)
+    part4_types = {o["type"] for o in overview["others"]}
+    assert not part4_types & {"STOP_RENAMED", "SERVICE_REDUCED", "ROUTE_ADDED",
+                              "FEED_VALIDITY_CHANGED"}
+
+
 def test_bundle_geometry_statuses(tmp_path, config):
     bundle = _bundle(tmp_path, config)
     points = [f for f in bundle["geometry"]["features"] if f["geometry"]["type"] == "Point"]

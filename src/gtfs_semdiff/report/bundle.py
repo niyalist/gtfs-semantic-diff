@@ -37,10 +37,17 @@ def build_bundle(
     """ビューアに埋め込む全データ (JSON 化可能な dict)。"""
     from .presentation import build_presentation
 
+    presentation = build_presentation(event_set, identity, trip_delta, config)
+    # 第1部 (フィード全体) と第4部 (その他) はスナップショット・RawDiff を
+    # 素材にするためここで付与する (presentation.py は events/identity/delta のみ)
+    presentation["feed_overview"] = _feed_overview(
+        old, new, event_set, rawdiffs, trip_delta
+    )
+
     return {
         "events": event_set.to_dict(),
         "rawdiffs": [d.to_dict() for d in rawdiffs.diffs],
-        "presentation": build_presentation(event_set, identity, trip_delta, config),
+        "presentation": presentation,
         "geometry": _geometry(event_set, identity, old, new, config),
         "timetables": _timetables(event_set, trip_delta),
         "catalog": {
@@ -56,6 +63,102 @@ def build_bundle(
             ),
             "feed": event_set.feed,
         },
+    }
+
+
+# --- 第1部 (フィード全体の変化) と第4部 (その他の変化) の素材 ---
+
+# 第1部で読み下すフィード級イベント (E群 + F群のメタ系)
+_PART1_EVENT_TYPES = frozenset({
+    "DAYTYPE_RESTRUCTURED", "HOLIDAY_EXCEPTION_CHANGED", "SEASONAL_SERVICE_CHANGED",
+    "FEED_VALIDITY_CHANGED", "AGENCY_INFO_CHANGED", "TRANSLATION_CHANGED",
+    "FARE_CHANGED", "DEMAND_RESPONSIVE_CHANGE",
+})
+
+
+def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
+    """4部構成レポートの第1部・第4部ビュー。
+
+    - files: txt ファイルごとの新旧対応表 (有無・行数・RawDiff 内訳)
+    - day_types: 曜日区分ごとの便数 旧→新
+    - meta_events: フィード級イベント (期間・事業者・カレンダー・運賃等)
+    - others (第4部): 第1〜3部のどこにも現れないイベントの種類別件数。
+      レポート面の取りこぼしを常に可視化する (V5 で presentation_refs による
+      機械的な網羅判定に昇格予定)
+    """
+    from .presentation import day_sort_key
+
+    # ファイル対応表
+    old_names = {f"{n}.txt" for n in old.tables}
+    new_names = {f"{n}.txt" for n in new.tables}
+    per_file: dict[str, dict[str, int]] = {}
+    for d in rawdiffs.diffs:
+        b = per_file.setdefault(d.file, {})
+        b[d.kind] = b.get(d.kind, 0) + 1
+    files = []
+    for name in sorted(old_names | new_names | set(per_file)):
+        stem = name.removesuffix(".txt")
+        t_old = old.tables.get(stem)
+        t_new = new.tables.get(stem)
+        counts = per_file.get(name, {})
+        files.append({
+            "name": name,
+            "status": ("continued" if name in old_names and name in new_names
+                       else "added" if name in new_names else "removed"),
+            "rows_old": len(t_old) if t_old is not None else None,
+            "rows_new": len(t_new) if t_new is not None else None,
+            "row_added": counts.get("row_added", 0),
+            "row_removed": counts.get("row_removed", 0),
+            "field_changed": counts.get("field_changed", 0),
+            "column_changes": counts.get("column_added", 0)
+            + counts.get("column_removed", 0),
+        })
+
+    # 曜日区分ごとの便数 旧→新
+    day_counts: dict[str, list[int]] = {}
+    for trips, side in ((trip_delta.old_trips, 0), (trip_delta.new_trips, 1)):
+        for t in trips.values():
+            day_counts.setdefault(t.day_type, [0, 0])[side] += 1
+    day_types = [
+        {"day_type": d, "old": c[0], "new": c[1]}
+        for d, c in sorted(day_counts.items(), key=lambda kv: day_sort_key(kv[0]))
+    ]
+
+    # フィード級イベント (第1部) — 表示はビューアが catalog の表示名で行う
+    meta_events = [
+        {
+            "type": e.type,
+            "subject": e.subject,
+            "quantification": e.quantification,
+            "old_ref": e.old_ref,
+            "new_ref": e.new_ref,
+        }
+        for e in event_set.events
+        if e.type in _PART1_EVENT_TYPES
+    ]
+
+    # 第4部: 第1〜3部のどこにも現れないイベントの種類別件数。
+    # 路線ページが受け持つ A/B/C 群 (SHAPE_CHANGED は Lev.5 の件数のみで座標の
+    # 詳細を見せていないため第4部へ)、停留所章が受け持つ D 群、第1部、
+    # HEADSIGN_CHANGED (路線 Lev.5) を除いた残り全て — 将来のイベント追加も
+    # 自動的にここへ落ちる
+    route_covered = {
+        t.type_id for t in EVENT_TYPES.values() if t.category in ("A", "B", "C")
+    } - {"SHAPE_CHANGED"}
+    stop_covered = {t.type_id for t in EVENT_TYPES.values() if t.category == "D"}
+    covered = route_covered | stop_covered | _PART1_EVENT_TYPES | {"HEADSIGN_CHANGED"}
+    others: dict[str, int] = {}
+    for e in event_set.events:
+        if e.type not in covered:
+            others[e.type] = others.get(e.type, 0) + 1
+
+    return {
+        "files": files,
+        "day_types": day_types,
+        "meta_events": meta_events,
+        "others": [
+            {"type": t, "count": n} for t, n in sorted(others.items())
+        ],
     }
 
 
