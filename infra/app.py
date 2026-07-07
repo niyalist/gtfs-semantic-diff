@@ -17,7 +17,8 @@ DeliveryStack(
     "GtfsSemdiffDelivery",
     env=cdk.Environment(
         account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
-        region=os.environ.get("CDK_DEFAULT_REGION", "ap-northeast-1"),
+        # プロファイルの既定リージョンに依らず東京に固定 (docs/design/web.md)
+        region="ap-northeast-1",
     ),
 )
 app.synth()
