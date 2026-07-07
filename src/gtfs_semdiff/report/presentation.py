@@ -70,6 +70,12 @@ def order_agreement(stops_a: list[str], stops_b: list[str]) -> tuple[float | Non
     return same / total, len(shared)
 
 
+def _is_subsequence(a: tuple, b: tuple) -> bool:
+    """a が b の (連続とは限らない) 部分列か。区間便・通過便の完全包含判定に使う。"""
+    it = iter(b)
+    return all(x in it for x in a)
+
+
 # --- 停留所軸の併合 (R17) ---
 
 
@@ -235,6 +241,7 @@ class _Builder:
 
         systems = self._systems(group, old_trips, new_trips)
         dgroups = self._direction_groups(systems)
+        self._leg_views(dgroups)
         band_matrix = self._band_matrix(dgroups, old_trips, new_trips)
         # 時刻表を先に構築し、表示用ペアリング (廃止×新設の組) を summary と共有する。
         # trip_id が張り替わるフィードでも Lev.3 / Lev.5 が経路・時刻変更を拾える
@@ -432,6 +439,81 @@ class _Builder:
             for s in g["systems"]:
                 s["direction_group"] = g["id"]
         return dgroups
+
+    def _leg_views(self, dgroups: list[dict]) -> None:
+        """①路線概要用の leg (時刻表単位・曜日統合) ビューを各 dg に付与する (R2 改)。
+
+        - legs[].lines: 他パターンに完全包含されないパターン (極大パターン) のみ。
+          区間便は線を増やさず、その端点は key_stops (tier2) の強調が受け持つ。
+          同一 leg の極大パターン群は地図で同色・同レーンに重ね描きされ、
+          幹線は1本に見え分岐点から枝が分かれる
+        - legs[].axis: leg 内全パターン (新旧・全曜日) の LCS 併合軸
+        - axis_rows: 停車列表示の行。復路軸が往路軸の完全な鏡像なら
+          「A ⇄ B」1行に畳む (非対称往復は自動的に2行になり非対称が見える)
+        """
+        old_by_id = {c.cluster_id: c for c in self.identity.old_pattern_clusters}
+        new_by_id = {c.cluster_id: c for c in self.identity.new_pattern_clusters}
+
+        def patterns_of(s) -> set[tuple]:
+            pats: set[tuple] = set()
+            refs = []
+            if s["system_id"].startswith("old:"):
+                refs.append((old_by_id, s["old_system_id"]))
+            else:
+                refs.append((new_by_id, s["system_id"]))
+                if s["old_system_id"]:
+                    refs.append((old_by_id, s["old_system_id"]))
+            for table, cid in refs:
+                c = table.get(cid)
+                if c:
+                    pats.update(tuple(p.base_names) for p in c.patterns)
+            return pats
+
+        for g in dgroups:
+            legs = []
+            for leg in ("forward", "reverse"):
+                members = [s for s in g["systems"] if s["leg"] == leg]
+                if not members:
+                    continue
+                pats: set[tuple] = set()
+                for s in members:
+                    pats.update(patterns_of(s))
+                ordered = sorted(pats, key=lambda p: (-len(p), p))
+                maximal = [
+                    p for p in ordered
+                    if not any(q != p and _is_subsequence(p, q) for q in ordered)
+                ]
+                statuses = {s["status"] for s in members}
+                lines = []
+                for p in maximal:
+                    pts = [(stop, *self.coords[stop]) for stop in p
+                           if stop in self.coords]
+                    if len(pts) < 2:
+                        continue
+                    lines.append({
+                        "stops": [stop for stop, _, _ in pts],
+                        "polyline": [[lat, lon] for _, lat, lon in pts],
+                    })
+                legs.append({
+                    "leg": leg,
+                    "label": g["leg_labels"][leg],
+                    "axis": list(build_stop_axis(ordered)),
+                    "status": ("removed" if statuses == {"removed"} else
+                               "added" if statuses == {"added"} else "continued"),
+                    "lines": lines,
+                })
+            g["legs"] = legs
+            if (len(legs) == 2
+                    and legs[0]["axis"] == list(reversed(legs[1]["axis"]))):
+                # kind=pair は双方向 (停留所間は — で結ぶ)、leg は片方向 (→ で結ぶ)
+                g["axis_rows"] = [
+                    {"label": g["label"], "kind": "pair", "stops": legs[0]["axis"]}
+                ]
+            else:
+                g["axis_rows"] = [
+                    {"label": lg["label"], "kind": "leg", "stops": lg["axis"]}
+                    for lg in legs
+                ]
 
     def _key_stops(self, group: str, dgroups: list[dict]) -> dict[str, int]:
         """主要停留所の tier 判定 (決定的)。

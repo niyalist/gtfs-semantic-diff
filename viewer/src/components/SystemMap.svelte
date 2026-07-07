@@ -4,7 +4,11 @@
   import "maplibre-gl/dist/maplibre-gl.css";
   import { t } from "../lib/i18n.js";
 
-  export let systems = []; // presentation の systems (polyline: [[lat,lon],...])
+  // R2 改: 描画単位は leg (時刻表単位・曜日統合)。
+  // 各 leg は極大パターンの線集合 (lines) を持ち、同色・同レーンで重ね描きする —
+  // 幹線はぴったり重なって1本に見え、分岐点から自然に枝が分かれる。
+  // 凡例・ラベルは③本数表の方向行・④時刻表の表題と同一語彙 (leg.label)。
+  export let legs = []; // [{leg, label, status, lines: [{stops, polyline}], ...}]
   export let keyStops = {}; // 停留所名 → tier (1|2)。無指定は 3 (全停留所)
   export let highlightStops = [];
 
@@ -46,50 +50,50 @@
     });
     map.on("load", () => {
       let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90, found = false;
-      // オフセット = 「進行方向の右側レーン」方式。
-      // line-offset は線の進行方向基準 (正=右) なので、全系統にページ内で一意の
-      // レーン番号 (1始まり) を割り当てて右側へずらす。これで
-      //  (a) 対向方向の系統は自動的に反対側へ並ぶ (起終点が完全逆転でなく
-      //      別方向グループに分類された往復でも、レーンが異なるため分離)
-      //  (b) 循環線が同じ道路を往復する区間は、進行方向が逆なので同一線内でも
-      //      左右に分かれる (レーン0だと自分自身と重なる — これが循環線の重なりの原因)
-      //  (c) 同方向で区間を共有する系統同士もレーン差で分離
-      // ネットワーク全体の交錯最少化は狙わない (要件通りの簡便法)。
-      const laneOf = systems.map((_, i) => i + 1);
+      // オフセット = 「進行方向の右側レーン」方式。leg ごとにページ内で一意の
+      // レーン番号 (1始まり)。往復 leg は進行方向が逆なので自動的に反対側へ並び、
+      // 循環 leg の折り返し区間も左右に分かれる。leg 内の極大パターン線は
+      // 同一レーンなので幹線が完全に重なって1本に見える (それが狙い)。
       const zoomExpr = (v10, v13, v15, v17) => [
         "interpolate", ["linear"], ["zoom"], 10, v10, 13, v13, 15, v15, 17, v17,
       ];
       const entries = [];
-      systems.forEach((s, i) => {
-        // 連続する同一座標を除去 (乗り場が同一クラスタ座標の場合の offset 計算の乱れ防止)
-        const coords = (s.polyline || [])
-          .map(([lat, lon]) => [lon, lat])
-          .filter((c, k, arr) => k === 0 || c[0] !== arr[k - 1][0] || c[1] !== arr[k - 1][1]);
-        if (coords.length < 2) return;
-        for (const [lon, lat] of coords) {
-          found = true;
-          minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
-          minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
+      legs.forEach((lg, i) => {
+        const lineCoords = (lg.lines || []).map((ln) =>
+          (ln.polyline || [])
+            .map(([lat, lon]) => [lon, lat])
+            // 連続する同一座標を除去 (offset 計算の乱れ防止)
+            .filter((c, k, arr) => k === 0 || c[0] !== arr[k - 1][0] || c[1] !== arr[k - 1][1])
+        ).filter((cs) => cs.length >= 2);
+        if (!lineCoords.length) return;
+        for (const cs of lineCoords) {
+          for (const [lon, lat] of cs) {
+            found = true;
+            minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
+            minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
+          }
         }
-        const removed = s.status === "removed";
+        const removed = lg.status === "removed";
         entries.push({
           i,
           removed,
           ...styleOf(i),
-          // 線幅: ズーム連動を強めに (拡大時に細すぎる問題への対応)
           width: removed ? zoomExpr(2.5, 4, 6, 9) : zoomExpr(3.5, 6, 9, 14),
-          offset: zoomExpr(laneOf[i] * 1.8, laneOf[i] * 4, laneOf[i] * 6.5, laneOf[i] * 10),
+          offset: zoomExpr((i + 1) * 1.8, (i + 1) * 4, (i + 1) * 6.5, (i + 1) * 10),
         });
-        map.addSource(`sys${i}`, {
+        map.addSource(`leg${i}`, {
           type: "geojson",
-          data: { type: "Feature", geometry: { type: "LineString", coordinates: coords } },
+          data: {
+            type: "Feature",
+            geometry: { type: "MultiLineString", coordinates: lineCoords },
+          },
         });
       });
-      // 描画は3段: (1) 全系統の白縁取りを先に敷く → 隣のレーンの線を縁取りが
+      // 描画は3段: (1) 全 leg の白縁取りを先に敷く → 隣のレーンの線を縁取りが
       // 上書きしない (2) 本体の色線 (3) 縞・白芯のオーバーレイ
       for (const e of entries) {
         map.addLayer({
-          id: `sys${e.i}-casing`, type: "line", source: `sys${e.i}`,
+          id: `leg${e.i}-casing`, type: "line", source: `leg${e.i}`,
           paint: {
             "line-color": "#fff",
             // 縁取り: 本体より片側 1.5〜3px 太く。地図 (特に拡大時) とのコントラスト確保
@@ -104,7 +108,7 @@
       for (const e of entries) {
         const opacity = e.removed ? 0.75 : 1;
         map.addLayer({
-          id: `sys${e.i}`, type: "line", source: `sys${e.i}`,
+          id: `leg${e.i}`, type: "line", source: `leg${e.i}`,
           paint: {
             "line-color": e.color,
             "line-width": e.width,
@@ -115,7 +119,7 @@
         if (e.pattern === "stripe") {
           // 同幅のダッシュを重ねる → 下の色線が隙間を埋め、途切れない2色縞になる
           map.addLayer({
-            id: `sys${e.i}-stripe`, type: "line", source: `sys${e.i}`,
+            id: `leg${e.i}-stripe`, type: "line", source: `leg${e.i}`,
             paint: {
               "line-color": STRIPE_COLOR,
               "line-width": e.width,
@@ -127,7 +131,7 @@
         } else if (e.pattern === "double") {
           // 細い白芯を重ねて二本線に
           map.addLayer({
-            id: `sys${e.i}-core`, type: "line", source: `sys${e.i}`,
+            id: `leg${e.i}-core`, type: "line", source: `leg${e.i}`,
             paint: {
               "line-color": CORE_COLOR,
               "line-width": e.removed ? zoomExpr(0.9, 1.4, 2.1, 3.2) : zoomExpr(1.2, 2, 3, 4.7),
@@ -138,22 +142,25 @@
         }
       }
 
-      // 停留所点 + tier 付きラベル
+      // 停留所点 + tier 付きラベル。tier1 (起終点・ハブ) / tier2 (区間便の端点・
+      // 分岐点 = 時刻表内で出発・終着・分離が起こる停留所) は白抜きの大きい丸で強調
       const stopFeatures = [];
       const seen = new Set();
-      systems.forEach((s) => {
-        (s.polyline || []).forEach(([lat, lon], idx) => {
-          const name = s.stops[idx] ?? "";
-          if (!name || seen.has(name)) return;
-          seen.add(name);
-          stopFeatures.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [lon, lat] },
-            properties: {
-              name,
-              tier: keyStops[name] ?? 3,
-              hi: highlightStops.includes(name),
-            },
+      legs.forEach((lg) => {
+        (lg.lines || []).forEach((ln) => {
+          (ln.polyline || []).forEach(([lat, lon], idx) => {
+            const name = ln.stops[idx] ?? "";
+            if (!name || seen.has(name)) return;
+            seen.add(name);
+            stopFeatures.push({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [lon, lat] },
+              properties: {
+                name,
+                tier: keyStops[name] ?? 3,
+                hi: highlightStops.includes(name),
+              },
+            });
           });
         });
       });
@@ -166,12 +173,23 @@
         paint: {
           "circle-radius": [
             "interpolate", ["linear"], ["zoom"],
-            10, ["case", ["get", "hi"], 6, ["==", ["get", "tier"], 1], 4, 2.5],
-            15, ["case", ["get", "hi"], 9, ["==", ["get", "tier"], 1], 6, 4],
+            10, ["case", ["get", "hi"], 7,
+                 ["==", ["get", "tier"], 1], 6,
+                 ["==", ["get", "tier"], 2], 4.5, 2.5],
+            15, ["case", ["get", "hi"], 10,
+                 ["==", ["get", "tier"], 1], 9,
+                 ["==", ["get", "tier"], 2], 7, 4],
           ],
-          "circle-color": ["case", ["get", "hi"], "#c62828", "#333"],
-          "circle-stroke-color": "#fff",
-          "circle-stroke-width": ["case", ["get", "hi"], 2, 1],
+          // 主要停留所 (tier1/2) は白抜き+濃輪郭、その他は濃点+白輪郭
+          "circle-color": ["case",
+            ["get", "hi"], "#c62828",
+            ["<=", ["get", "tier"], 2], "#fff", "#333"],
+          "circle-stroke-color": ["case",
+            ["get", "hi"], "#fff",
+            ["<=", ["get", "tier"], 2], "#1c1e21", "#fff"],
+          "circle-stroke-width": ["case",
+            ["get", "hi"], 2,
+            ["<=", ["get", "tier"], 2], 2, 1],
         },
       });
       // 停留所名: ズーム段階で tier1 → tier2 → 全停留所
@@ -193,7 +211,7 @@
         },
       });
       map.addLayer(labelLayer("labels1", ["==", ["get", "tier"], 1], 0, 12));
-      map.addLayer(labelLayer("labels2", ["==", ["get", "tier"], 2], 12, 11));
+      map.addLayer(labelLayer("labels2", ["==", ["get", "tier"], 2], 11, 11.5));
       map.addLayer(labelLayer("labels3", ["==", ["get", "tier"], 3], 14, 11));
 
       map.on("click", "stops", (ev) => {
@@ -215,7 +233,7 @@
 <div class="map-box" bind:this={container}></div>
 <p class="note">
   {tt("legend")}:
-  {#each systems as s, i}
+  {#each legs as lg, i}
     {@const st = styleOf(i)}
     <span style="white-space:nowrap; margin-right:0.8em;">
       <!-- 背景が白なので、地図の白縁取りの代わりに淡灰の帯で白芯を見せる -->
@@ -229,9 +247,9 @@
           <line x1="0" y1="5" x2="34" y2="5" stroke="#fff" stroke-width="2" />
         {/if}
       </svg>
-      {s.first_stop}→{s.last_stop}
-      {#if s.status === "added"}[{tt("col_added")}]{/if}
-      {#if s.status === "removed"}[{tt("col_removed")}]{/if}
+      {lg.label}
+      {#if lg.status === "added"}[{tt("col_added")}]{/if}
+      {#if lg.status === "removed"}[{tt("col_removed")}]{/if}
     </span>
   {/each}
 </p>

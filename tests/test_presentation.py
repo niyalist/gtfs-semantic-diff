@@ -5,6 +5,7 @@ import json
 from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts
 from gtfs_semdiff.load import load_snapshot
 from gtfs_semdiff.report.presentation import (
+    _is_subsequence,
     align_to_axis,
     build_presentation,
     build_stop_axis,
@@ -200,6 +201,71 @@ def test_direction_group_mid_agreement_not_merged(tmp_path, config):
     model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
     page = page_of(model, "1")
     assert len(page["overview"]["direction_groups"]) == 2
+
+
+# --- ①路線概要の leg ビュー (R2 改: 極大パターン線・鏡像畳み込み) ---
+
+
+def test_is_subsequence():
+    assert _is_subsequence(("B", "C"), ("A", "B", "C", "D"))
+    assert _is_subsequence(("A", "C"), ("A", "B", "C"))  # 非連続も部分列
+    assert not _is_subsequence(("C", "B"), ("A", "B", "C"))  # 順序が違う
+
+
+def test_leg_view_prunes_contained_short_turn(tmp_path, config):
+    # 区間便 (完全包含) は地図の線を増やさない。軸には全停留所が入る
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,H1\nR1,WD,H2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("H1", 10, ["S2", "S3", "S4"]),
+        ("H2", 11, ["S2", "S3", "S4"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    dg = page["overview"]["direction_groups"][0]
+    (leg,) = dg["legs"]
+    assert len(leg["lines"]) == 1  # 区間便は極大パターンに吸収
+    assert leg["lines"][0]["stops"] == ["駅前", "市役所前", "病院前", "高校前", "温泉口"]
+    assert leg["axis"] == ["駅前", "市役所前", "病院前", "高校前", "温泉口"]
+    # 区間便の端点は key_stops (tier2 以下) で強調される
+    assert page["overview"]["key_stops"].get("市役所前", 3) <= 2
+    assert page["overview"]["key_stops"].get("高校前", 3) <= 2
+
+
+def test_axis_rows_mirror_collapsed(tmp_path, config):
+    # 往復が完全な鏡像なら停車列は「A ⇄ B」1行に畳む
+    model, _ = build(tmp_path, config, old_files=BIDIRECTIONAL, new_files=BIDIRECTIONAL)
+    page = page_of(model, "1")
+    dg = page["overview"]["direction_groups"][0]
+    assert dg["axis_rows"] == [{
+        "label": "駅前 ⇄ 病院前", "kind": "pair",
+        "stops": ["駅前", "市役所前", "病院前"],
+    }]
+
+
+def test_axis_rows_asymmetric_stays_two_rows(tmp_path, config):
+    # 岩屋線型 (非対称往復) は2行のままになり、非対称であることが見える
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,B1\nR1,WD,B2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("B1", 10, ["S5", "S4", "S3", "S2", "S0"]),  # 発時刻を後にして canon を往路に
+        ("B2", 11, ["S5", "S4", "S3", "S2", "S0"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    dg = page["overview"]["direction_groups"][0]
+    rows = dg["axis_rows"]
+    assert [r["kind"] for r in rows] == ["leg", "leg"]
+    assert rows[0]["stops"][-1] == "温泉口"
+    assert rows[1]["stops"][-1] == "営業所"  # 復路の別端点が行として現れる
 
 
 # --- ② Lev カスケード ---
