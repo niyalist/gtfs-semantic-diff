@@ -34,9 +34,9 @@
     </thead>
     <tbody>
       {#each matrix.rows as r}
-        <tr class:agg={r.kind === "aggregate"}>
-          <td class={r.kind === "system" ? "indent" : ""}>
-            {r.kind === "system" ? "└ " : ""}{r.label}
+        <tr class:agg={r.kind === "aggregate"} class:leg={r.kind === "leg"}>
+          <td class={r.kind === "system" ? "indent2" : r.kind === "leg" ? "indent" : ""}>
+            {r.kind === "system" ? "└ " : r.kind === "leg" ? "└ " : ""}{r.label}
           </td>
           <td>{dayJa(r.day_type)}</td>
           {#each bands as b}
@@ -53,7 +53,9 @@
 
 <style>
   tr.agg td { font-weight: 600; background: var(--bg-soft); }
+  tr.leg td { font-weight: 600; } /* ④時刻表の表題と同ラベル・同便数の方向行 */
   td.indent { padding-left: 1.4em; }
+  td.indent2 { padding-left: 2.9em; }
   td.inc { background: #fff3e6; } /* 補強のみ: 記号▲▼が第1チャネル */
   td.dec { background: #e8f0f7; }
 </style>

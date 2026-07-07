@@ -401,9 +401,12 @@ class _Builder:
                 "id": "",  # 後で採番
                 "kind": kind,
                 "label": label,
+                # ④時刻表の表題・③本数表の方向行に共通で使う「起点 → 終点」形式
+                # (dg ラベル「A ⇄ B」との対応が読み取れるように「◯◯方面」をやめた)
                 "leg_labels": {
-                    "forward": f"{canon['last_stop']}方面" if not loop else label,
-                    "reverse": f"{canon['first_stop']}方面",
+                    "forward": label if loop else
+                    f"{canon['first_stop']} → {canon['last_stop']}",
+                    "reverse": f"{canon['last_stop']} → {canon['first_stop']}",
                 },
                 "systems": sorted(group_systems,
                                   key=lambda s: (-s["trips_new"] - s["trips_old"],
@@ -511,9 +514,15 @@ class _Builder:
         band_labels = self.bands.labels()
         rows = []
         for g in dgroups:
+            # 行の入れ子 (R3 改 2026-07-07): 方向グループ集計 → 方向 (leg) 集計 →
+            # 系統内訳。leg 行は④時刻表と同じラベル・同じ便数になり対応が読める。
+            # 方向が1つしかないグループ (one_way/loop) では leg 行は集計行と同じ
+            # なので出さない
+            multi_leg = len({s["leg"] for s in g["systems"]}) > 1
             for day in sorted(days, key=day_sort_key):
-                sys_rows = []
                 agg: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+                leg_aggs: dict[str, dict[str, list[int]]] = {}
+                leg_sys_rows: dict[str, list[dict]] = {}
                 for s in g["systems"]:
                     row_cells = {}
                     for band in band_labels:
@@ -522,10 +531,14 @@ class _Builder:
                             row_cells[band] = v
                             agg[band][0] += v[0]
                             agg[band][1] += v[1]
+                            la = leg_aggs.setdefault(
+                                s["leg"], defaultdict(lambda: [0, 0]))
+                            la[band][0] += v[0]
+                            la[band][1] += v[1]
                     if row_cells:
                         total = [sum(v[0] for v in row_cells.values()),
                                  sum(v[1] for v in row_cells.values())]
-                        sys_rows.append({
+                        leg_sys_rows.setdefault(s["leg"], []).append({
                             "kind": "system",
                             "direction_group": g["id"],
                             "day_type": day,
@@ -537,7 +550,7 @@ class _Builder:
                             "changed": total[0] != total[1]
                             or any(v[0] != v[1] for v in row_cells.values()),
                         })
-                if not sys_rows:
+                if not leg_sys_rows:
                     continue
                 agg_total = [sum(v[0] for v in agg.values()),
                              sum(v[1] for v in agg.values())]
@@ -550,8 +563,26 @@ class _Builder:
                     "total": agg_total,
                     "changed": any(v[0] != v[1] for v in agg.values()),
                 })
-                rows.extend(sys_rows if len(sys_rows) > 1 else
-                            [])  # 系統1つなら集計行のみ (内訳は冗長)
+                for leg in ("forward", "reverse"):
+                    sys_rows = leg_sys_rows.get(leg)
+                    if not sys_rows:
+                        continue
+                    if multi_leg:
+                        la = leg_aggs[leg]
+                        rows.append({
+                            "kind": "leg",
+                            "direction_group": g["id"],
+                            "day_type": day,
+                            "leg": leg,
+                            "label": g["leg_labels"][leg],
+                            "cells": dict(la),
+                            "total": [sum(v[0] for v in la.values()),
+                                      sum(v[1] for v in la.values())],
+                            "changed": any(v[0] != v[1] for v in la.values()),
+                        })
+                    # 系統1つの階層では内訳行は冗長なので出さない
+                    if len(sys_rows) > 1:
+                        rows.extend(sys_rows)
         return {"bands": band_labels, "rows": rows}
 
     # --- ② 変化サマリー (R12 カスケード) ---

@@ -470,6 +470,32 @@ def test_band_matrix_structure_and_day_order(tmp_path, config):
     assert not page["has_changes"]
 
 
+def test_band_matrix_leg_rows_match_timetable_labels(tmp_path, config):
+    # R3 改 (07-07): 往復グループでは方向 (leg) 集計行が入り、
+    # ラベル・便数が④時刻表の表題と一致する
+    model, _ = build(tmp_path, config, old_files=BIDIRECTIONAL, new_files=BIDIRECTIONAL)
+    page = page_of(model, "1")
+    rows = page["band_matrix"]["rows"]
+    legs = [r for r in rows if r["kind"] == "leg"]
+    assert [r["label"] for r in legs] == ["駅前 → 病院前", "病院前 → 駅前"]
+    # ④の表題と同一ラベル
+    assert {r["label"] for r in legs} == {t["label"] for t in page["timetables"]}
+    # leg 行の便数 = 対応する時刻表の列数
+    by_label = {t["label"]: len(t["columns"]) for t in page["timetables"]}
+    for r in legs:
+        assert r["total"] == [by_label[r["label"]], by_label[r["label"]]]
+    # 方向グループ集計 = leg 集計の和
+    agg = next(r for r in rows if r["kind"] == "aggregate")
+    assert agg["total"][1] == sum(r["total"][1] for r in legs)
+
+
+def test_band_matrix_single_direction_has_no_leg_rows(tmp_path, config):
+    # 片方向のみのグループでは leg 行は集計行と同じになるため出さない
+    model, _ = build(tmp_path, config)
+    page = page_of(model, "1")
+    assert not [r for r in page["band_matrix"]["rows"] if r["kind"] == "leg"]
+
+
 def test_timetable_diff_columns(tmp_path, config):
     # T1 時刻変更 + T2 廃止 + T9 新設 → 差分素材 (status / changed_positions)
     new_files = {
