@@ -59,7 +59,12 @@ uniform_shift_max_std_sec = 120   # TIMETABLE_SHIFTED 判定
 # プレゼンテーションモデル (docs/design/presentation.md) の境界閾値
 system_min_trips = 2              # Lev.2 (系統の出現・消滅) として報告する最小便数
 full_coverage = 0.9               # Lev.3 で「全便一貫」とみなす影響率
-direction_pair_jaccard = 0.6      # 往復ペア判定の停留所集合 Jaccard 下限
+direction_pair_jaccard = 0.6      # 方向グループ束ね判定の停留所集合 Jaccard 下限
+# 方向グループの束ね (R15 改訂 2026-07-07): 共有停留所ペアの相対順序整合度で判定。
+# 整合度 <= reversed_max → 往復 / >= same_min → 同方向 (区間便等) / 中間域は束ねない
+direction_reversed_max_agreement = 0.2
+direction_same_min_agreement = 0.8
+direction_min_shared_stops = 3    # 順序整合度の判定に必要な最小共有停留所数
 pair_max_shift_min = 60           # 時刻表の表示用ペアリング (廃止便×新設便) の発時刻差上限 (分)
 hub_min_groups = 3                # この数以上の路線が通る停留所を「主要停留所 (ハブ)」とする
 

@@ -9,6 +9,7 @@ from gtfs_semdiff.report.presentation import (
     build_presentation,
     build_stop_axis,
     merge_axis,
+    order_agreement,
 )
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
@@ -97,6 +98,108 @@ def test_direction_group_pairs_reverse_legs(tmp_path, config):
     fwd = next(t for t in tables if t["leg"] == "forward")
     assert fwd["stop_axis"] == ["駅前", "市役所前", "病院前"]
     assert all(c["status"] == "unchanged" for c in fwd["columns"])
+
+
+# --- 方向グループ R15 改訂 (V2.1): 順序整合度による束ね ---
+
+SIX_STOPS = {
+    "stops.txt": (
+        "stop_id,stop_name,stop_lat,stop_lon\n"
+        "S0,営業所,35.9900,138.9900\n"
+        "S1,駅前,36.0000,139.0000\n"
+        "S2,市役所前,36.0100,139.0100\n"
+        "S3,病院前,36.0200,139.0200\n"
+        "S4,高校前,36.0300,139.0300\n"
+        "S5,温泉口,36.0400,139.0400\n"
+        "S6,新道,36.0500,139.0500\n"
+    ),
+}
+
+
+def _stop_times(specs):
+    """specs: [(trip_id, 開始時, [stop_id,...]), ...] → stop_times.txt 文字列。"""
+    lines = ["trip_id,arrival_time,departure_time,stop_id,stop_sequence"]
+    for trip, hour, stops in specs:
+        for i, s in enumerate(stops):
+            t = f"{hour:02d}:{i * 5:02d}:00"
+            lines.append(f"{trip},{t},{t},{s},{i + 1}")
+    return "\n".join(lines) + "\n"
+
+
+def test_order_agreement_values():
+    assert order_agreement(list("ABCDE"), list("EDCBA")) == (0.0, 5)
+    assert order_agreement(list("ABCDE"), list("BCD")) == (1.0, 3)
+    agree, shared = order_agreement(
+        ["A", "B", "C", "D", "E"], ["C", "D", "X", "A", "B"]
+    )
+    assert shared == 4
+    assert 0.2 < agree < 0.8  # 中間域
+
+
+def test_direction_group_asymmetric_reversal(tmp_path, config):
+    # 岩屋線型: 復路が往路の起点を超えて別の端点 (営業所) まで走る。
+    # 端点は完全逆転でないが、順序整合度 0 なので往復として束ねる (R15 改訂)
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,B1\nR1,WD,B2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("B1", 8, ["S5", "S4", "S3", "S2", "S0"]),
+        ("B2", 9, ["S5", "S4", "S3", "S2", "S0"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    dgs = page["overview"]["direction_groups"]
+    assert len(dgs) == 1
+    assert dgs[0]["kind"] == "bidirectional"
+    assert {s["leg"] for s in dgs[0]["systems"]} == {"forward", "reverse"}
+
+
+def test_direction_group_merges_short_turn_same_direction(tmp_path, config):
+    # 区間便: 端点が違っても順序整合度 >= same_min なら同じ leg に束ね、
+    # 同一の時刻表に併合される (区間外セルは None = 運行区間外)
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,H1\nR1,WD,H2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("H1", 10, ["S2", "S3", "S4"]),
+        ("H2", 11, ["S2", "S3", "S4"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    dgs = page["overview"]["direction_groups"]
+    assert len(dgs) == 1
+    assert all(s["leg"] == "forward" for s in dgs[0]["systems"])
+    tables = page["timetables"]
+    assert len(tables) == 1  # (dg, forward, weekday) の1枚に併合
+    assert len(tables[0]["columns"]) == 4
+    axis = tables[0]["stop_axis"]
+    assert axis == ["駅前", "市役所前", "病院前", "高校前", "温泉口"]
+    short_col = tables[0]["columns"][2]  # 10時発の区間便
+    assert short_col["times_new"][0] is None  # 駅前は運行区間外
+    assert short_col["times_new"][-1] is None
+
+
+def test_direction_group_mid_agreement_not_merged(tmp_path, config):
+    # 順序整合度が中間域 (reversed_max < agree < same_min) のペアは束ねない
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,G1\nR1,WD,G2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("G1", 8, ["S3", "S4", "S6", "S1", "S2"]),
+        ("G2", 9, ["S3", "S4", "S6", "S1", "S2"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    assert len(page["overview"]["direction_groups"]) == 2
 
 
 # --- ② Lev カスケード ---

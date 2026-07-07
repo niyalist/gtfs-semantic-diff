@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from itertools import combinations
 
 from ..config import Config
 from ..events.timebands import TimeBands
@@ -37,6 +38,36 @@ _PATTERN_EVENT_TYPES = {
 
 def day_sort_key(day_type: str) -> int:
     return DAY_ORDER.index(day_type) if day_type in DAY_ORDER else len(DAY_ORDER)
+
+
+# --- 方向グループの順序整合度 (R15 改訂 2026-07-07) ---
+
+
+def order_agreement(stops_a: list[str], stops_b: list[str]) -> tuple[float | None, int]:
+    """共有停留所ペアのうち相対順序が一致する割合と共有停留所数を返す。
+
+    位置は初出で判定 (循環線の重複停留所対策)。共有ペアが無ければ (None, 数)。
+    1.0 = 完全に同方向、0.0 = 完全に逆方向。
+    """
+    pos_a: dict[str, int] = {}
+    for i, s in enumerate(stops_a):
+        pos_a.setdefault(s, i)
+    pos_b: dict[str, int] = {}
+    for i, s in enumerate(stops_b):
+        pos_b.setdefault(s, i)
+    shared = [s for s in pos_a if s in pos_b]
+    same = 0
+    total = 0
+    for x, y in combinations(shared, 2):
+        d = (pos_a[x] - pos_a[y]) * (pos_b[x] - pos_b[y])
+        if d == 0:
+            continue
+        total += 1
+        if d > 0:
+            same += 1
+    if total == 0:
+        return None, len(shared)
+    return same / total, len(shared)
 
 
 # --- 停留所軸の併合 (R17) ---
@@ -131,6 +162,15 @@ class _Builder:
         self.full_coverage = config.get("presentation", "full_coverage", default=0.9)
         self.pair_jaccard = config.get(
             "presentation", "direction_pair_jaccard", default=0.6
+        )
+        self.reversed_max = config.get(
+            "presentation", "direction_reversed_max_agreement", default=0.2
+        )
+        self.same_min = config.get(
+            "presentation", "direction_same_min_agreement", default=0.8
+        )
+        self.min_shared = config.get(
+            "presentation", "direction_min_shared_stops", default=3
         )
         self.accept = config.get("events", "accept_confidence", default=0.5)
 
@@ -260,7 +300,6 @@ class _Builder:
             return min((d for d in deps if d), default="99:99:99")
 
         systems = []
-        linked_new = set(link.values())
         for new_id, c in sorted(new_clusters.items()):
             old_id = next((o for o, n in link.items() if n == new_id), None)
             rep = c.representative
@@ -313,17 +352,18 @@ class _Builder:
         def union(a, b):
             parent[find(a)] = find(b)
 
+        # R15 改訂 (2026-07-07): 端点完全一致は要求せず、共有停留所の順序整合度で
+        # 往復 (<= reversed_max) / 同方向 (>= same_min) を判定。中間域は束ねない。
         for i in range(n):
             for j in range(i + 1, n):
                 a, b = systems[i], systems[j]
                 jac = stop_jaccard(set(a["stops"]), set(b["stops"]))
                 if jac < self.pair_jaccard:
                     continue
-                reversed_pair = (a["first_stop"] == b["last_stop"]
-                                 and a["last_stop"] == b["first_stop"])
-                same_leg = (a["first_stop"] == b["first_stop"]
-                            and a["last_stop"] == b["last_stop"])
-                if reversed_pair or same_leg:
+                agree, shared = order_agreement(a["stops"], b["stops"])
+                if agree is None or shared < self.min_shared:
+                    continue
+                if agree <= self.reversed_max or agree >= self.same_min:
                     union(i, j)
 
         by_root: dict[int, list[int]] = defaultdict(list)
@@ -343,11 +383,13 @@ class _Builder:
             for s in group_systems:
                 if loop:
                     s["leg"] = "forward"
-                elif (s["first_stop"] == canon["last_stop"]
-                        and s["last_stop"] == canon["first_stop"]):
-                    s["leg"] = "reverse"
                 else:
-                    s["leg"] = "forward"
+                    agree, _ = order_agreement(s["stops"], canon["stops"])
+                    s["leg"] = (
+                        "reverse"
+                        if agree is not None and agree <= self.reversed_max
+                        else "forward"
+                    )
             if loop:
                 kind, label = "loop", f"{canon['first_stop']} 循環"
             elif any(s["leg"] == "reverse" for s in group_systems):
