@@ -317,6 +317,84 @@ def test_column_sort_disjoint_sections_by_boundary(tmp_path, config):
     assert [c["trip_id_new"] for c in cols] == ["FULL", "UP", "DOWN"]
 
 
+# --- 時刻表の分冊 (R17 改: 経由違い・循環逆回りの分離、包含の併合維持) ---
+
+
+def test_sheet_split_by_corridor(tmp_path, config):
+    # 同じ起終点+共通の中間点で、間の経路が交互に混ざる2系統 →
+    # 1枚だと飛びがトリガーを超え、分冊 + 経由ラベルになる
+    feed = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\n"
+            "A1,山道一,36.0100,139.0100\nA2,山道二,36.0150,139.0150\n"
+            "B1,川道一,36.0100,139.0300\nB2,川道二,36.0150,139.0350\n"
+            "M1,中央,36.0120,139.0200\n"
+            "S9,終点,36.0300,139.0250\n"
+        ),
+        "trips.txt": (
+            "route_id,service_id,trip_id\n"
+            + "".join(f"R1,WD,M{i}\n" for i in range(4))
+            + "".join(f"R1,WD,K{i}\n" for i in range(4))
+        ),
+        "stop_times.txt": _stop_times(
+            [(f"M{i}", 7 + i, ["S1", "A1", "M1", "A2", "S9"]) for i in range(4)]
+            + [(f"K{i}", 7 + i, ["S1", "B1", "M1", "B2", "S9"]) for i in range(4)]
+        ),
+    }
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    tables = page["timetables"]
+    assert len(tables) == 2  # 経由違いは分冊
+    labels = {tb["sheet_label"] for tb in tables}
+    assert labels == {"山道一・山道二経由", "川道一・川道二経由"}
+    for tb in tables:
+        assert len(tb["columns"]) == 4
+
+
+def test_sheet_split_loop_variants(tmp_path, config):
+    # 同一停留所集合で巡回順の違う循環変種 (マイバス型)。同じ方向グループに
+    # 束なるが、1枚だと互いの重複行で飛びが増える → 分冊 + 先回りラベル。
+    # (完全な逆回りは V2.1 の方向グループ段階で中間域となり最初から別表)
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\n"
+        "R1,WD,CW1\nR1,WD,CW2\nR1,WD,V1\nR1,WD,V2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("CW1", 8, ["S1", "S2", "S3", "S4", "S5", "S6", "S1"]),
+        ("CW2", 9, ["S1", "S2", "S3", "S4", "S5", "S6", "S1"]),
+        ("V1", 8, ["S1", "S3", "S2", "S5", "S4", "S6", "S1"]),
+        ("V2", 9, ["S1", "S3", "S2", "S5", "S4", "S6", "S1"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    tables = page["timetables"]
+    assert len(tables) == 2
+    labels = sorted(tb["sheet_label"] for tb in tables)
+    assert labels == ["市役所前先回り", "病院前先回り"]
+
+
+def test_sheet_keeps_contained_short_turn(tmp_path, config):
+    # 区間便 (包含) は飛びを増やさない → 分冊されず1枚のまま
+    feed = dict(SIX_STOPS)
+    feed["trips.txt"] = (
+        "route_id,service_id,trip_id\nR1,WD,F1\nR1,WD,F2\nR1,WD,H1\nR1,WD,H2\n"
+    )
+    feed["stop_times.txt"] = _stop_times([
+        ("F1", 8, ["S1", "S2", "S3", "S4", "S5"]),
+        ("F2", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("H1", 10, ["S2", "S3", "S4"]),
+        ("H2", 11, ["S2", "S3", "S4"]),
+    ])
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    tables = page["timetables"]
+    assert len(tables) == 1
+    assert tables[0]["sheet_label"] is None
+    assert len(tables[0]["columns"]) == 4
+
+
 # --- 停留所の変化章 (V4) ---
 
 

@@ -155,6 +155,139 @@ def _is_subsequence(a: tuple, b: tuple) -> bool:
     return all(x in it for x in a)
 
 
+# --- 時刻表の分冊 (R17 改 2026-07-08) ---
+
+
+def _gap_runs(positions: list[int]) -> int:
+    """便の運行範囲内で経由行が途切れる回数 (時刻表の読みにくさの目的量)。"""
+    pos = [p for p in positions if p >= 0]
+    if len(pos) < 2:
+        return 0
+    served = set(pos)
+    runs, in_gap = 0, False
+    for i in range(pos[0], pos[-1] + 1):
+        if i not in served:
+            if not in_gap:
+                runs += 1
+                in_gap = True
+        else:
+            in_gap = False
+    return runs
+
+
+def _specs_gap(specs: list[tuple]) -> int:
+    """列候補 (status, old, new) 群を1枚に載せたときの飛び合計。"""
+    seqs = set()
+    for _, o, nw in specs:
+        if o is not None:
+            seqs.add(o.base_seq)
+        if nw is not None:
+            seqs.add(nw.base_seq)
+    axis = build_stop_axis(sorted(seqs))
+    total = 0
+    for _, o, nw in specs:
+        for t in (o, nw):
+            if t is not None:
+                total += _gap_runs(align_to_axis(t.base_seq, axis))
+    return total
+
+
+def _specs_alignments(specs: list[tuple]) -> int:
+    """飛びの分母 (表に載る新旧の時刻列の本数)。"""
+    return sum((s[1] is not None) + (s[2] is not None) for s in specs)
+
+
+def group_sheets(spec_groups: list[list[tuple]], max_cost: float) -> list[list[tuple]]:
+    """分冊 (sheet) の目的駆動グループ化。
+
+    系統ごとの列候補グループを初期状態に、「併合したときの飛びの増加量 / 便数」
+    が最小の対から、増加量が max_cost 以下の間だけ貪欲に併合する (決定的)。
+    区間便 (包含) は増加量 0 で自然に併合され、経由違い・循環の逆回りは
+    増加量が大きく分冊のまま残る。
+    """
+    groups = [list(g) for g in spec_groups if g]
+    costs = [_specs_gap(g) for g in groups]
+    while len(groups) > 1:
+        best = None  # (cost, i, j, merged_gap)
+        for i in range(len(groups)):
+            for j in range(i + 1, len(groups)):
+                merged_gap = _specs_gap(groups[i] + groups[j])
+                cost = (merged_gap - costs[i] - costs[j]) / (
+                    len(groups[i]) + len(groups[j])
+                )
+                if best is None or cost < best[0]:
+                    best = (cost, i, j, merged_gap)
+        if best is None or best[0] > max_cost:
+            break
+        _, i, j, merged_gap = best
+        groups[i] = groups[i] + groups[j]
+        costs[i] = merged_gap
+        del groups[j]
+        del costs[j]
+    return groups
+
+
+def _sheet_sort_key(specs: list[tuple]) -> str:
+    """分冊の決定的な並び順キー (便数同数のとき): 最小の trip_id。"""
+    return min((nw or o).trip_id for _, o, nw in specs)
+
+
+def sheet_labels(sheets: list[list[tuple]]) -> list[str | None]:
+    """各分冊のラベル。1枚なら None。
+
+    - 識別停留所 (その分冊にだけある停留所) があれば頻度上位2つで「A・B経由」
+    - 無い (同一停留所集合で順序違い = 循環の逆回り等) なら、代表停車列同士の
+      最初の相違停留所で「◯◯先回り」
+    """
+    if len(sheets) <= 1:
+        return [None] * len(sheets)
+
+    def stop_freq(specs) -> dict[str, int]:
+        freq: dict[str, int] = defaultdict(int)
+        for _, o, nw in specs:
+            t = nw or o
+            for s in set(t.base_seq):
+                freq[s] += 1
+        return freq
+
+    def rep_seq(specs) -> tuple:
+        counts: dict[tuple, int] = defaultdict(int)
+        for _, o, nw in specs:
+            counts[(nw or o).base_seq] += 1
+        return max(counts, key=lambda s: (counts[s], s))
+
+    stop_sets = [set(stop_freq(sp)) for sp in sheets]
+    labels: list[str | None] = []
+    for i, specs in enumerate(sheets):
+        others: set[str] = set()
+        for j, ss in enumerate(stop_sets):
+            if j != i:
+                others |= ss
+        dist = stop_sets[i] - others
+        if dist:
+            freq = stop_freq(specs)
+            top = sorted(dist, key=lambda s: (-freq[s], s))[:2]
+            labels.append("・".join(top) + "経由")
+            continue
+        mine = rep_seq(specs)
+        other = rep_seq(sheets[0] if i else sheets[1])
+        label = None
+        for a, b in zip(mine, other):
+            if a != b:
+                label = f"{a}先回り"
+                break
+        labels.append(label or f"経路{i + 1}")
+    # 同名ラベルの重複解消 (「六地蔵先回り」×2 等): 2つ目以降に連番
+    seen: dict[str, int] = defaultdict(int)
+    for i, lb in enumerate(labels):
+        if lb is None:
+            continue
+        seen[lb] += 1
+        if seen[lb] > 1:
+            labels[i] = f"{lb}（{seen[lb]}）"
+    return labels
+
+
 # --- 停留所軸の併合 (R17) ---
 
 
@@ -1058,64 +1191,100 @@ class _Builder:
 
         tables = []
         all_replaced_pairs: list[tuple[TripInfo, TripInfo]] = []
+        max_sheet_cost = self.config.get(
+            "presentation", "sheet_merge_max_gap_per_trip", default=0.5
+        )
+        split_trigger = self.config.get(
+            "presentation", "sheet_split_trigger_gap_per_trip", default=1.5
+        )
         for (dg, leg, day) in sorted(buckets, key=lambda k: (k[0], k[1], day_sort_key(k[2]))):
             bucket = buckets[(dg, leg, day)]
-            # 軸は経路変更 trip の旧停車列も含めた超列にする (差分表示で旧時刻も並べるため)
-            seqs = [t.base_seq for t in bucket["old"] + bucket["new"]]
-            for nw in bucket["new"]:
-                pair = pair_of_new.get(nw.trip_id)
-                if pair:
-                    seqs.append(pair[1].base_seq)
-            axis = build_stop_axis(seqs)
             # 表示用ペアリング: 会計上は removed+added でも、同一バケット内で
             # 発時刻が近い便同士は「同じ便の置き換え」として1列に組む
             # (実例: direction_id 付与や trip_id 張り替えで厳密署名が組めないフィード、
-            #  停留所再編を伴う経路変更)。events / accounting には影響しない
+            #  停留所再編を伴う経路変更)。events / accounting には影響しない。
+            # ペアリングは分冊 (sheet) 分割の前に leg バケット全体で行う
+            # (経路変更で分冊をまたぐ便を取りこぼさないため)
             replaced = self._pair_leftovers(bucket, pair_of_old, pair_of_new)
             for n_id, o_t in replaced.items():
                 n_t = next(t for t in bucket["new"] if t.trip_id == n_id)
                 all_replaced_pairs.append((o_t, n_t))
 
-            columns = []
+            # 列候補 (status, old, new) を作り、一意な停車パターンごとにまとめる
+            # (経由違いは同一クラスタ内でも起こるため、初期単位は系統でなくパターン。
+            #  包含・微差のパターンは併合コスト 0〜微小で自然に再併合される)
+            specs_by_pattern: dict[tuple, list[tuple]] = defaultdict(list)
+
             done_old = set()
             for nw in bucket["new"]:
                 pair = pair_of_new.get(nw.trip_id)
                 if pair:
                     status, o, _ = pair
                     done_old.add(o.trip_id)
-                    columns.append(self._column(status, o, nw, axis))
                 elif nw.trip_id in replaced:
                     o = replaced[nw.trip_id]
                     done_old.add(o.trip_id)
                     status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
-                    columns.append(self._column(status, o, nw, axis))
                 else:
-                    columns.append(self._column("added", None, nw, axis))
+                    status, o = "added", None
+                specs_by_pattern[nw.base_seq].append((status, o, nw))
             for o in bucket["old"]:
                 if o.trip_id in done_old or o.trip_id in pair_of_old:
                     # 対応先が別バケット (経路変更で系統移動) の場合も旧側は出さない
                     continue
-                columns.append(self._column("removed", o, None, axis))
-            columns = sort_timetable_columns(columns)
-            for c in columns:
-                del c["sort_key"]
-            if not columns:
+                specs_by_pattern[o.base_seq].append(("removed", o, None))
+            if not specs_by_pattern:
                 # 旧側の便がすべて別バケットへ対応付いた場合など。空テーブルは出さない
                 continue
-            tables.append({
-                "direction_group": dg,
-                "leg": leg,
-                "label": dg_label.get((dg, leg), ""),
-                "day_type": day,
-                "stop_axis": list(axis),
-                # both / old_only (廃止) / new_only (新設) — 行名の表示と ・・ 判定に使う
-                "stop_axis_status": [
-                    "both" if (stop in self.old_stop_names and stop in self.new_stop_names)
-                    else ("old_only" if stop in self.old_stop_names else "new_only")
-                    for stop in axis
-                ],
-                "columns": columns,
-            })
+
+            # 分冊 (R17 改) はトップダウン: まず1枚で作り、読みにくい
+            # (飛び/便 > トリガー閾値) ときだけパターン単位から束ね直す。
+            # 読める表は分冊しない = 現状うまくいっている表は一切変わらない
+            all_specs = [s for k in sorted(specs_by_pattern)
+                         for s in specs_by_pattern[k]]
+            avg_gap = _specs_gap(all_specs) / max(_specs_alignments(all_specs), 1)
+            if avg_gap <= split_trigger:
+                sheets = [all_specs]
+            else:
+                sheets = group_sheets(
+                    [specs_by_pattern[k] for k in sorted(specs_by_pattern)],
+                    max_sheet_cost,
+                )
+            sheets.sort(key=lambda sp: (-len(sp), _sheet_sort_key(sp)))
+            labels = sheet_labels(sheets)
+            for sheet_no, (specs, sheet_label) in enumerate(zip(sheets, labels)):
+                # 軸は経路変更 trip の旧停車列も含めた超列にする
+                # (差分表示で旧時刻も並べるため)
+                seqs = set()
+                for _, o, nw in specs:
+                    for t in (o, nw):
+                        if t is not None:
+                            seqs.add(t.base_seq)
+                axis = build_stop_axis(sorted(seqs))
+                columns = [self._column(status, o, nw, axis)
+                           for status, o, nw in specs]
+                columns = sort_timetable_columns(columns)
+                for c in columns:
+                    del c["sort_key"]
+                tables.append({
+                    "direction_group": dg,
+                    "leg": leg,
+                    "label": dg_label.get((dg, leg), ""),
+                    "sheet": sheet_no,
+                    "sheet_label": sheet_label,
+                    "day_type": day,
+                    "stop_axis": list(axis),
+                    # both / old_only (廃止) / new_only (新設) —
+                    # 行名の表示と ・・ 判定に使う
+                    "stop_axis_status": [
+                        "both" if (stop in self.old_stop_names
+                                   and stop in self.new_stop_names)
+                        else ("old_only" if stop in self.old_stop_names
+                              else "new_only")
+                        for stop in axis
+                    ],
+                    "columns": columns,
+                })
         return tables, all_replaced_pairs
 
     def _pair_leftovers(self, bucket, pair_of_old, pair_of_new) -> dict[str, TripInfo]:

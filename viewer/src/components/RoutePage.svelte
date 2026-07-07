@@ -136,11 +136,11 @@
     <!-- ④ 新旧時刻表 -->
     {#if dayTimetables.length}
       <h3>{tt("timetables")}</h3>
-      {#each dayTimetables as tb (`${tb.direction_group}|${tb.leg}|${tb.day_type}`)}
+      {#each dayTimetables as tb (`${tb.direction_group}|${tb.leg}|${tb.day_type}|${tb.sheet ?? 0}`)}
         {@const changed = changedTables.includes(tb)}
         <details class="tt-section" open={changed && changedTables.length <= 4}>
           <summary>
-            {tb.label}
+            {tb.label}{#if tb.sheet_label}<span class="sheet-label">({tb.sheet_label})</span>{/if}
             <span class="count">
               {tb.columns.length}{tt("trips_count")}{changed ? " ＊" : ""}
             </span>
@@ -183,6 +183,7 @@
   }
   .tt-section { border: 1px solid var(--line); border-radius: 4px; margin: 0.35rem 0; }
   .tt-section > summary { cursor: pointer; padding: 0.3rem 0.6rem; background: var(--bg-soft); }
+  .sheet-label { font-weight: 600; margin-left: 0.4em; }
   .tt-section > :global(.tt-head), .tt-section > :global(p), .tt-section > :global(.tt-wrap) {
     margin: 0.4rem 0.6rem;
   }

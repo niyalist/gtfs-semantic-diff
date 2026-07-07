@@ -67,6 +67,13 @@ direction_same_min_agreement = 0.8
 direction_min_shared_stops = 3    # 順序整合度の判定に必要な最小共有停留所数
 pair_max_shift_min = 60           # 時刻表の表示用ペアリング (廃止便×新設便) の発時刻差上限 (分)
 hub_min_groups = 3                # この数以上の路線が通る停留所を「主要停留所 (ハブ)」とする
+# 時刻表の分冊 (R17 改)。トップダウン: 1枚で作った表の「飛び (経由行の途切れ)/便」
+# がトリガーを超えたときだけ、パターンを束ね直して分冊する。
+# 読める表は一切分冊しない (現状維持)
+sheet_split_trigger_gap_per_trip = 1.5
+# 分冊時にパターン同士を同じ表に併合してよい「飛びの増加量/便」の上限。
+# 包含 (区間便) は増加 0 で必ず併合される
+sheet_merge_max_gap_per_trip = 0.5
 
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"
