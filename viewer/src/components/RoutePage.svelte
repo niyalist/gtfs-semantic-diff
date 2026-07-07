@@ -95,7 +95,7 @@
     <div class="axis-grid">
       {#each axisRows as row}
         <span class="axis-label">{row.label}</span>
-        <span class="axis-stops">
+        <span class="axis-stops pattern">
           {#each elideByKeyStops(row.stops, keyStops, 11) as s, i}
             {#if i > 0}<span class="arrow">{row.kind === "pair" ? "—" : "→"}</span>{/if}<span class="stop">{s}</span>
           {/each}
