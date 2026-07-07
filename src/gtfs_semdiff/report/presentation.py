@@ -226,7 +226,95 @@ class _Builder:
         # 変化のあるページを先に (Lev.1 > その他の変化 > 変化なし)、次に名前順
         pages.sort(key=lambda p: (0 if p["summary"]["level1"] else
                                   (1 if p["has_changes"] else 2), p["route_group"]))
-        return {"day_type_order": DAY_ORDER, "route_pages": pages}
+        return {
+            "day_type_order": DAY_ORDER,
+            "route_pages": pages,
+            "stop_changes": self._stop_changes(),
+        }
+
+    # --- 停留所の変化 (V4: 路線に紐付かないレポート章) ---
+
+    def _stop_changes(self) -> dict:
+        """D群イベントを停留所クラスタ単位に集約したレポート章用ビュー。
+
+        - 改称・移設は重要 → 1停留所1項目 (座標・影響路線付き)
+        - 新設・廃止は路線廃止等で大量発生する → 影響 route_group の組ごとに
+          まとめる (1事象1行にしない)
+        - 乗り場 (PLATFORM_*) はマイナー扱い → 種類別件数に集約
+        """
+        old_by_name = {c.base_name: c for c in self.identity.old_stop_clusters.values()}
+        new_by_name = {c.base_name: c for c in self.identity.new_stop_clusters.values()}
+
+        def groups_of(name: str) -> list[str]:
+            return sorted(self.stop_groups.get(name, ()))
+
+        renamed = []
+        relocated = []
+        added_stops = []
+        removed_stops = []
+        platform: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for e in self.events:
+            name = e.subject.get("stop_cluster", "")
+            if e.type == "STOP_RENAMED":
+                c = new_by_name.get(name)
+                renamed.append({
+                    "old_name": (e.old_ref or {}).get("name", ""),
+                    "new_name": (e.new_ref or {}).get("name", name),
+                    "lat": c.lat if c else None,
+                    "lon": c.lon if c else None,
+                    "groups": groups_of(name),
+                })
+            elif e.type == "STOP_RELOCATED":
+                c_new = new_by_name.get(name)
+                c_old = old_by_name.get(name)
+                relocated.append({
+                    "name": e.subject.get("name", name),
+                    "moved_m": e.quantification.get("moved_m"),
+                    "lat": c_new.lat if c_new else None,
+                    "lon": c_new.lon if c_new else None,
+                    "old_lat": c_old.lat if c_old else None,
+                    "old_lon": c_old.lon if c_old else None,
+                    "groups": groups_of(name),
+                })
+            elif e.type == "STOP_ADDED":
+                c = new_by_name.get(name)
+                added_stops.append({
+                    "name": e.subject.get("name", name),
+                    "lat": c.lat if c else None,
+                    "lon": c.lon if c else None,
+                    "groups": groups_of(name),
+                })
+            elif e.type == "STOP_REMOVED":
+                c = old_by_name.get(name)
+                removed_stops.append({
+                    "name": e.subject.get("name", name),
+                    "lat": c.lat if c else None,
+                    "lon": c.lon if c else None,
+                    "groups": groups_of(name),
+                })
+            elif e.type in ("PLATFORM_CHANGED", "PLATFORM_ADDED", "PLATFORM_REMOVED"):
+                platform[name][e.type] += 1
+
+        def group_bulk(stops: list[dict]) -> list[dict]:
+            # 影響 route_group の組ごとにまとめる (路線廃止で一斉に消える停留所は1項目)
+            buckets: dict[tuple, list[dict]] = defaultdict(list)
+            for s in sorted(stops, key=lambda s: s["name"]):
+                buckets[tuple(s["groups"])].append(s)
+            return [
+                {"groups": list(key), "stops": members}
+                for key, members in sorted(buckets.items())
+            ]
+
+        return {
+            "renamed": sorted(renamed, key=lambda r: r["old_name"]),
+            "relocated": sorted(relocated, key=lambda r: r["name"]),
+            "added": group_bulk(added_stops),
+            "removed": group_bulk(removed_stops),
+            "platform": [
+                {"name": name, "kinds": dict(kinds)}
+                for name, kinds in sorted(platform.items())
+            ],
+        }
 
     # --- ページ構築 ---
 

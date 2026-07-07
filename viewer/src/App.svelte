@@ -2,6 +2,7 @@
   import { buildIndex } from "./lib/data.js";
   import { lang, t } from "./lib/i18n.js";
   import RoutePage from "./components/RoutePage.svelte";
+  import StopChangesPage from "./components/StopChangesPage.svelte";
   import Summary from "./components/Summary.svelte";
   import RouteChapters from "./components/RouteChapters.svelte";
   import StopsChapter from "./components/StopsChapter.svelte";
@@ -21,6 +22,20 @@
   $: pages = presentation?.route_pages ?? [];
   $: changedPages = pages.filter((p) => p.has_changes);
   $: unchangedPages = pages.filter((p) => !p.has_changes);
+  $: stopChanges = presentation?.stop_changes;
+  $: hasStopChanges = Boolean(
+    stopChanges &&
+    (stopChanges.renamed.length || stopChanges.relocated.length ||
+     stopChanges.added.length || stopChanges.removed.length ||
+     stopChanges.platform.length)
+  );
+  function stopChapterOpen() {
+    if (expandState === "open") return true;
+    if (expandState === "closed") return false;
+    // 改称・移設は重要なので既定で展開。新設・廃止のみ (路線側で説明済みが
+    // 多い) や乗り場のみなら折りたたみ
+    return Boolean(stopChanges?.renamed.length || stopChanges?.relocated.length);
+  }
 
   function defaultOpen(p) {
     // 既定の折りたたみ戦略: Lev.1/Lev.2 を含むページのみ展開 (大規模改正対策)
@@ -71,6 +86,10 @@
       {#each changedPages as p, i (p.route_group)}
         <RoutePage page={p} index={i + 1} open={isOpen(p)} />
       {/each}
+      {#if hasStopChanges}
+        <StopChangesPage changes={stopChanges} index={changedPages.length + 1}
+                         open={stopChapterOpen()} />
+      {/if}
       {#if unchangedPages.length}
         <details class="chapter">
           <summary>
@@ -80,7 +99,7 @@
           <div class="body">
             <p class="note">{tt("unchanged_note")}</p>
             {#each unchangedPages as p, i (p.route_group)}
-              <RoutePage page={p} index={changedPages.length + i + 1} open={false} />
+              <RoutePage page={p} index={changedPages.length + hasStopChanges + i + 1} open={false} />
             {/each}
           </div>
         </details>

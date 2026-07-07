@@ -268,6 +268,34 @@ def test_axis_rows_asymmetric_stays_two_rows(tmp_path, config):
     assert rows[1]["stops"][-1] == "営業所"  # 復路の別端点が行として現れる
 
 
+# --- 停留所の変化章 (V4) ---
+
+
+def test_stop_changes_section(tmp_path, config):
+    # S2 改称 (路線1に紐付く) + S4 新設 (どの路線にも属さない)
+    new_files = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\n"
+            "S2,市役所前東,36.0100,139.0100\n"
+            "S3,病院前,36.0200,139.0200\n"
+            "S4,新町,36.0500,139.0500\n"
+        ),
+    }
+    model, _ = build(tmp_path, config, new_files=new_files)
+    sc = model["stop_changes"]
+    assert [(r["old_name"], r["new_name"]) for r in sc["renamed"]] == [
+        ("市役所前", "市役所前東")
+    ]
+    assert sc["renamed"][0]["groups"] == ["1"]  # 関係路線
+    assert sc["renamed"][0]["lat"] is not None
+    # 新設は影響路線の組ごとにまとめる。S4 は路線に属さない
+    assert len(sc["added"]) == 1
+    assert sc["added"][0]["groups"] == []
+    assert [s["name"] for s in sc["added"][0]["stops"]] == ["新町"]
+    assert sc["removed"] == []
+
+
 # --- ② Lev カスケード ---
 
 
