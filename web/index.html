@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTFS ダイヤ改正 意味的差分レポート (gtfs-semdiff)</title>
+<style>
+  :root { --line: #ccc; --bg-soft: #f4f5f6; --accent: #1a4f8b; }
+  body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0 auto;
+         max-width: 46rem; padding: 1.2rem; line-height: 1.65; color: #1c1e21; }
+  h1 { font-size: 1.25rem; }
+  .tabs { display: flex; gap: 0.3rem; border-bottom: 2px solid var(--line);
+          margin: 1rem 0 0.8rem; }
+  .tabs button { font: inherit; cursor: pointer; padding: 0.35rem 0.9rem;
+    border: 1px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0;
+    background: var(--bg-soft); }
+  .tabs button.active { font-weight: 700; text-decoration: underline;
+    text-underline-offset: 0.25em; background: #fff;
+    border: 2px solid var(--accent); border-bottom: 2px solid #fff;
+    margin-bottom: -2px; }
+  label { display: block; margin: 0.7rem 0 0.15rem; font-weight: 600; }
+  select, input[type="file"] { font: inherit; max-width: 100%; }
+  select { padding: 0.25rem; min-width: 16rem; }
+  button.run { font: inherit; font-weight: 700; cursor: pointer; margin-top: 1rem;
+    padding: 0.45rem 1.4rem; border: 2px solid var(--accent); border-radius: 6px;
+    background: var(--accent); color: #fff; }
+  button.run:disabled { opacity: 0.5; cursor: default; }
+  #status { margin-top: 1rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg-soft); display: none; }
+  #status.error { border: 2px solid #b0004e; font-weight: 600; }
+  #status a { font-weight: 700; }
+  .note { color: #555; font-size: 0.85em; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>GTFS ダイヤ改正 意味的差分レポート</h1>
+<p>2世代の GTFS フィードを比較し、路線ごとの変化 (系統・経由・便数・時刻)、
+停留所の変化、フィード全体の変化をレポートします。
+<a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFSデータリポジトリ</a>
+の公開フィードから選ぶか、zip を2つアップロードしてください。</p>
+
+<div class="tabs" role="tablist">
+  <button id="tab-repo" class="active" role="tab">gtfs-data.jp から選択</button>
+  <button id="tab-upload" role="tab">zip をアップロード</button>
+</div>
+
+<section id="pane-repo">
+  <label for="pref">都道府県</label>
+  <select id="pref"><option value="">選択してください</option></select>
+  <label for="feed">事業者・フィード</label>
+  <select id="feed" disabled><option value="">都道府県を選択してください</option></select>
+  <label for="gen-old">旧世代 (比較元)</label>
+  <select id="gen-old" disabled></select>
+  <label for="gen-new">新世代 (比較先)</label>
+  <select id="gen-new" disabled></select>
+  <div><button id="run-repo" class="run" disabled>比較レポートを作成</button></div>
+</section>
+
+<section id="pane-upload" class="hidden">
+  <label for="file-old">旧世代の GTFS zip</label>
+  <input id="file-old" type="file" accept=".zip">
+  <label for="file-new">新世代の GTFS zip</label>
+  <input id="file-new" type="file" accept=".zip">
+  <p class="note">上限 100MB / ファイル。アップロードされた zip と結果は
+  30日後に自動削除されます。</p>
+  <div><button id="run-upload" class="run" disabled>比較レポートを作成</button></div>
+</section>
+
+<div id="status" role="status"></div>
+
+<p class="note">計算には数十秒〜数分かかります (フィードの規模によります)。
+本ツールは決定的ルールで全差分を分類し、レポートの「検証モード」から
+全ての生差分に到達できます。地図: 国土地理院タイル。</p>
+
+<script>
+const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+ "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県",
+ "富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県",
+ "三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県",
+ "島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県",
+ "福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+const $ = (id) => document.getElementById(id);
+const status = $("status");
+
+function showStatus(html, isError = false) {
+  status.style.display = "block";
+  status.className = isError ? "error" : "";
+  status.innerHTML = html;
+}
+
+// タブ切替
+function selectTab(repo) {
+  $("tab-repo").classList.toggle("active", repo);
+  $("tab-upload").classList.toggle("active", !repo);
+  $("pane-repo").classList.toggle("hidden", !repo);
+  $("pane-upload").classList.toggle("hidden", repo);
+}
+$("tab-repo").onclick = () => selectTab(true);
+$("tab-upload").onclick = () => selectTab(false);
+
+// 都道府県 → フィード → 世代
+PREFS.forEach((name, i) => {
+  const o = document.createElement("option");
+  o.value = i + 1; o.textContent = name;
+  $("pref").appendChild(o);
+});
+
+async function getJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+  return r.json();
+}
+
+$("pref").onchange = async () => {
+  $("feed").disabled = true; $("gen-old").disabled = true;
+  $("gen-new").disabled = true; $("run-repo").disabled = true;
+  if (!$("pref").value) return;
+  $("feed").innerHTML = "<option>読み込み中…</option>";
+  try {
+    const data = await getJson(`/api/gtfs/feeds?pref=${$("pref").value}`);
+    $("feed").innerHTML = "<option value=''>選択してください</option>";
+    for (const f of data.feeds) {
+      const o = document.createElement("option");
+      o.value = `${f.org_id}/${f.feed_id}`;
+      o.textContent = `${f.org_name || f.org_id} — ${f.name || f.feed_id}`;
+      $("feed").appendChild(o);
+    }
+    $("feed").disabled = false;
+  } catch (e) { showStatus(`フィード一覧の取得に失敗: ${e.message}`, true); }
+};
+
+$("feed").onchange = async () => {
+  $("gen-old").disabled = true; $("gen-new").disabled = true;
+  $("run-repo").disabled = true;
+  if (!$("feed").value) return;
+  const [org, feed] = $("feed").value.split("/");
+  $("gen-old").innerHTML = $("gen-new").innerHTML = "<option>読み込み中…</option>";
+  try {
+    const data = await getJson(`/api/gtfs/files?org=${org}&feed=${feed}`);
+    const label = (f) => `${f.rid} (${f.from_date || "?"} 〜 ${f.to_date || "?"})`;
+    for (const sel of [$("gen-old"), $("gen-new")]) {
+      sel.innerHTML = "";
+      for (const f of data.files) {
+        const o = document.createElement("option");
+        o.value = f.rid; o.textContent = label(f);
+        sel.appendChild(o);
+      }
+      sel.disabled = false;
+    }
+    // 既定: 新=最新 (先頭)、旧=その次
+    if (data.files.length > 1) $("gen-old").selectedIndex = 1;
+    $("run-repo").disabled = data.files.length < 2;
+    if (data.files.length < 2)
+      showStatus("このフィードには比較できる世代が2つ以上ありません。", true);
+  } catch (e) { showStatus(`世代一覧の取得に失敗: ${e.message}`, true); }
+};
+
+// ジョブ投入とポーリング
+async function submitAndPoll(body) {
+  showStatus("ジョブを投入しています…");
+  const r = await fetch("/api/jobs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const job = await r.json();
+  if (!r.ok) throw new Error(job.error || `HTTP ${r.status}`);
+  const started = Date.now();
+  while (true) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    const st = await getJson(job.status_url);
+    const sec = Math.round((Date.now() - started) / 1000);
+    if (st.status === "succeeded") {
+      showStatus(`完成しました → <a href="${st.result_url}">レポートを開く</a>` +
+        `<br><span class="note">この URL は後から共有・再訪できます</span>`);
+      return;
+    }
+    if (st.status === "failed") throw new Error(st.error || "比較に失敗しました");
+    showStatus(`計算中… (${sec}秒経過)。フィードの規模によっては数分かかります。`);
+  }
+}
+
+$("run-repo").onclick = async () => {
+  const [org, feed] = $("feed").value.split("/");
+  const body = { type: "gtfs_data_jp", org, feed,
+                 old_rid: $("gen-old").value, new_rid: $("gen-new").value };
+  if (body.old_rid === body.new_rid)
+    return showStatus("新旧に同じ世代が選ばれています。", true);
+  $("run-repo").disabled = true;
+  try { await submitAndPoll(body); }
+  catch (e) { showStatus(`エラー: ${e.message}`, true); }
+  finally { $("run-repo").disabled = false; }
+};
+
+// アップロード
+const updateUploadButton = () =>
+  ($("run-upload").disabled = !($("file-old").files[0] && $("file-new").files[0]));
+$("file-old").onchange = $("file-new").onchange = updateUploadButton;
+
+async function uploadTo(post, file) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(post.fields)) form.append(k, v);
+  form.append("file", file);
+  const r = await fetch(post.url, { method: "POST", body: form });
+  if (!r.ok) throw new Error(`アップロードに失敗 (HTTP ${r.status})`);
+}
+
+$("run-upload").onclick = async () => {
+  const fo = $("file-old").files[0], fn = $("file-new").files[0];
+  $("run-upload").disabled = true;
+  try {
+    showStatus("アップロード用 URL を取得しています…");
+    const r = await fetch("/api/uploads", { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (fo.size > data.max_bytes || fn.size > data.max_bytes)
+      throw new Error("ファイルが上限 (100MB) を超えています");
+    showStatus("旧世代をアップロード中…");
+    await uploadTo(data.uploads.old, fo);
+    showStatus("新世代をアップロード中…");
+    await uploadTo(data.uploads.new, fn);
+    await submitAndPoll({ type: "upload",
+      old_key: data.uploads.old.key, new_key: data.uploads.new.key });
+  } catch (e) { showStatus(`エラー: ${e.message}`, true); }
+  finally { updateUploadButton(); }
+};
+</script>
+</body>
+</html>

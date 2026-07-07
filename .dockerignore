@@ -1,0 +1,11 @@
+.git
+.venv*
+.cache
+data
+node_modules
+viewer/node_modules
+viewer/dist
+infra/cdk.out
+docs
+tests
+scripts
