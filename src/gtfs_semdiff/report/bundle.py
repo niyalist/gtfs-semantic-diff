@@ -64,6 +64,8 @@ def build_bundle(
                 timespec="seconds"
             ),
             "feed": event_set.feed,
+            # レポート表題用の事業者名 (GTFS agency.txt 由来。新世代優先)
+            "agency_names": _agency_names(new) or _agency_names(old),
         },
     }
 
@@ -199,6 +201,18 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
     }
+
+
+def _agency_names(snapshot) -> list[str]:
+    agency = snapshot.table("agency")
+    if agency is None or "agency_name" not in getattr(agency, "columns", ()):
+        return []
+    seen: list[str] = []
+    for name in agency["agency_name"]:
+        name = name.strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
 
 
 def _version() -> str:

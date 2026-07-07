@@ -17,7 +17,10 @@
 
   $: tt = $t;
   const feed = index?.feed || {};
-  const title = [feed.org_id, feed.feed_id].filter(Boolean).join(" / ");
+  const feedIds = [feed.org_id, feed.feed_id].filter(Boolean).join(" / ");
+  // 表題は GTFS の agency_name (無ければ gtfs-data.jp の org/feed ID にフォールバック)
+  const agencyNames = index?.meta?.agency_names ?? [];
+  const title = agencyNames.length ? agencyNames.join("・") : feedIds;
 
   $: pages = presentation?.route_pages ?? [];
   $: changedPages = pages.filter((p) => p.has_changes);
@@ -60,6 +63,7 @@
   </div>
   <h1>{tt("title")}{title ? `: ${title}` : ""}</h1>
   <p class="meta">
+    {#if agencyNames.length && feedIds}<code>{feedIds}</code> /{/if}
     {tt("old_gen")}: <code>{feed.old_rid || feed.old_source || "?"}</code>
     {#if feed.old_period?.[0]}({feed.old_period[0]} 〜 {feed.old_period[1]}){/if}
     → {tt("new_gen")}: <code>{feed.new_rid || feed.new_source || "?"}</code>

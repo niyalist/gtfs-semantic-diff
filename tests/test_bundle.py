@@ -41,6 +41,9 @@ def test_bundle_structure(tmp_path, config):
     assert len(bundle["catalog"]) == 41
     assert bundle["catalog"]["SERVICE_REDUCED"]["en"] == "Service reduced"
 
+    # レポート表題用の事業者名 (agency.txt 由来)
+    assert bundle["meta"]["agency_names"] == ["テストバス"]
+
 
 def test_feed_overview_structure(tmp_path, config):
     # 第1部 (ファイル対応表・曜日別便数) と第4部 (その他の集計) の素材
