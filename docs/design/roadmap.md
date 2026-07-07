@@ -3,7 +3,7 @@
 原則: **DoD を満たすまで次のマイルストーンに着手しない。** 「動いた気がする」は完了ではない。
 
 > 状態 (2026-07-07): **M0〜M7・W1・V1〜V5 完了 (V6 は骨格のみ前倒し済み)。
-> 次は W3 (Web 公開: W3-0 配信基盤 → W3-1 ジョブ API → W3-2 公開運用)。**
+> 次は W3 (Web 公開)。W3-0 (配信基盤) 完了、次は W3-1 (ジョブ API)。**
 > 旧 W2 (手動ホスティング) は W3-0 に吸収 (2026-07-07)。X1・V6 本体は並行可。
 > 各 DoD の実行結果は docs/verification/ と docs/perf/ に記録済み。
 > M0: 673d24e / M1: 036cb0c / M2: 3e04dce / M3: 9168e6f / M4: 7150471 /
@@ -215,7 +215,7 @@
 > 最初のフェーズとして先に作る。IaC は AWS CDK (Python)、リージョンは
 > ap-northeast-1、独自ドメインは後付け (まず CloudFront 既定ドメイン)。
 
-- **W3-0: 配信基盤** — S3 (非公開 + CloudFront OAC)・CloudFront・ライフサイクル
+- **W3-0: 配信基盤** 【完了 2026-07-07 (docs/ops/w3_0_delivery.md)】 — S3 (非公開 + CloudFront OAC)・CloudFront・ライフサイクル
   下地・Budgets アラートを CDK で構築。scripts/publish.py (手元生成 HTML の
   アップロード + URL 発行、管理者用・動作確認用)。
   DoD: 検証フィードのレポートが公開 URL (/r/{id}) で第三者環境から閲覧できる。
