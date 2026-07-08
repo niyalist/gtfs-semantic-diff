@@ -207,6 +207,24 @@
   「AI には events+rawdiffs、表示済み解釈は presentation」の使い分け指針を
   docs/spec/ に明文化。
 
+## M8: 便対応付けの再設計 (trip matching v2) 【着手 2026-07-08】 (設計: docs/design/trip_matching.md)
+
+- 動機: 八戸の反例で「同一 trip_id の無条件信頼」(tripdelta ②) が連番型 ID
+  運用で破綻することを特定 (docs/verification/trip_identity_survey.md)。
+  対応付けは C群・B群・churn・④差分時刻表すべての土台であり本質的に解決する
+- 内容: ①〜③の4段縦積みを、共有停留所の時刻整合 (Δt_shared)・経路 LCS率・
+  ID 一致 (弱い事前) を統合した**コスト最小の大域割当1段**に統一。解く場所は
+  コア (tripdelta)。表示層の後付けペアリング (③ _pair_leftovers) は廃止・吸収。
+  重み・受理閾値は config [matching]。会計・JSON スキーマ不変
+- 手順: 感度分析 (時刻整合を加えた擬似正解でコスト成分の二極化確認・初期重み
+  決定) → 実装 (下流 frequency/patterns/technical/presentation の一括移行) →
+  評価
+- DoD: 合成テスト (連番スライド+経路変更+短縮振替 (八戸型)・ID 全張替え
+  (畑線型)・同時刻交差)。クリーン擬似正解での P/R が現行以上。八戸の当該表が
+  常識どおりの対応になることを目視確認。8フィードで explained_ratio 不変・
+  対応付け before/after を記録。性能を docs/perf に記録。detection.md /
+  presentation.md 同期
+
 ## W3: Web 公開 (ジョブ API + 公開運用) 【着手 2026-07-07】
 
 > 旧 W2 (静的ホスティングの手動運用) は独立マイルストーンとしては廃止し、
