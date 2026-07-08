@@ -8,3 +8,4 @@ node_modules/
 viewer/dist/
 infra/cdk.out/
 infra/outputs.json
+docs/ops/local_env.md
