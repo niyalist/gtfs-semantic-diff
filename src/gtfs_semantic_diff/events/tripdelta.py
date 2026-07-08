@@ -183,14 +183,21 @@ def build_trip_delta(
     new_trips: dict[str, TripInfo],
     config=None,
     family_links: dict[str, str] | None = None,
+    old_family_group: dict[str, str] | None = None,
+    new_family_group: dict[str, str] | None = None,
 ) -> TripDelta:
     """世代間の便対応付け。
 
-    family_links: 旧 family 名 → 新 family 名 (identity の対応。名称一致は
-    恒等でよいので省略可)。ブロッキング (候補対の範囲) に使う。
+    ブロッキング (候補対の範囲) は **route_group (枝番系統を束ねる路線ブランド)
+    × day_type**。事業者は便を枝番違いの route へ移すことがあり (徳島 202→204
+    加茂谷線、便の中身はほぼ同一)、family 単位のブロックでは狭すぎる。
+    - family_links: 旧 family 名 → 新 family 名 (名称変更の対応)
+    - old/new_family_group: family 名 → route_group 名 (identity の f2g)
     """
     params = MatchingParams.from_config(config)
     family_links = family_links or {}
+    old_family_group = old_family_group or {}
+    new_family_group = new_family_group or {}
     delta = TripDelta(old_trips=old_trips, new_trips=new_trips)
 
     # --- 段1: 内容署名の完全一致 (同一 trip_id を優先ペアリング) ---
@@ -224,8 +231,13 @@ def build_trip_delta(
 
     # --- 段2: ブロック内のコスト最小割当 ---
     def block_key(t: TripInfo, gen: str) -> tuple:
-        fam = family_links.get(t.family, t.family) if gen == "old" else t.family
-        return (fam, t.day_type)
+        if gen == "old":
+            # 名称変更された family は新側の名前に写してからグループ化
+            fam = family_links.get(t.family, t.family)
+            group = new_family_group.get(fam) or old_family_group.get(t.family) or fam
+        else:
+            group = new_family_group.get(t.family) or t.family
+        return (group, t.day_type)
 
     blocks: dict[tuple, tuple[list[TripInfo], list[TripInfo]]] = defaultdict(
         lambda: ([], [])

@@ -316,6 +316,43 @@ def test_matching_survives_sequential_id_slide(tmp_path, config):
     assert ("A-2", "A-2") not in cols
 
 
+def test_matching_across_branch_number_routes(tmp_path, config):
+    """徳島 加茂谷線型: 便が枝番違いの route (別 family・同 route_group) へ移る。
+    route_group ブロッキングにより、経路がほぼ同一で時刻が近い便は対応付く。"""
+    stops = SIX_STOPS["stops.txt"]
+    old = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "R202,A1,202 加茂谷線,,3\n"),
+        "trips.txt": "route_id,service_id,trip_id\nR202,WD,T1\nR202,WD,T2\n",
+        "stop_times.txt": _stop_times([
+            ("T1", 7, ["S1", "S2", "S3", "S4", "S5"]),
+            ("T2", 18, ["S1", "S2", "S3", "S4", "S5"]),
+        ]),
+    }
+    new = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "R202,A1,202 加茂谷線,,3\nR204,A1,204 加茂谷線,,3\n"),
+        # T1 相当は 204 へ移り 1停短縮・11分繰り下げ。T2 は 202 に残り時刻修正
+        "trips.txt": "route_id,service_id,trip_id\nR204,WD,T1\nR202,WD,T2\n",
+        "stop_times.txt": _stop_times([
+            ("T1", 7, ["S1", "S2", "S3", "S4"]),
+            ("T2", 18, ["S1", "S2", "S3", "S4", "S5"]),
+        ]),
+    }
+    model, _ = build(tmp_path, config, old_files=old, new_files=new)
+    page = page_of(model, "加茂谷線")
+    statuses = {}
+    for tb in page["timetables"]:
+        for c in tb["columns"]:
+            statuses[(c["trip_id_old"], c["trip_id_new"])] = c["status"]
+    # 枝番を跨いで T1 が1列に組まれる (廃止+新設にならない)
+    assert ("T1", "T1") in statuses
+    assert statuses[("T1", "T1")] == "rerouted"
+    assert not any(k for k in statuses if k[0] is None or k[1] is None)
+
+
 # --- 時刻表の列ソート (共有停留所ベース) ---
 
 

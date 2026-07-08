@@ -172,7 +172,7 @@ docs/verification/trip_identity_survey.md)。
 手順:
 1. 内容署名 `(family, direction, day_type, 停車クラスタ基底名列, 全停留所の
    発着時刻列)` の**完全一致** → exact (同一 trip_id を優先ペアリング)
-2. 残りを **(対応 family グループ, day_type) のブロック内でコスト最小割当**:
+2. 残りを **(route_group, day_type) のブロック内でコスト最小割当** (枝番 route 間の便移動に対応。2026-07-09 改訂):
    `cost = min(Δt_shared, cap)/cap + w_route·(1−LCS率) − w_id·[同一ID]`
    - **Δt_shared = 共有停留所での発時刻差の中央値** (区間短縮・延長に頑健)
    - 受理ゲート: LCS率 ≥ `[matching] min_route_sim` かつ Δt_shared ≤ `max_shift_min`

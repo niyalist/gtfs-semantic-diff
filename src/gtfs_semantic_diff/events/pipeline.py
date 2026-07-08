@@ -68,6 +68,8 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
         collect_trips(new, route_to_family_map(identity.new_families), new_stop_to_base),
         config=config,
         family_links=family_links,
+        old_family_group=identity.old_family_to_group,
+        new_family_group=identity.new_family_to_group,
     )
 
     ctx = RuleContext(

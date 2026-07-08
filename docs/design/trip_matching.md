@@ -41,10 +41,14 @@
 
 全 old×new は無駄かつ危険なので、候補は次の範囲に限る:
 
-- **世代間で対応付いた family 対** (identity の MatchGraph。名称一致 or
-  パターン Jaccard リンク) の内部、かつ **同一 day_type**
-- 経路変更で family を跨ぐ振替 (八戸 600222→600212 は同一 family 内なので
-  今回のケースはこの範囲で解ける)。family 対応が無い場合は候補なし
+- **route_group (枝番系統を束ねる路線ブランド) × 同一 day_type**
+  (2026-07-09 改訂: 当初は family 単位だったが、徳島 加茂谷線で「便を枝番違いの
+  route へ移す」運用 (202→204、trip_id まで同一・LCS 0.93・時刻差5分) が
+  family 境界で弾かれる反例が出た。実測で徳島 removed の 23% (52便)・永井 4便が
+  この型。route_group は「利用者が認識する路線」として M6/M7 で確立した既存層で、
+  新しい概念は増えない)
+- family の名称変更は family_links (identity の対応) を経由して新側の
+  route_group に写す
 - day_type 跨ぎ (平日→毎日 等) は v1 のスコープ外とし、DAYTYPE_RESTRUCTURED
   (E群) の守備範囲に残す (制限として明記)
 
