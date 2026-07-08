@@ -96,6 +96,12 @@ def _compare_columns(ta: list[int | None], tb: list[int | None]) -> int:
         if ta[i] is not None and tb[i] is not None
     ]
     if shared:
+        # 最初の共有行 = 出発順。同時刻発なら最後の共有行 = 先着順で決める
+        # (経路・所要の違う同時発便の交差で、逆転して見える行を最小化する)
+        if ta[shared[0]] != tb[shared[0]]:
+            return -1 if ta[shared[0]] < tb[shared[0]] else 1
+        if ta[shared[-1]] != tb[shared[-1]]:
+            return -1 if ta[shared[-1]] < tb[shared[-1]] else 1
         for i in shared:
             if ta[i] != tb[i]:
                 return -1 if ta[i] < tb[i] else 1
