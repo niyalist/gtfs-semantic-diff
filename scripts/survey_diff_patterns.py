@@ -25,10 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from survey_route_groups import select_feeds  # noqa: E402 (M6 と同じ層化サンプリング)
 
-from gtfs_semdiff.config import Config  # noqa: E402
-from gtfs_semdiff.events import compare_snapshots  # noqa: E402
-from gtfs_semdiff.load import GtfsDataRepository, load_snapshot  # noqa: E402
-from gtfs_semdiff.load.repository import rid_order  # noqa: E402
+from gtfs_semantic_diff.config import Config  # noqa: E402
+from gtfs_semantic_diff.events import compare_snapshots  # noqa: E402
+from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot  # noqa: E402
+from gtfs_semantic_diff.load.repository import rid_order  # noqa: E402
 
 logging.basicConfig(level=logging.WARNING)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from gtfs_semdiff.config import Config
+from gtfs_semantic_diff.config import Config
 
 # 最小の妥当な GTFS (必須5ファイル + calendar)
 MINIMAL_FEED: dict[str, str] = {

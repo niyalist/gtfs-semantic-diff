@@ -2,9 +2,9 @@
 
 import json
 
-from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts
-from gtfs_semdiff.load import load_snapshot
-from gtfs_semdiff.report.presentation import (
+from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+from gtfs_semantic_diff.load import load_snapshot
+from gtfs_semantic_diff.report.presentation import (
     _is_subsequence,
     align_to_axis,
     build_presentation,

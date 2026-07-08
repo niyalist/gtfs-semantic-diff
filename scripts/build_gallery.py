@@ -17,11 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gtfs_semdiff.config import Config  # noqa: E402
-from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts  # noqa: E402
-from gtfs_semdiff.load import GtfsDataRepository, load_snapshot  # noqa: E402
-from gtfs_semdiff.load.repository import rid_order  # noqa: E402
-from gtfs_semdiff.report.bundle import build_bundle, render_html  # noqa: E402
+from gtfs_semantic_diff.config import Config  # noqa: E402
+from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts  # noqa: E402
+from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot  # noqa: E402
+from gtfs_semantic_diff.load.repository import rid_order  # noqa: E402
+from gtfs_semantic_diff.report.bundle import build_bundle, render_html  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SURVEY = ROOT / "data" / "survey" / "diff_patterns.jsonl"
@@ -70,7 +70,7 @@ def generate(record: dict, config: Config, repo: GtfsDataRepository) -> Path | N
     event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
         old, new, config
     )
-    template = (ROOT / "src/gtfs_semdiff/report/viewer_template.html").read_text("utf-8")
+    template = (ROOT / "src/gtfs_semantic_diff/report/viewer_template.html").read_text("utf-8")
     bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
     out.write_text(render_html(bundle, template), encoding="utf-8")
     return out
@@ -94,7 +94,7 @@ def build_index(entries: list[tuple[str, dict, Path]]) -> None:
             f" ratio {r['explained_ratio']:.3f})<br/>{html.escape(types)}</small></p>"
         )
     index = (
-        "<!doctype html><meta charset='utf-8'><title>gtfs-semdiff 実例ギャラリー (V1)</title>"
+        "<!doctype html><meta charset='utf-8'><title>gtfs-semantic-diff 実例ギャラリー (V1)</title>"
         "<style>body{font-family:sans-serif;max-width:860px;margin:2rem auto;"
         "line-height:1.6;padding:0 1rem}h2{border-bottom:2px solid #0b6e4f;"
         "padding-bottom:.2rem}small{color:#666}</style>"

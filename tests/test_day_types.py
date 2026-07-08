@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from gtfs_semdiff.load.day_types import normalize_day_types
+from gtfs_semantic_diff.load.day_types import normalize_day_types
 
 DAY_COLS = "monday,tuesday,wednesday,thursday,friday,saturday,sunday".split(",")
 

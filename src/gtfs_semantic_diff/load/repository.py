@@ -26,7 +26,7 @@ from ..model import SnapshotMeta
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "gtfs-semdiff/0.1"
+USER_AGENT = "gtfs-semantic-diff/0.1"
 
 
 class RepositoryError(RuntimeError):

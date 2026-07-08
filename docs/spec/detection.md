@@ -1,9 +1,9 @@
 # 変化検出仕様書 (実装準拠・v0.2.1)
 
-本書は gtfs-semdiff が **どういう変更を、どういうロジックで認識するか** の網羅的な仕様である。
+本書は gtfs-semantic-diff が **どういう変更を、どういうロジックで認識するか** の網羅的な仕様である。
 設計時のイベントカタログは [../design/ontology.md](../design/ontology.md)、モジュール構成は
 [../design/architecture.md](../design/architecture.md) を参照。本書は**実装済みの挙動**を正とし、
-コード (src/gtfs_semdiff/) と食い違う場合はバグとして扱う。
+コード (src/gtfs_semantic_diff/) と食い違う場合はバグとして扱う。
 
 閾値・重みはすべて `config/default.toml` にあり、本文中では `[セクション] キー` で参照する。
 

@@ -1,5 +1,5 @@
 [project]
-name = "gtfs-semdiff"
+name = "gtfs-semantic-diff"
 version = "2026.7.8"
 description = "Semantic diff extraction for multi-generation GTFS feeds"
 license = "MIT"
@@ -16,14 +16,14 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff", "mypy"]
 
 [project.scripts]
-gtfs-semdiff = "gtfs_semdiff.cli:main"
+gtfs-semantic-diff = "gtfs_semantic_diff.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gtfs_semdiff"]
+packages = ["src/gtfs_semantic_diff"]
 
 [tool.ruff]
 line-length = 100

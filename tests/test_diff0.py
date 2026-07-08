@@ -2,8 +2,8 @@
 
 import pytest
 
-from gtfs_semdiff.diff0 import enumerate_rawdiffs
-from gtfs_semdiff.load import load_snapshot
+from gtfs_semantic_diff.diff0 import enumerate_rawdiffs
+from gtfs_semantic_diff.load import load_snapshot
 
 from .conftest import make_gtfs_zip
 

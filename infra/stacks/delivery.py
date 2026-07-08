@@ -101,7 +101,7 @@ class DeliveryStack(Stack):
             ephemeral_storage_size=Size.gibibytes(2),
             timeout=Duration.minutes(15),
             environment=common_env,
-            description="gtfs-semdiff compare worker",
+            description="gtfs-semantic-diff compare worker",
         )
         api_fn = lambda_.DockerImageFunction(
             self,
@@ -115,7 +115,7 @@ class DeliveryStack(Stack):
             memory_size=512,
             timeout=Duration.seconds(29),
             environment={**common_env, "WORKER_FUNCTION": ""},
-            description="gtfs-semdiff job API",
+            description="gtfs-semantic-diff job API",
         )
         # 循環参照を避けて後から設定
         api_fn.add_environment("WORKER_FUNCTION", worker_fn.function_name)
@@ -142,7 +142,7 @@ class DeliveryStack(Stack):
         distribution = cloudfront.Distribution(
             self,
             "Cdn",
-            comment="gtfs-semdiff results",
+            comment="gtfs-semantic-diff results",
             default_root_object="index.html",
             default_behavior=cloudfront.BehaviorOptions(
                 origin=origins.S3BucketOrigin.with_origin_access_control(bucket),
@@ -183,7 +183,7 @@ class DeliveryStack(Stack):
                 self,
                 "MonthlyBudget",
                 budget=budgets.CfnBudget.BudgetDataProperty(
-                    budget_name="gtfs-semdiff-monthly",
+                    budget_name="gtfs-semantic-diff-monthly",
                     budget_type="COST",
                     time_unit="MONTHLY",
                     budget_limit=budgets.CfnBudget.SpendProperty(

@@ -1,6 +1,6 @@
 """M5 で追加・詳細化したルールの合成 GTFS 単体テスト。"""
 
-from gtfs_semdiff.events.geometry import discrete_frechet_m
+from gtfs_semantic_diff.events.geometry import discrete_frechet_m
 
 from .conftest import MINIMAL_FEED
 from .test_rules import assert_fully_explained, events_of, run_compare

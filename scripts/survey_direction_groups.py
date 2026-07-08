@@ -11,13 +11,13 @@ usage: .venv.nosync/bin/python scripts/survey_direction_groups.py
 from itertools import combinations
 from pathlib import Path
 
-from gtfs_semdiff.config import Config
-from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts
-from gtfs_semdiff.load import GtfsDataRepository, load_snapshot
-from gtfs_semdiff.load.repository import rid_order
-from gtfs_semdiff.report.bundle import build_bundle
-from gtfs_semdiff.report.presentation import order_agreement
-from gtfs_semdiff.identity.route_group import stop_jaccard
+from gtfs_semantic_diff.config import Config
+from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
+from gtfs_semantic_diff.load.repository import rid_order
+from gtfs_semantic_diff.report.bundle import build_bundle
+from gtfs_semantic_diff.report.presentation import order_agreement
+from gtfs_semantic_diff.identity.route_group import stop_jaccard
 
 config = Config.load()
 repo = GtfsDataRepository(config=config)

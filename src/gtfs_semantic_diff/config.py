@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# src レイアウト前提: config.py → gtfs_semdiff → src → リポジトリルート
+# src レイアウト前提: config.py → gtfs_semantic_diff → src → リポジトリルート
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.toml"
 
@@ -45,4 +45,4 @@ class Config:
 
     @property
     def cache_dir(self) -> Path:
-        return Path(self.get("repository", "cache_dir", default="~/.cache/gtfs-semdiff")).expanduser()
+        return Path(self.get("repository", "cache_dir", default="~/.cache/gtfs-semantic-diff")).expanduser()

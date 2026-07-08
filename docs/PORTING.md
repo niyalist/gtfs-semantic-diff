@@ -4,7 +4,7 @@
 
 旧リポジトリ: `(ローカルの前身リポジトリ GTFSDiff)` (読み取り専用の参照元。コードの共存はしない)
 
-| 旧 (src/gtfs_diff/) | 新 (src/gtfs_semdiff/) | 移植方針 |
+| 旧 (src/gtfs_diff/) | 新 (src/gtfs_semantic_diff/) | 移植方針 |
 |---|---|---|
 | `core.py` (GTFSDataset) | `load/snapshot.py` | ほぼそのまま。day_type 正規化を追加 |
 | `repository.py` | `load/repository.py` | ほぼそのまま。動作確認済み API 仕様 |

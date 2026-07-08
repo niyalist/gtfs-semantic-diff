@@ -58,7 +58,7 @@ def build_bundle(
             for t in EVENT_TYPES.values()
         },
         "meta": {
-            "tool": "gtfs-semdiff",
+            "tool": "gtfs-semantic-diff",
             "version": _version(),
             "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(
                 timespec="seconds"
@@ -217,7 +217,7 @@ def _agency_names(snapshot) -> list[str]:
 
 def _version() -> str:
     try:
-        return importlib.metadata.version("gtfs-semdiff")
+        return importlib.metadata.version("gtfs-semantic-diff")
     except importlib.metadata.PackageNotFoundError:
         return "dev"
 

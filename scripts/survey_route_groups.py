@@ -26,18 +26,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gtfs_semdiff.config import Config  # noqa: E402
-from gtfs_semdiff.identity import (  # noqa: E402
+from gtfs_semantic_diff.config import Config  # noqa: E402
+from gtfs_semantic_diff.identity import (  # noqa: E402
     extract_route_families,
     normalize_stop_base_name,
 )
-from gtfs_semdiff.identity.pattern_clustering import (  # noqa: E402
+from gtfs_semantic_diff.identity.pattern_clustering import (  # noqa: E402
     cluster_patterns,
     extract_patterns,
 )
-from gtfs_semdiff.identity.route_family import route_to_family_map  # noqa: E402
-from gtfs_semdiff.load import GtfsDataRepository, load_snapshot  # noqa: E402
-from gtfs_semdiff.load.repository import rid_order  # noqa: E402
+from gtfs_semantic_diff.identity.route_family import route_to_family_map  # noqa: E402
+from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot  # noqa: E402
+from gtfs_semantic_diff.load.repository import rid_order  # noqa: E402
 
 logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger("survey")

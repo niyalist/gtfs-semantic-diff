@@ -1,7 +1,7 @@
 # M4 検証ログ: Markdown レポートと富山地鉄・令和8年4月1日改正の突き合わせ
 
 実施日: 2026-07-04
-コマンド: `gtfs-semdiff compare --org chitetsu --feed chitetsubus --old prev_2 --new prev_1 --report data/m4_chitetsu_r8_report.md`
+コマンド: `gtfs-semantic-diff compare --org chitetsu --feed chitetsubus --old prev_2 --new prev_1 --report data/m4_chitetsu_r8_report.md`
 対象: prev_2 (2025-10-16〜) → prev_1 (2026-04-01〜, フィード memo「令和８年４月１日ダイヤ改正」)
 結果: RawDiff 30,700 件 / explained_ratio 0.9960 / イベント 285 件 / レポート 590 行
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from gtfs_semdiff.load import GtfsLoadError, load_snapshot
+from gtfs_semantic_diff.load import GtfsLoadError, load_snapshot
 
 from .conftest import make_gtfs_zip
 

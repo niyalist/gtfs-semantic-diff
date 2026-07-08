@@ -23,7 +23,7 @@ console = Console()
 @click.option("-v", "--verbose", is_flag=True, help="詳細ログ")
 @click.pass_context
 def main(ctx: click.Context, config_path: str | None, verbose: bool) -> None:
-    """gtfs-semdiff: 複数世代 GTFS の意味的差分抽出."""
+    """gtfs-semantic-diff: 複数世代 GTFS の意味的差分抽出."""
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",

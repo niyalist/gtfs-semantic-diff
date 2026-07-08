@@ -6,7 +6,7 @@ infra/outputs.json から読む。AWS 認証は aws CLI (プロファイル) に
 
 usage:
   .venv.nosync/bin/python scripts/publish.py data/v3_nagai.html \
-      --id nagai-unyu__Nagaibus__prev_2__prev_1 --profile gtfs-semdiff
+      --id nagai-unyu__Nagaibus__prev_2__prev_1 --profile gtfs-semantic-diff
 
   --id 省略時はファイル名 (拡張子なし) を使う。公開先: https://{domain}/r/{id}.html
 """

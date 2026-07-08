@@ -14,7 +14,7 @@
 - model/ のデータクラス定義 (GtfsSnapshot, RawDiff, MatchGraph, ChangeEvent)
 - load/: zip 読み込み + calendar→day_type 正規化
 - load/repository.py: 旧 `repository.py` を移植し、永井運輸の current / prev_1 を実取得
-- DoD: `gtfs-semdiff fetch --org nagai-unyu --feed Nagaibus` で2世代の zip がキャッシュされ、Snapshot として読める。pytest 通過。
+- DoD: `gtfs-semantic-diff fetch --org nagai-unyu --feed Nagaibus` で2世代の zip がキャッシュされ、Snapshot として読める。pytest 通過。
 
 ## M1: L0 網羅diff + 説明会計の土台
 
@@ -83,7 +83,7 @@
   イベント種別に応じた詳細パネル (時刻表 before/after、MapLibre 地図、
   evidence の生値テーブル)。残差もクリック可能。単一 HTML ファイル出力対応
 - model/event_types.py に display_name_en を追加、UI 文字列の ja/en 切替
-- CLI: `gtfs-semdiff compare ... --html out/` (+ 単一ファイルオプション)
+- CLI: `gtfs-semantic-diff compare ... --html out/` (+ 単一ファイルオプション)
 - DoD: 検証3フィード (永井 prev_2→prev_1、地鉄 R8、臨港テスト) のレポートを
   ブラウザで開き、**全イベントをクリックすると何らかの詳細が表示される**
   (説明会計の UI 化) ことを目視確認。単一 HTML として保存→再オープンできる。

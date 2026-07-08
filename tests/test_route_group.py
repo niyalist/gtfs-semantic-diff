@@ -7,8 +7,8 @@ import json
 
 import pytest
 
-from gtfs_semdiff.identity import stem_of
-from gtfs_semdiff.report import render_markdown
+from gtfs_semantic_diff.identity import stem_of
+from gtfs_semantic_diff.report import render_markdown
 
 from .conftest import MINIMAL_FEED
 from .test_rules import events_of, run_compare

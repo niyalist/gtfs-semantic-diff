@@ -1,4 +1,4 @@
-# gtfs-semdiff ジョブ実行 Lambda (api / worker 共用イメージ)
+# gtfs-semantic-diff ジョブ実行 Lambda (api / worker 共用イメージ)
 # ビルドコンテキストはリポジトリルート (CDK: file=infra/runtime/Dockerfile)
 FROM public.ecr.aws/lambda/python:3.13
 

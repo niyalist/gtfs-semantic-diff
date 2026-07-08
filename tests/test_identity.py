@@ -2,7 +2,7 @@
 
 import pytest
 
-from gtfs_semdiff.identity import (
+from gtfs_semantic_diff.identity import (
     build_identity,
     build_stop_clusters,
     extract_route_families,
@@ -11,7 +11,7 @@ from gtfs_semdiff.identity import (
     normalize_stop_base_name,
     pattern_similarity,
 )
-from gtfs_semdiff.load import load_snapshot
+from gtfs_semantic_diff.load import load_snapshot
 
 from .conftest import make_gtfs_zip
 

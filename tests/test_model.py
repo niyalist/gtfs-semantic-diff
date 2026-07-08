@@ -2,7 +2,7 @@
 
 import pytest
 
-from gtfs_semdiff.model import (
+from gtfs_semantic_diff.model import (
     EVENT_TYPES,
     Accounting,
     ChangeEvent,

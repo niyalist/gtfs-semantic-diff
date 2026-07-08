@@ -77,4 +77,4 @@ sheet_merge_max_gap_per_trip = 0.5
 
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"
-cache_dir = "~/.cache/gtfs-semdiff"
+cache_dir = "~/.cache/gtfs-semantic-diff"

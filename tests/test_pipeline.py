@@ -4,9 +4,9 @@ import json
 
 from click.testing import CliRunner
 
-from gtfs_semdiff.cli import main
-from gtfs_semdiff.events import compare_snapshots
-from gtfs_semdiff.load import load_snapshot
+from gtfs_semantic_diff.cli import main
+from gtfs_semantic_diff.events import compare_snapshots
+from gtfs_semantic_diff.load import load_snapshot
 
 from .conftest import make_gtfs_zip
 from .test_diff0 import NEW_FILES

@@ -2,7 +2,7 @@
 
 import json
 
-from gtfs_semdiff.report import render_markdown
+from gtfs_semantic_diff.report import render_markdown
 
 from .test_rules import run_compare
 

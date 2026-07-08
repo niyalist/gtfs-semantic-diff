@@ -1,4 +1,4 @@
-# gtfs-semdiff — GTFS 意味的差分抽出ツール
+# gtfs-semantic-diff — GTFS 意味的差分抽出ツール
 
 複数世代の GTFS フィードを比較し、変化を「人間が認識できる意味」(路線廃止、減便、区間短縮、乗り場変更など)として抽出・レポートする CLI ツール。GTFSデータリポジトリ (https://gtfs-data.jp) の世代管理 API と連携する。
 
@@ -36,9 +36,9 @@ roadmap M0–M7 **全完了**。検証3フィードで explained_ratio 1.0000、
 (ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
-HTML レポート: `gtfs-semdiff compare --html out.html` (自己完結・単一ファイル、W1)。
+HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・単一ファイル、W1)。
 ビューアは viewer/ (Svelte 4 + Vite)、ビルド成果物を
-src/gtfs_semdiff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
+src/gtfs_semantic_diff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
 **現在の作業トラック: Web 公開 (roadmap W3、設計: docs/design/web.md)。**
 V トラック (認知単位のレポート再構築 V1〜V5) は 2026-07-07 に完了:
 レポートは4部構成 (①フィード全体 ②停留所 ③路線毎 ④その他) + 曜日タブ +

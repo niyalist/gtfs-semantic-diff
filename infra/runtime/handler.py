@@ -90,8 +90,8 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
 
 
 def _api_feeds(qs: dict) -> dict:
-    from gtfs_semdiff.config import Config
-    from gtfs_semdiff.load import GtfsDataRepository
+    from gtfs_semantic_diff.config import Config
+    from gtfs_semantic_diff.load import GtfsDataRepository
 
     repo = GtfsDataRepository(config=Config.load())
     pref = qs.get("pref")
@@ -109,9 +109,9 @@ def _api_feeds(qs: dict) -> dict:
 
 
 def _api_files(qs: dict) -> dict:
-    from gtfs_semdiff.config import Config
-    from gtfs_semdiff.load import GtfsDataRepository
-    from gtfs_semdiff.load.repository import rid_order
+    from gtfs_semantic_diff.config import Config
+    from gtfs_semantic_diff.load import GtfsDataRepository
+    from gtfs_semantic_diff.load.repository import rid_order
 
     org = _safe_id(qs.get("org", ""))
     feed = _safe_id(qs.get("feed", ""))
@@ -219,10 +219,10 @@ def worker(event, context):  # noqa: ARG001 - Lambda signature
 
 
 def _run_compare(job_id: str, job_input: dict) -> str:
-    from gtfs_semdiff.config import Config
-    from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts
-    from gtfs_semdiff.load import GtfsDataRepository, load_snapshot
-    from gtfs_semdiff.report.bundle import build_bundle, render_html
+    from gtfs_semantic_diff.config import Config
+    from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+    from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
+    from gtfs_semantic_diff.report.bundle import build_bundle, render_html
 
     config = Config.load()
     if job_input["type"] == "gtfs_data_jp":
@@ -257,7 +257,7 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         old, new, config
     )
     bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
-    import gtfs_semdiff.report as report_pkg
+    import gtfs_semantic_diff.report as report_pkg
 
     template = (Path(report_pkg.__file__).parent / "viewer_template.html").read_text(
         "utf-8"

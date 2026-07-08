@@ -1,6 +1,6 @@
 # M3 検証ログ: L2 イベントルール第1陣
 
-実施日: 2026-07-04 / コマンド: `gtfs-semdiff compare ...` / 出力: `data/m3_*_events.json`
+実施日: 2026-07-04 / コマンド: `gtfs-semantic-diff compare ...` / 出力: `data/m3_*_events.json`
 
 ## DoD 判定
 

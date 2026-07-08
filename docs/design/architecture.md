@@ -39,7 +39,7 @@ cli.py         消費者: コンソールサマリ
 ## モジュール構成
 
 ```
-src/gtfs_semdiff/
+src/gtfs_semantic_diff/
 ├── model/        # データクラス: GtfsSnapshot, RawDiff, MatchGraph, ChangeEvent
 ├── load/         # zip/dir 読み込み, repository.py (gtfs-data.jp API クライアント)
 ├── diff0/        # L0 網羅diff エンジン
@@ -60,16 +60,16 @@ src/gtfs_semdiff/
 
 ```
 # gtfs-data.jp から取得して比較 (直近2世代)
-gtfs-semdiff compare --org nagai-unyu --feed Nagaibus
+gtfs-semantic-diff compare --org nagai-unyu --feed Nagaibus
 
 # 世代指定・多世代
-gtfs-semdiff compare --org nagai-unyu --feed Nagaibus --from prev_2 --to current
+gtfs-semantic-diff compare --org nagai-unyu --feed Nagaibus --from prev_2 --to current
 
 # ローカルファイル
-gtfs-semdiff compare old.zip new.zip
+gtfs-semantic-diff compare old.zip new.zip
 
 # 出力
-gtfs-semdiff compare ... -o events.json --report report.md
+gtfs-semantic-diff compare ... -o events.json --report report.md
 ```
 
 ## ChangeEventSet JSON トップレベル

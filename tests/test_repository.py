@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from gtfs_semdiff.config import Config
-from gtfs_semdiff.load import GtfsDataRepository, RepositoryError
+from gtfs_semantic_diff.config import Config
+from gtfs_semantic_diff.load import GtfsDataRepository, RepositoryError
 
 from .conftest import make_gtfs_zip
 
@@ -149,7 +149,7 @@ def test_fetch_generations_downloads_and_caches(repo_setup):
 
 
 def test_fetched_zip_loads_as_snapshot(repo_setup):
-    from gtfs_semdiff.load import load_snapshot
+    from gtfs_semantic_diff.load import load_snapshot
 
     repo, _ = repo_setup
     fetched = repo.fetch_generations("nagai-unyu", "Nagaibus")

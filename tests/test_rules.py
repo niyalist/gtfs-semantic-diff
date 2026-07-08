@@ -1,8 +1,8 @@
 """events/rules/ 各ルールの合成 GTFS 単体テスト (M3 DoD 要件)。"""
 
 
-from gtfs_semdiff.events import compare_snapshots
-from gtfs_semdiff.load import load_snapshot
+from gtfs_semantic_diff.events import compare_snapshots
+from gtfs_semantic_diff.load import load_snapshot
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
 

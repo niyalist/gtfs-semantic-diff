@@ -1,7 +1,7 @@
 # M5 性能計測 (2026-07-04)
 
 環境: Apple Silicon Mac (Darwin 25.5) / Python 3.14.6 / `/usr/bin/time -p` による実測。
-キャッシュ済み zip 使用 (ネットワーク時間を含まない)。コマンドは `gtfs-semdiff compare`。
+キャッシュ済み zip 使用 (ネットワーク時間を含まない)。コマンドは `gtfs-semantic-diff compare`。
 
 | フィード | trips (旧/新) | RawDiff | イベント | 実時間 |
 |---|--:|--:|--:|--:|

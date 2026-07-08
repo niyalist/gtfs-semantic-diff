@@ -3,7 +3,7 @@ import "./app.css";
 
 // データ解決: (1) 埋め込み JSON (単一ファイル配布) → (2) ./bundle.json (ホスト配信/開発)
 function embedded() {
-  const el = document.getElementById("gtfs-semdiff-data");
+  const el = document.getElementById("gtfs-semantic-diff-data");
   if (!el) return null;
   const text = el.textContent.trim();
   if (!text || text.startsWith("__GTFS_SEMDIFF")) return null;

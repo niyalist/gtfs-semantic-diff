@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gtfs-semdiff Web 公開 (roadmap W3) の CDK アプリ。
+"""gtfs-semantic-diff Web 公開 (roadmap W3) の CDK アプリ。
 
 W3-0: 配信基盤 (S3 + CloudFront OAC + Budgets)。
 デプロイ: cd infra && AWS_PROFILE=<profile> npx aws-cdk deploy \

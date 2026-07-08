@@ -2,8 +2,8 @@
 
 import pytest
 
-from gtfs_semdiff.events import EvidenceLedger, UnknownRawDiffError
-from gtfs_semdiff.model import RawDiff, RawDiffSet
+from gtfs_semantic_diff.events import EvidenceLedger, UnknownRawDiffError
+from gtfs_semantic_diff.model import RawDiff, RawDiffSet
 
 
 @pytest.fixture

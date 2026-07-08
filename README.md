@@ -1,11 +1,11 @@
-# gtfs-semdiff
+# gtfs-semantic-diff
 
 複数世代の GTFS フィードを比較し、変化を「人間が認識できる意味」——路線廃止・減便・
 区間短縮・迂回追加・停留所改称・乗り場変更・運賃改定など——として抽出・レポートする
 ツール。[GTFSデータリポジトリ (gtfs-data.jp)](https://gtfs-data.jp) の世代管理 API と
 連携し、CLI と Web (自己完結 HTML レポート) の両方で使える。
 
-> **gtfs-semdiff** compares two generations of a GTFS feed and reports the
+> **gtfs-semantic-diff** compares two generations of a GTFS feed and reports the
 > differences as human-recognizable semantic changes (route discontinued,
 > service reduced, stops renamed, timetable diffs in published-timetable
 > format, …), with a structural guarantee that every raw difference is
@@ -52,22 +52,22 @@ uv pip install -e '.[dev]' --python .venv.nosync/bin/python
 ## 使い方
 
 ```sh
-# gtfs-data.jp から2世代を取得してキャッシュ (~/.cache/gtfs-semdiff)
-gtfs-semdiff fetch --org nagai-unyu --feed Nagaibus
+# gtfs-data.jp から2世代を取得してキャッシュ (~/.cache/gtfs-semantic-diff)
+gtfs-semantic-diff fetch --org nagai-unyu --feed Nagaibus
 
 # 比較して HTML レポート (自己完結・単一ファイル) を生成
-gtfs-semdiff compare --org chitetsu --feed chitetsubus \
+gtfs-semantic-diff compare --org chitetsu --feed chitetsubus \
     --old prev_2 --new prev_1 --html report.html
 
 # ChangeEvent JSON / Markdown / RawDiff も出力できる
-gtfs-semdiff compare --org chitetsu --feed chitetsubus \
+gtfs-semantic-diff compare --org chitetsu --feed chitetsubus \
     -o events.json --report report.md --rawdiffs rawdiffs.json
 
 # ローカル zip 同士の比較 (古い方が先)
-gtfs-semdiff compare old.zip new.zip --html report.html
+gtfs-semantic-diff compare old.zip new.zip --html report.html
 
 # L1 同定だけを実行し、対応率と confidence 分布を確認
-gtfs-semdiff identity --org chitetsu --feed chitetsubus
+gtfs-semantic-diff identity --org chitetsu --feed chitetsubus
 ```
 
 - `current` が存在しないフィード (有効期限切れ) は、rid 未指定なら利用可能な最新2世代に

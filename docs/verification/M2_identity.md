@@ -1,6 +1,6 @@
 # M2 検証ログ: L1 世代間同定 (MatchGraph)
 
-実施日: 2026-07-04 / コマンド: `gtfs-semdiff identity ...` / 統計 JSON: `data/m2_*_identity.json`
+実施日: 2026-07-04 / コマンド: `gtfs-semantic-diff identity ...` / 統計 JSON: `data/m2_*_identity.json`
 
 ## 1. 永井運輸 nagai-unyu/Nagaibus (prev_2 2025-04-01 → prev_1 2025-10-01)
 

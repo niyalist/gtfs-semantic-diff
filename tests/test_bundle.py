@@ -4,10 +4,10 @@ import json
 
 from click.testing import CliRunner
 
-from gtfs_semdiff.cli import main
-from gtfs_semdiff.events.pipeline import compare_snapshots_with_artifacts
-from gtfs_semdiff.load import load_snapshot
-from gtfs_semdiff.report.bundle import build_bundle, render_html
+from gtfs_semantic_diff.cli import main
+from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+from gtfs_semantic_diff.load import load_snapshot
+from gtfs_semantic_diff.report.bundle import build_bundle, render_html
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
 from .test_diff0 import NEW_FILES

@@ -10,7 +10,7 @@
 | 富山地鉄 R8 (prev_2→prev_1) | 282 | 7.6 MB | 124 (shape線 176本) | — |
 | 臨港テスト (系統路線増減) | 4 | 1.8 MB | 0 | 0 |
 
-コマンド: `gtfs-semdiff compare ... --html out.html` (自己完結・単一ファイル)。
+コマンド: `gtfs-semantic-diff compare ... --html out.html` (自己完結・単一ファイル)。
 
 ## 構造検証 (自動)
 
@@ -20,7 +20,7 @@
   ja/en 整形・subject ラベル生成が例外なく完了し、**全 evidence ID が rawdiff 索引で
   解決できる** (「全ての変化をクリックすれば生値が出る」の構造保証) ことを確認
 - ビューアは Svelte 4 + Vite。ビルド成果物 942KB (gzip 252KB) を
-  `src/gtfs_semdiff/report/viewer_template.html` としてパッケージに同梱
+  `src/gtfs_semantic_diff/report/viewer_template.html` としてパッケージに同梱
   (再ビルド: `scripts/build_viewer.sh`)
 
 ## ビューア構成
