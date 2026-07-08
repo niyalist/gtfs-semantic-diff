@@ -1,7 +1,7 @@
 """B群: 運行パターンレベルのイベント (subject: family × 方向 × パターン)。
 
 検出条件 (docs/design/ontology.md B群):
-対象は「同一 trip_id のまま停車列が変わった trip」(trip_delta.modified の
+対象は「対応付いた便のうち停車列が変わったもの」(trip_delta.modified の
 うち base_seq が変化したもの)。停車列の新旧を difflib opcodes で分解し、
 
 - 端点への追加   → PATTERN_EXTENDED (運行区間延長)
@@ -88,7 +88,10 @@ def extract(ctx: RuleContext) -> None:
         # evidence: 当該 trip の stop_times / trips 差分の全体。
         # 経路変更は下流停留所の時刻・headsign の連鎖変更を引き起こすため、
         # trip 単位で丸ごとこのイベントが説明する (最初のイベントが primary)。
-        evidence = ctx.index.trip_cascade_ids(trip_ids)
+        # trip matching v2 で ID を跨いだ対応 (旧 ID の row_removed / 新 ID の
+        # row_added) がありうるため、旧 trip の行も含める
+        old_ids = sorted({o.trip_id for o, _, _ in members})
+        evidence = ctx.index.trip_cascade_ids(old_ids) + ctx.index.trip_cascade_ids(trip_ids)
         quantification = {"trip_count": len(trip_ids), "stops": list(stops)}
         if end:
             quantification["end"] = end

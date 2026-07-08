@@ -191,11 +191,19 @@ def _modified_trip_events(ctx: RuleContext) -> None:
     for old_trip, new_trip in ctx.trip_delta.modified:
         if old_trip.base_seq != new_trip.base_seq:
             continue  # パターン変化は B群が処理済み
-        time_ids = [
-            d.rawdiff_id
-            for d in ctx.index.for_key("stop_times.txt", new_trip.trip_id)
-            if d.kind == "field_changed" and d.column in ("arrival_time", "departure_time")
-        ]
+        if old_trip.trip_id == new_trip.trip_id:
+            time_ids = [
+                d.rawdiff_id
+                for d in ctx.index.for_key("stop_times.txt", new_trip.trip_id)
+                if d.kind == "field_changed"
+                and d.column in ("arrival_time", "departure_time")
+            ]
+        else:
+            # trip matching v2 の ID 跨ぎ対応: 差分は旧 ID の row_removed +
+            # 新 ID の row_added として現れるため、両 trip の行全体を evidence に
+            time_ids = ctx.index.trip_cascade_ids(
+                [old_trip.trip_id]
+            ) + ctx.index.trip_cascade_ids([new_trip.trip_id])
         if not time_ids:
             continue
         deltas = _time_deltas(old_trip, new_trip)

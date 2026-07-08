@@ -207,7 +207,7 @@
   「AI には events+rawdiffs、表示済み解釈は presentation」の使い分け指針を
   docs/spec/ に明文化。
 
-## M8: 便対応付けの再設計 (trip matching v2) 【着手 2026-07-08】 (設計: docs/design/trip_matching.md)
+## M8: 便対応付けの再設計 (trip matching v2) 【完了 2026-07-08 (docs/verification/M8_trip_matching.md)】 (設計: docs/design/trip_matching.md)
 
 - 動機: 八戸の反例で「同一 trip_id の無条件信頼」(tripdelta ②) が連番型 ID
   運用で破綻することを特定 (docs/verification/trip_identity_survey.md)。

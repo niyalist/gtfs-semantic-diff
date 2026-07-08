@@ -54,9 +54,20 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
         for c in identity.new_stop_clusters.values()
         for pid in c.platform_ids
     }
+    # family の世代間対応 (名称変更を含む) を trip 対応付けのブロッキングに渡す
+    from ..model.matchgraph import ENTITY_ROUTE_FAMILY
+
+    accept = config.get("events", "accept_confidence", default=0.5)
+    family_links = {
+        e.old_id: e.new_id
+        for e in identity.graph.for_type(ENTITY_ROUTE_FAMILY)
+        if e.confidence >= accept
+    }
     trip_delta = build_trip_delta(
         collect_trips(old, route_to_family_map(identity.old_families), old_stop_to_base),
         collect_trips(new, route_to_family_map(identity.new_families), new_stop_to_base),
+        config=config,
+        family_links=family_links,
     )
 
     ctx = RuleContext(

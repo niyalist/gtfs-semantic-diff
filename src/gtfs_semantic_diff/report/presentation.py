@@ -551,9 +551,11 @@ class _Builder:
         band_matrix = self._band_matrix(dgroups, old_trips, new_trips)
         # 時刻表を先に構築し、表示用ペアリング (廃止×新設の組) を summary と共有する。
         # trip_id が張り替わるフィードでも Lev.3 / Lev.5 が経路・時刻変更を拾える
-        timetables, replaced_pairs = self._timetables(dgroups, old_trips, new_trips)
+        # 便の対応付けはコア (trip matching v2) が担い、表示層の後付けペアリングは
+        # 廃止した (docs/design/trip_matching.md)
+        timetables = self._timetables(dgroups, old_trips, new_trips)
         summary = self._summary(group, dgroups, systems, band_matrix,
-                                len(old_trips), len(new_trips), replaced_pairs)
+                                len(old_trips), len(new_trips))
 
         has_changes = bool(
             summary["level1"] or summary["level2"] or summary["level3"]
@@ -988,8 +990,7 @@ class _Builder:
 
     # --- ② 変化サマリー (R12 カスケード) ---
 
-    def _summary(self, group, dgroups, systems, band_matrix, n_old, n_new,
-                 replaced_pairs) -> dict:
+    def _summary(self, group, dgroups, systems, band_matrix, n_old, n_new) -> dict:
         # Lev.1
         level1 = None
         if n_old == 0 and n_new > 0:
@@ -1016,7 +1017,7 @@ class _Builder:
                 lev2_system_ids.add(s["system_id"])
 
         # Lev.3: 経由停変化ユニット (影響率 R13)。素材は modified + 表示ペアリング
-        level3 = self._level3_units(group, systems, lev2_system_ids, replaced_pairs)
+        level3 = self._level3_units(group, systems, lev2_system_ids)
 
         # Lev.4: 増減便 = 集計行のビン別差分の符号別合計 (R14)
         level4 = []
@@ -1038,7 +1039,7 @@ class _Builder:
         # Lev.5: 時刻の微調整 (停車列は同一で時刻のみ変化)。
         # 同一 trip_id (modified) と表示ペアリングで組めた対の両方を数える
         pairs = [
-            (o, nw) for o, nw in list(self.delta.modified) + list(replaced_pairs)
+            (o, nw) for o, nw in self.delta.modified
             if self.f2g.get(nw.family) == group
         ]
         retimed = sum(
@@ -1069,7 +1070,7 @@ class _Builder:
                 "level4": level4,
                 "level5": {"retimed_trips": retimed, "notes": notes}}
 
-    def _level3_units(self, group, systems, lev2_ids, replaced_pairs) -> list[dict]:
+    def _level3_units(self, group, systems, lev2_ids) -> list[dict]:
         """経由停変化ユニット。
 
         素材は trip 単位の新旧対応: (a) trip_delta.modified (同一 trip_id) と
@@ -1083,7 +1084,7 @@ class _Builder:
             sys_by_key[(s["family"], s["direction"], tuple(s["stops"]))] = s
 
         units: dict[tuple, dict] = {}
-        for old_t, new_t in list(self.delta.modified) + list(replaced_pairs):
+        for old_t, new_t in self.delta.modified:
             if self.f2g.get(new_t.family) != group or old_t.base_seq == new_t.base_seq:
                 continue
             key = (new_t.family, new_t.direction, old_t.base_seq, new_t.base_seq)
@@ -1196,7 +1197,6 @@ class _Builder:
                 dg_label[(g["id"], leg)] = label
 
         tables = []
-        all_replaced_pairs: list[tuple[TripInfo, TripInfo]] = []
         max_sheet_cost = self.config.get(
             "presentation", "sheet_merge_max_gap_per_trip", default=0.5
         )
@@ -1205,17 +1205,6 @@ class _Builder:
         )
         for (dg, leg, day) in sorted(buckets, key=lambda k: (k[0], k[1], day_sort_key(k[2]))):
             bucket = buckets[(dg, leg, day)]
-            # 表示用ペアリング: 会計上は removed+added でも、同一バケット内で
-            # 発時刻が近い便同士は「同じ便の置き換え」として1列に組む
-            # (実例: direction_id 付与や trip_id 張り替えで厳密署名が組めないフィード、
-            #  停留所再編を伴う経路変更)。events / accounting には影響しない。
-            # ペアリングは分冊 (sheet) 分割の前に leg バケット全体で行う
-            # (経路変更で分冊をまたぐ便を取りこぼさないため)
-            replaced = self._pair_leftovers(bucket, pair_of_old, pair_of_new)
-            for n_id, o_t in replaced.items():
-                n_t = next(t for t in bucket["new"] if t.trip_id == n_id)
-                all_replaced_pairs.append((o_t, n_t))
-
             # 列候補 (status, old, new) を作り、一意な停車パターンごとにまとめる
             # (経由違いは同一クラスタ内でも起こるため、初期単位は系統でなくパターン。
             #  包含・微差のパターンは併合コスト 0〜微小で自然に再併合される)
@@ -1227,10 +1216,6 @@ class _Builder:
                 if pair:
                     status, o, _ = pair
                     done_old.add(o.trip_id)
-                elif nw.trip_id in replaced:
-                    o = replaced[nw.trip_id]
-                    done_old.add(o.trip_id)
-                    status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
                 else:
                     status, o = "added", None
                 specs_by_pattern[nw.base_seq].append((status, o, nw))
@@ -1291,41 +1276,7 @@ class _Builder:
                     ],
                     "columns": columns,
                 })
-        return tables, all_replaced_pairs
-
-    def _pair_leftovers(self, bucket, pair_of_old, pair_of_new) -> dict[str, TripInfo]:
-        """バケット内で対応の無い旧便×新便を発時刻の近さで貪欲に組む (決定的)。
-
-        戻り値: 新 trip_id → 旧 TripInfo。発時刻差が
-        [presentation] pair_max_shift_min を超える組は作らない。"""
-        from ..events.timebands import parse_gtfs_time
-
-        max_shift = self.config.get("presentation", "pair_max_shift_min", default=60) * 60
-        olds = [t for t in bucket["old"] if t.trip_id not in pair_of_old]
-        news = [t for t in bucket["new"] if t.trip_id not in pair_of_new]
-
-        def dep(t):
-            return parse_gtfs_time(t.first_departure)
-
-        candidates = []
-        for o in olds:
-            for n in news:
-                do, dn = dep(o), dep(n)
-                if do is None or dn is None:
-                    continue
-                diff = abs(dn - do)
-                if diff <= max_shift:
-                    candidates.append((diff, o.first_departure, n.first_departure,
-                                       o.trip_id, n.trip_id, o, n))
-        candidates.sort(key=lambda c: c[:5])
-        used_old: set[str] = set()
-        result: dict[str, TripInfo] = {}
-        for _, _, _, o_id, n_id, o, n in candidates:
-            if o_id in used_old or n_id in result:
-                continue
-            used_old.add(o_id)
-            result[n_id] = o
-        return result
+        return tables
 
     @staticmethod
     def _times_on_axis(trip: TripInfo, axis) -> list[str | None]:

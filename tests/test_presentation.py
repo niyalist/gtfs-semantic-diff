@@ -268,6 +268,54 @@ def test_axis_rows_asymmetric_stays_two_rows(tmp_path, config):
     assert rows[1]["stops"][-1] == "営業所"  # 復路の別端点が行として現れる
 
 
+# --- 便対応付け (trip matching v2): 八戸型の連番 ID スライド ---
+
+
+def test_matching_survives_sequential_id_slide(tmp_path, config):
+    """八戸の反例の合成再現: 系統の連番 ID が便の増減でスライドし、同じ ID が
+    別の時刻の便を指す。旧 v2 (同一 trip_id 無条件) は 11:30→15:00 のような
+    誤対応を量産した。v2 の大域割当は共有停留所の時刻整合で正しく組む。"""
+    stops = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,営業所,36.0000,139.0000\nS2,中央,36.0100,139.0100\n"
+            "S3,病院,36.0200,139.0200\nS4,公園,36.0300,139.0300\n"
+            "S5,駅,36.0400,139.0400\n"
+        ),
+    }
+    # 旧: 長経路系統 A-1(9:00) A-2(11:30) A-3(15:00)、経路は S1..S5
+    old = dict(stops)
+    old["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,A-1\nR1,WD,A-2\nR1,WD,A-3\n"
+    old["stop_times.txt"] = _stop_times([
+        ("A-1", 9, ["S1", "S2", "S3", "S4", "S5"]),
+        ("A-2", 11, ["S1", "S2", "S3", "S4", "S5"]),
+        ("A-3", 15, ["S1", "S2", "S3", "S4", "S5"]),
+    ])
+    # 新: 11:30 の便が短縮 (S1..S4) に振替られ、長経路系統は9:00と15:00の2便。
+    # 全便が経由を1停変更 (S3→S3 のままだが S2 を外す) して完全一致を防ぎ、
+    # 連番が詰まる: A-2 が旧15:00 の位置に来る
+    new = dict(stops)
+    new["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,A-1\nR1,WD,A-2\nR1,WD,B-1\n"
+    new["stop_times.txt"] = _stop_times([
+        ("A-1", 9, ["S1", "S3", "S4", "S5"]),    # 旧 A-1 (9:00) の経由変更
+        ("A-2", 15, ["S1", "S3", "S4", "S5"]),   # 中身は旧 A-3 (15:00)!
+        ("B-1", 11, ["S1", "S2", "S3", "S4"]),   # 中身は旧 A-2 (11:30) の短縮
+    ])
+    model, _ = build(tmp_path, config, old_files=old, new_files=new)
+    page = page_of(model, "1")
+    cols = {}
+    for tb in page["timetables"]:
+        for c in tb["columns"]:
+            key = (c["trip_id_old"], c["trip_id_new"])
+            cols[key] = c["status"]
+    # 常識的な対応: 旧A-2(11:30) ↔ 新B-1(11:30 短縮)、旧A-3(15:00) ↔ 新A-2(15:00)
+    assert ("A-2", "B-1") in cols      # 短縮振替が1列に組まれる
+    assert ("A-3", "A-2") in cols      # 連番スライドを時刻整合が上書き
+    assert ("A-1", "A-1") in cols      # 9:00 は素直に対応
+    # 「旧11:30 → 新15:00」のような誤対応が存在しない
+    assert ("A-2", "A-2") not in cols
+
+
 # --- 時刻表の列ソート (共有停留所ベース) ---
 
 
