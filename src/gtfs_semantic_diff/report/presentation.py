@@ -674,6 +674,20 @@ class _Builder:
                         if day_labels[d].get(k)}}
             for d in sorted(day_counts, key=day_sort_key)
         ]
+        # 整合の不変条件 (presentation の会計): ヘッダ (day_totals) の便数と
+        # ④時刻表の列数合計が day_type ごとに一致する。便が ③④ から
+        # 静かに消えるバグ (M9 の N:1 クラスタ崩落で実際に起きた) の再発防止
+        tt_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        for tb in timetables:
+            tt_counts[tb["day_type"]][0] += tb["trips_old"]
+            tt_counts[tb["day_type"]][1] += tb["trips_new"]
+        for d, (n_old, n_new) in sorted(day_counts.items()):
+            got = tt_counts.get(d, [0, 0])
+            if [n_old, n_new] != list(got):
+                logger.warning(
+                    "presentation 整合エラー: %s %s ヘッダ %d→%d / ④ %d→%d",
+                    group, d, n_old, n_new, got[0], got[1],
+                )
         # M10: 増便/限定型の注記。dow_* の曜日集合を包含する day_type の便が
         # **同じ世代で共存**する場合のみ「◯◯に追加」— 最小の上位集合
         # (同点は R16 順)。旧=平日 → 新=月水 のような運行日の変更
@@ -748,6 +762,12 @@ class _Builder:
             if matches and matches[0].confidence >= self.accept \
                     and matches[0].new_id in new_clusters:
                 link[old_id] = matches[0].new_id
+        # M9 で family が統合されると複数の旧クラスタが同じ新クラスタに
+        # リンクする (N:1)。1:1 前提で先頭以外を落とすと ③④ から便が
+        # 静かに消えるため、旧クラスタは全てぶら下げる
+        olds_by_new: dict[str, list[str]] = defaultdict(list)
+        for o, n in sorted(link.items()):
+            olds_by_new[n].append(o)
 
         def trips_of(trips, cluster, seq2cluster):
             return sum(
@@ -755,11 +775,12 @@ class _Builder:
                 if seq2cluster.get((t.family, t.direction, t.base_seq)) == cluster
             )
 
-        def earliest(cluster_old, cluster_new):
+        def earliest(cluster_olds, cluster_new):
             deps = [
                 t.first_departure
                 for t in old_trips
-                if self.old_seq2cluster.get((t.family, t.direction, t.base_seq)) == cluster_old
+                if self.old_seq2cluster.get((t.family, t.direction, t.base_seq))
+                in cluster_olds
             ] + [
                 t.first_departure
                 for t in new_trips
@@ -769,20 +790,23 @@ class _Builder:
 
         systems = []
         for new_id, c in sorted(new_clusters.items()):
-            old_id = next((o for o, n in link.items() if n == new_id), None)
+            old_ids = olds_by_new.get(new_id, [])
             rep = c.representative
             systems.append({
                 "system_id": new_id,
                 "family": c.family,
                 "direction": c.direction,
-                "status": "continued" if old_id else "added",
+                "status": "continued" if old_ids else "added",
                 "stops": list(rep.base_names),
                 "first_stop": rep.base_names[0],
                 "last_stop": rep.base_names[-1],
-                "trips_old": trips_of(old_trips, old_id, self.old_seq2cluster) if old_id else 0,
+                "trips_old": sum(
+                    trips_of(old_trips, oid, self.old_seq2cluster) for oid in old_ids
+                ),
                 "trips_new": trips_of(new_trips, new_id, self.new_seq2cluster),
-                "old_system_id": old_id,
-                "earliest_departure": earliest(old_id, new_id),
+                "old_system_id": old_ids[0] if old_ids else None,  # 代表 (互換)
+                "old_system_ids": old_ids,
+                "earliest_departure": earliest(set(old_ids), new_id),
                 "polyline": [self.coords[s] for s in rep.base_names if s in self.coords],
             })
         for old_id, c in sorted(old_clusters.items()):
@@ -800,7 +824,8 @@ class _Builder:
                 "trips_old": trips_of(old_trips, old_id, self.old_seq2cluster),
                 "trips_new": 0,
                 "old_system_id": old_id,
-                "earliest_departure": earliest(old_id, None),
+                "old_system_ids": [old_id],
+                "earliest_departure": earliest({old_id}, None),
                 "polyline": [self.coords[s] for s in rep.base_names if s in self.coords],
             })
         return systems
@@ -909,8 +934,8 @@ class _Builder:
                 refs.append((old_by_id, s["old_system_id"]))
             else:
                 refs.append((new_by_id, s["system_id"]))
-                if s["old_system_id"]:
-                    refs.append((old_by_id, s["old_system_id"]))
+                for oid in s.get("old_system_ids", []):
+                    refs.append((old_by_id, oid))
             for table, cid in refs:
                 c = table.get(cid)
                 if c:
@@ -992,7 +1017,8 @@ class _Builder:
             for sy in dg["systems"]:
                 same_leg = sy["leg"] == dg["systems"][0]["leg"]
                 patterns = []
-                for cid in (sy["system_id"].removeprefix("old:"), sy["old_system_id"]):
+                for cid in (sy["system_id"].removeprefix("old:"),
+                            *sy.get("old_system_ids", [])):
                     cluster = cluster_by_id.get(cid)
                     if cluster:
                         patterns.extend(cluster.patterns)
@@ -1030,8 +1056,8 @@ class _Builder:
         sys_by_new_cluster = {}
         for g in dgroups:
             for s in g["systems"]:
-                if s["old_system_id"]:
-                    sys_by_old_cluster[s["old_system_id"]] = s
+                for oid in s.get("old_system_ids", []):
+                    sys_by_old_cluster[oid] = s
                 if not s["system_id"].startswith("old:"):
                     sys_by_new_cluster[s["system_id"]] = s
 
@@ -1326,8 +1352,8 @@ class _Builder:
         sys_by_new = {}
         for g in dgroups:
             for s in g["systems"]:
-                if s["old_system_id"]:
-                    sys_by_old[s["old_system_id"]] = s
+                for oid in s.get("old_system_ids", []):
+                    sys_by_old[oid] = s
                 if not s["system_id"].startswith("old:"):
                     sys_by_new[s["system_id"]] = s
 

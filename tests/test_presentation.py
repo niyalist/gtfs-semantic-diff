@@ -956,6 +956,42 @@ def test_band_matrix_single_direction_has_no_leg_rows(tmp_path, config):
     assert not [r for r in page["band_matrix"]["rows"] if r["kind"] == "leg"]
 
 
+def test_merged_families_keep_all_trips_in_sections(tmp_path, config):
+    """M9 フォロー: 統合された複数の旧クラスタが同じ新クラスタにリンクしても
+    (N:1)、ヘッダ・③本数表・④時刻表の便数が一致する (朝日町の実例:
+    1:1 前提の _systems が2つ目以降の旧クラスタを落とし ③2便/④5便/ヘッダ8便
+    と三段にずれた)。"""
+    stops = SIX_STOPS["stops.txt"]
+    old = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "RA,A1,［駅前線］朝便,,3\nRB,A1,［駅前線］,,3\n"),
+        "trips.txt": "route_id,service_id,trip_id\nRA,WD,T1\nRB,WD,T2\nRB,WD,T3\n",
+        "stop_times.txt": _stop_times([
+            ("T1", 7, ["S1", "S2", "S3", "S4"]),
+            ("T2", 10, ["S1", "S2", "S3", "S4", "S5"]),
+            ("T3", 15, ["S1", "S2", "S3", "S4", "S5"]),
+        ]),
+    }
+    new = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "1,A1,A1駅前線,,3\n"),
+        "trips.txt": "route_id,service_id,trip_id\n1,WD,T1\n1,WD,T2\n1,WD,T3\n",
+        "stop_times.txt": old["stop_times.txt"],
+    }
+    model, _ = build(tmp_path, config, old_files=old, new_files=new)
+    page = page_of(model, "駅前線")
+    wd = next(d for d in page["day_totals"] if d["day_type"] == "weekday")
+    assert (wd["old"], wd["new"]) == (3, 3)
+    # ④: 全便が現れる
+    assert sum(t["trips_old"] for t in page["timetables"]) == 3
+    assert sum(t["trips_new"] for t in page["timetables"]) == 3
+    # ③: 集計行の合計もヘッダと一致
+    agg = [r for r in page["band_matrix"]["rows"] if r["kind"] == "aggregate"]
+    assert [sum(r["total"][0] for r in agg), sum(r["total"][1] for r in agg)] == [3, 3]
+
+
 def test_dow_day_type_tab_with_added_to(tmp_path, config):
     # M10: 平日ベース + 月水のみの増便 → dow_1010000 が独立タブになり、
     # 曜日集合の包含から「平日に追加」(added_to) が付く

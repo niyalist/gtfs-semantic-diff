@@ -152,8 +152,9 @@
     <h3>{tt("summary_changes")}</h3>
     <LevSummary {page} />
 
-    <!-- 曜日タブ (R18): ③④を選択曜日に絞る。①②は運行日横断なので対象外 -->
-    {#if dayTabs.length > 1}
+    <!-- 曜日タブ (R18): ③④を選択曜日に絞る。①②は運行日横断なので対象外。
+         運行日区分が1つでも表示する (どの区分の情報かを常に明示) -->
+    {#if dayTabs.length >= 1}
       <div class="day-tabs" role="tablist">
         {#each dayTabs as d}
           <button
