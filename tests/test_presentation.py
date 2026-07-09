@@ -721,6 +721,66 @@ def test_level3_includes_display_paired_trips(tmp_path, config):
     assert lev3[0]["affected_trips"] == 2  # ペアリング経由でも全便が影響に数えられる
 
 
+def test_renamed_route_single_page_with_former_name(tmp_path, config):
+    # M9 名古屋型: 路線改称 (+停留所改称) → ページは新名称1つに統合され、
+    # 旧名称が注記される。廃止+新設の2ページには割れない
+    new_files = {
+        "routes.txt": MINIMAL_FEED["routes.txt"].replace("R1,A1,1,", "R1,A1,100,"),
+        "stops.txt": MINIMAL_FEED["stops.txt"].replace("市役所前", "表町一丁目"),
+    }
+    model, _ = build(tmp_path, config, new_files=new_files)
+    names = [p["route_group"] for p in model["route_pages"]]
+    assert names == ["100"]  # 新世代が背骨。「1」の廃止ページは作らない
+    page = model["route_pages"][0]
+    assert page["former_names"] == ["1"]
+    assert page["summary"]["level1"] is None
+    # 旧新の便が同一ページで対応する (時刻不変なので変化なし扱い)
+    wd = next(d for d in page["day_totals"] if d["day_type"] == "weekday")
+    assert (wd["old"], wd["new"]) == (2, 2)
+
+
+def test_unlinked_pages_show_similar_candidates(tmp_path, config):
+    # 受理閾値未満・link_floor 以上の対は「類似候補」注記のみ:
+    # ページは廃止+新設のまま、相互参照が付く
+    old_files = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\nS2,市役所前,36.0100,139.0100\n"
+            "S3,病院前,36.0200,139.0200\nS6,山道,36.5000,139.5000\n"
+            "S7,川道,36.5100,139.5100\nS8,峠,36.5200,139.5200\n"
+            "S9,谷,36.5300,139.5300\n"
+        ),
+        "trips.txt": "route_id,service_id,trip_id\nR1,WD,T1\n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "T1,08:00:00,08:00:00,S1,1\nT1,08:05:00,08:05:00,S2,2\n"
+            "T1,08:10:00,08:10:00,S3,3\n"
+        ),
+    }
+    # 新: 別 route_id・別名。停留所 3/7 共有 (Jaccard ≈ 0.43 < 受理 0.5、≥ floor 0.3)
+    new_files = dict(old_files)
+    new_files["routes.txt"] = (
+        "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+        "R9,A1,山線,,3\n"
+    )
+    new_files["trips.txt"] = "route_id,service_id,trip_id\nR9,WD,T1\n"
+    new_files["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        "T1,08:00:00,08:00:00,S1,1\nT1,08:05:00,08:05:00,S2,2\n"
+        "T1,08:10:00,08:10:00,S3,3\nT1,08:15:00,08:15:00,S6,4\n"
+        "T1,08:20:00,08:20:00,S7,5\nT1,08:25:00,08:25:00,S8,6\n"
+        "T1,08:30:00,08:30:00,S9,7\n"
+    )
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    removed = next(p for p in model["route_pages"] if p["summary"]["level1"]
+                   and p["summary"]["level1"]["kind"] == "removed")
+    added = next(p for p in model["route_pages"] if p["summary"]["level1"]
+                 and p["summary"]["level1"]["kind"] == "added")
+    assert [c["name"] for c in removed["similar_candidates"]] == ["山線"]
+    assert [c["name"] for c in added["similar_candidates"]] == ["1"]
+    assert 0.3 <= removed["similar_candidates"][0]["similarity"] < 0.5
+
+
 def test_level4_signed_band_sums(tmp_path, config):
     # 7-9時帯 +1、9-16時帯 -1 → net 0 だが 増1・減1 (R14: シフトと区別)
     new_files = {

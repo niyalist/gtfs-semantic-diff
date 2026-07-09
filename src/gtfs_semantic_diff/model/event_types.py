@@ -32,6 +32,8 @@ _DEFS = [
     ("ROUTE_RENAMED", "路線名変更", "Route renamed", "A", SEVERITY_MINOR),
     ("ROUTE_SPLIT", "路線分割", "Route split", "A", SEVERITY_MAJOR),
     ("ROUTE_MERGED", "路線統合", "Routes merged", "A", SEVERITY_MAJOR),
+    # v0.2.2 (M9): N:M の路線再編 (統合とも分割とも言えない対応成分)
+    ("ROUTE_RESTRUCTURED", "路線再編", "Routes restructured", "A", SEVERITY_MAJOR),
     ("THROUGH_SERVICE_INTRODUCED", "直通運転開始", "Through service introduced", "A", SEVERITY_MAJOR),
     ("THROUGH_SERVICE_DISCONTINUED", "直通運転終了", "Through service discontinued", "A", SEVERITY_MAJOR),
     # B. 運行パターンレベル

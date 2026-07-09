@@ -25,15 +25,19 @@ input (zip x N generations | gtfs-data.jp API)
 
 必読ドキュメント:
 - docs/design/architecture.md — モジュール構成と JSON スキーマ
-- docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.1)
+- docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.2)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 現在の状態 (2026-07-04)
+## 現在の状態 (2026-07-09)
 
-roadmap M0–M7 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 111件、
+roadmap M0–M9 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 167件、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
-検証ログは docs/verification/ (M2〜M7)。未実装項目は detection.md §7 に列挙
-(ROUTE_SPLIT/MERGED、THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
+検証ログは docs/verification/ (M2〜M9)。未実装項目は detection.md §7 に列挙
+(THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
+M8 (trip matching v2): 便対応は内容主導のコスト最小割当 (ID は弱い事前)。
+M9 (route identity v2): family 世代間対応も内容主導 (停留所翻訳+集合 Jaccard、
+N:M 成分 → RENAMED/MERGED/SPLIT/RESTRUCTURED、ページは新世代背骨+旧名称注記、
+lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
 HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・単一ファイル、W1)。
@@ -72,6 +76,12 @@ M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / 
    ※ rid は世代が進むとずれるため、有効期間 (from_date) で当該改正ペアを特定し直すこと
 3. 川崎鶴見臨港バス (ローカル zip)。`~/Downloads/gtfs-臨港テストデータ(*).zip` を
    data/ にコピーして使用 (ダイヤ01 が基準、系統路線増減/増便減便/ダイヤ時分変更01 と比較)
+4. 名古屋市営バス (ローカル zip、data/nagoya/)。20250329→20260328
+   (M9 基準: 鳴.ワイ→鳴.メグ の route_id 同一改称 + 停留所改称の共倒れ回避。
+   lev1_trip_ratio 0.0)
+5. 朝日町 `toyama-asahitown / asahimachibus` (API)。基準ペア prev_1→current
+   (M9 基準: 命名規則全面変更+21→9 路線統合。9ページ・RENAMED 2 + MERGED 7・
+   lev1_trip_ratio 0.0。宮崎境線↔市振線のコリドー連鎖 → best-match 間引きの実例)
 
 ## 開発環境
 

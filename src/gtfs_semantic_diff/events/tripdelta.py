@@ -182,22 +182,22 @@ def build_trip_delta(
     old_trips: dict[str, TripInfo],
     new_trips: dict[str, TripInfo],
     config=None,
-    family_links: dict[str, str] | None = None,
-    old_family_group: dict[str, str] | None = None,
-    new_family_group: dict[str, str] | None = None,
+    old_family_block: dict[str, str] | None = None,
+    new_family_block: dict[str, str] | None = None,
 ) -> TripDelta:
     """世代間の便対応付け。
 
     ブロッキング (候補対の範囲) は **route_group (枝番系統を束ねる路線ブランド)
     × day_type**。事業者は便を枝番違いの route へ移すことがあり (徳島 202→204
-    加茂谷線、便の中身はほぼ同一)、family 単位のブロックでは狭すぎる。
-    - family_links: 旧 family 名 → 新 family 名 (名称変更の対応)
-    - old/new_family_group: family 名 → route_group 名 (identity の f2g)
+    加茂谷線)、family 単位では狭すぎる。さらに M9 で、世代間で対応した
+    (改称・統合・分割) family の group は同一ブロックに束ねる —
+    old/new_family_block は identity.builder.blocking_family_maps が作る
+    family 名 → ブロック名の対応 (未指定なら family 名そのまま)。
+    ブロックの過大化は非破滅的 (precision は下の受理ゲートが守る)。
     """
     params = MatchingParams.from_config(config)
-    family_links = family_links or {}
-    old_family_group = old_family_group or {}
-    new_family_group = new_family_group or {}
+    old_family_block = old_family_block or {}
+    new_family_block = new_family_block or {}
     delta = TripDelta(old_trips=old_trips, new_trips=new_trips)
 
     # --- 段1: 内容署名の完全一致 (同一 trip_id を優先ペアリング) ---
@@ -231,13 +231,8 @@ def build_trip_delta(
 
     # --- 段2: ブロック内のコスト最小割当 ---
     def block_key(t: TripInfo, gen: str) -> tuple:
-        if gen == "old":
-            # 名称変更された family は新側の名前に写してからグループ化
-            fam = family_links.get(t.family, t.family)
-            group = new_family_group.get(fam) or old_family_group.get(t.family) or fam
-        else:
-            group = new_family_group.get(t.family) or t.family
-        return (group, t.day_type)
+        blocks = old_family_block if gen == "old" else new_family_block
+        return (blocks.get(t.family, t.family), t.day_type)
 
     blocks: dict[tuple, tuple[list[TripInfo], list[TripInfo]]] = defaultdict(
         lambda: ([], [])

@@ -37,8 +37,8 @@ def test_bundle_structure(tmp_path, config):
         assert set(e["evidence"]) <= ids
         assert e["display_name_ja"] and e["display_name_en"]
 
-    # カタログは全41タイプ ja/en
-    assert len(bundle["catalog"]) == 41
+    # カタログは全42タイプ ja/en (v0.2.2: ROUTE_RESTRUCTURED 追加)
+    assert len(bundle["catalog"]) == 42
     assert bundle["catalog"]["SERVICE_REDUCED"]["en"] == "Service reduced"
 
     # レポート表題用の事業者名 (agency.txt 由来)

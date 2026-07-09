@@ -26,7 +26,11 @@ from .pattern_clustering import (
     link_pattern_clusters,
 )
 from .route_family import (
+    METHOD_CONTENT,
+    METHOD_NAME,
     RouteFamily,
+    build_stop_translation,
+    classify_family_components,
     extract_route_families,
     link_route_families,
     route_to_family_map,
@@ -53,6 +57,10 @@ class IdentityResult:
     new_groups: list[RouteGroup] = field(default_factory=list)
     old_family_to_group: dict[str, str] = field(default_factory=dict)
     new_family_to_group: dict[str, str] = field(default_factory=dict)
+    # M9: family 世代間対応の連結成分 (内容エッジを含むもののみ)。
+    # {"old": [...], "new": [...], "shape": renamed|merged|split|restructured,
+    #  "similarity": float, "demoted": bool}
+    family_components: list[dict] = field(default_factory=list)
     graph: MatchGraph = field(default_factory=MatchGraph)
 
 
@@ -87,7 +95,26 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
     old_f2g, old_groups = build_route_groups(old_family_stops, config)
     new_f2g, new_groups = build_route_groups(new_family_stops, config)
 
-    family_edges = link_route_families(old_families, new_families, config)
+    # M9: 内容主導 linking。停留所クラスタの世代間対応で旧基底名を新側へ
+    # 翻訳してから家族の停留所集合を比較する (停留所改称との共倒れ防止)
+    stop_link_min = config.get(
+        "identity", "route_family", "stop_link_min", default=0.5
+    )
+    translation = build_stop_translation(
+        old_stops, new_stops, stop_edges, stop_link_min
+    )
+    family_edges = link_route_families(
+        old_families, new_families, config,
+        old_family_stops=old_family_stops,
+        new_family_stops=new_family_stops,
+        stop_translation=translation,
+    )
+    max_groups = config.get(
+        "identity", "route_family", "max_component_groups", default=6
+    )
+    family_components, family_edges = classify_family_components(
+        family_edges, old_f2g, new_f2g, max_groups
+    )
 
     old_pcs = cluster_patterns(old_patterns, config)
     new_pcs = cluster_patterns(new_patterns, config)
@@ -119,8 +146,64 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
         new_groups=new_groups,
         old_family_to_group=old_f2g,
         new_family_to_group=new_f2g,
+        family_components=family_components,
         graph=graph,
     )
+
+
+def blocking_family_maps(identity: IdentityResult) -> tuple[dict, dict]:
+    """trip matching のブロック用: family → ブロック名 (旧新の group を成分で束ねる)。
+
+    受理エッジ (名称一致 + 内容) の連結成分で route_group を union し、
+    正準名 = 成分内の辞書順最小の group 名。ブロックは広めでも安全
+    (precision は対ごとの内容ゲートが守る、trip_matching.md §3.1)。
+    """
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    o_f2g, n_f2g = identity.old_family_to_group, identity.new_family_to_group
+    for e in identity.graph.for_type(ENTITY_ROUTE_FAMILY):
+        if e.method in (METHOD_NAME, METHOD_CONTENT):
+            union(o_f2g.get(e.old_id, e.old_id), n_f2g.get(e.new_id, e.new_id))
+    old_map = {f: find(g) for f, g in o_f2g.items()}
+    new_map = {f: find(g) for f, g in n_f2g.items()}
+    return old_map, new_map
+
+
+def page_family_maps(identity: IdentityResult) -> tuple[dict, dict]:
+    """レポートのページ用: family → ページ group 名 (新世代を背骨に)。
+
+    - 新 family → 自身の新 group (ページ数は新世代の group 数で抑えられる)
+    - 旧 family → 最良の受理エッジ (confidence 最大、同点は新 family 名の
+      辞書順) の相手が属する新 group。受理エッジが無ければ自身の旧 group
+      (廃止ページ)。1:N 分割でも旧 family の trips は1ページにのみ載る
+      (もう一方の新ページには注記だけ、route_identity_review.md §3.3.1)
+    """
+    o_f2g, n_f2g = identity.old_family_to_group, identity.new_family_to_group
+    best: dict[str, tuple[float, str]] = {}
+    for e in identity.graph.for_type(ENTITY_ROUTE_FAMILY):
+        if e.method not in (METHOD_NAME, METHOD_CONTENT):
+            continue
+        cur = best.get(e.old_id)
+        if cur is None or e.confidence > cur[0] or (
+            e.confidence == cur[0] and e.new_id < cur[1]
+        ):
+            best[e.old_id] = (e.confidence, e.new_id)
+    old_map = {
+        f: (n_f2g.get(best[f][1], best[f][1]) if f in best else g)
+        for f, g in o_f2g.items()
+    }
+    return old_map, dict(n_f2g)
 
 
 def identity_stats(result: IdentityResult) -> dict:

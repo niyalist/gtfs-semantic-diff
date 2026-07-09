@@ -129,6 +129,97 @@ def test_route_renamed_by_pattern_jaccard(tmp_path, config):
     assert_fully_explained(event_set)
 
 
+def test_route_renamed_with_stop_rename(tmp_path, config):
+    # M9 名古屋型 (鳴.ワイ→鳴.メグ): 路線改称と停留所改称が同時に起きても、
+    # 停留所クラスタ対応による翻訳で family が結ばれる (旧実装は共倒れ)
+    event_set, _ = run_compare(
+        tmp_path, config,
+        new_files={
+            "routes.txt": MINIMAL_FEED["routes.txt"].replace("R1,A1,1,", "R1,A1,100,"),
+            "stops.txt": MINIMAL_FEED["stops.txt"].replace("市役所前", "表町一丁目"),
+            "stop_times.txt": MINIMAL_FEED["stop_times.txt"],
+        },
+    )
+    renamed = events_of(event_set, "ROUTE_RENAMED")
+    assert len(renamed) == 1
+    assert (renamed[0].old_ref["name"], renamed[0].new_ref["name"]) == ("1", "100")
+    assert not events_of(event_set, "ROUTE_ADDED")
+    assert not events_of(event_set, "ROUTE_DISCONTINUED")
+    assert len(events_of(event_set, "STOP_RENAMED")) == 1
+    assert_fully_explained(event_set)
+
+
+def test_route_merged_variants(tmp_path, config):
+    # M9 朝日町型: 変種 family 2つ (朝便/本便) が新世代で1 family へ統合 →
+    # N:1 成分 = ROUTE_MERGED。廃止・新設にはしない
+    old_files = {
+        "routes.txt": (
+            "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+            "RA,A1,［駅前線］朝便,,3\nRB,A1,［駅前線］,,3\n"
+        ),
+        "trips.txt": "route_id,service_id,trip_id\nRA,WD,T1\nRB,WD,T2\n",
+    }
+    new_files = {
+        "routes.txt": (
+            "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+            "1,A1,A1駅前線,,3\n"
+        ),
+        "trips.txt": "route_id,service_id,trip_id\n1,WD,T1\n1,WD,T2\n",
+    }
+    event_set, _ = run_compare(tmp_path, config, old_files=old_files, new_files=new_files)
+    merged = events_of(event_set, "ROUTE_MERGED")
+    assert len(merged) == 1
+    assert merged[0].old_ref["names"] == ["［駅前線］", "［駅前線］朝便"]
+    assert merged[0].new_ref["names"] == ["A1駅前線"]
+    assert not events_of(event_set, "ROUTE_ADDED")
+    assert not events_of(event_set, "ROUTE_DISCONTINUED")
+    assert_fully_explained(event_set)
+
+
+def test_family_link_id_bonus(tmp_path, config):
+    # route_id 共有は弱い事前: Jaccard が link_min をわずかに下回っても
+    # id_bonus の範囲なら受理する (3/7 ≈ 0.43、閾値 0.5 - 0.1 = 0.4)
+    old_files = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\nS2,市役所前,36.0100,139.0100\n"
+            "S3,病院前,36.0200,139.0200\nS4,公園,36.0300,139.0300\n"
+            "S5,学校,36.0400,139.0400\nS6,山道,36.5000,139.5000\n"
+            "S7,川道,36.5100,139.5100\n"
+        ),
+        "trips.txt": "route_id,service_id,trip_id\nR1,WD,T1\n",
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "T1,08:00:00,08:00:00,S1,1\nT1,08:05:00,08:05:00,S2,2\n"
+            "T1,08:10:00,08:10:00,S3,3\nT1,08:15:00,08:15:00,S4,4\n"
+            "T1,08:20:00,08:20:00,S5,5\n"
+        ),
+    }
+    new_files = dict(old_files)
+    new_files["routes.txt"] = MINIMAL_FEED["routes.txt"].replace("R1,A1,1,", "R1,A1,100,")
+    new_files["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        "T1,08:00:00,08:00:00,S1,1\nT1,08:05:00,08:05:00,S2,2\n"
+        "T1,08:10:00,08:10:00,S3,3\nT1,08:15:00,08:15:00,S6,4\n"
+        "T1,08:20:00,08:20:00,S7,5\n"
+    )
+    event_set, _ = run_compare(tmp_path, config, old_files=old_files, new_files=new_files)
+    assert len(events_of(event_set, "ROUTE_RENAMED")) == 1
+    assert not events_of(event_set, "ROUTE_DISCONTINUED")
+
+
+def test_component_cap_demotes_to_annotation(tmp_path, config):
+    # 成分の関与 group 数が上限を超えたら降格: RENAMED 系は出さず、
+    # 現行どおり廃止+新設 (破滅回避、route_identity_review.md §3.3.1)
+    config.raw["identity"]["route_family"]["max_component_groups"] = 1
+    new_routes = MINIMAL_FEED["routes.txt"].replace("R1,A1,1,", "R1,A1,100,")
+    event_set, _ = run_compare(tmp_path, config, new_files={"routes.txt": new_routes})
+    assert not events_of(event_set, "ROUTE_RENAMED")
+    assert len(events_of(event_set, "ROUTE_ADDED")) == 1
+    assert len(events_of(event_set, "ROUTE_DISCONTINUED")) == 1
+    assert_fully_explained(event_set)
+
+
 def test_route_id_churn(tmp_path, config):
     # route_id だけ R1 → Q1 (名称・trip 内容同一)
     event_set, _ = run_compare(

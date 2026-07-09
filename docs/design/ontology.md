@@ -1,4 +1,4 @@
-# ChangeEvent オントロジー v0.2
+# ChangeEvent オントロジー v0.2.2
 
 ## イベントの構造
 
@@ -33,9 +33,10 @@
 
 | type | 検出ルール概要 | severity |
 |---|---|---|
-| `ROUTE_ADDED` / `ROUTE_DISCONTINUED` | family の出現・消滅。ただし RENAMED / SPLIT / MERGED の照合(パターン類似度)を先に行い、残ったものだけ確定 | major |
-| `ROUTE_RENAMED` | パターン集合がほぼ同一 (Jaccard ≥ 閾値) で名称のみ変化 | minor |
-| `ROUTE_SPLIT` / `ROUTE_MERGED` | 1 family のパターン集合が複数 family に分配される / 逆 | major |
+| `ROUTE_ADDED` / `ROUTE_DISCONTINUED` | family の出現・消滅。ただし RENAMED / MERGED / SPLIT / RESTRUCTURED の照合 (内容主導の family 対応、M9) を先に行い、残ったものだけ確定 | major |
+| `ROUTE_RENAMED` | 世代間対応成分が 1:1 で名称のみ変化。対応は「停留所クラスタ対応で旧停留所名を翻訳した上での停留所集合 Jaccard ≥ 閾値」(v0.2.2 で内容主導に改訂 — 旧: パターン集合 Jaccard は停留所改称と共倒れした。route_identity_review.md) | minor |
+| `ROUTE_SPLIT` / `ROUTE_MERGED` | 対応成分が 1:N / N:1 (例: 朝便・夜便の変種 family 群が1 family へ統合)。v0.2.2 (M9) で実装 | major |
+| `ROUTE_RESTRUCTURED` | 対応成分が N:M (統合とも分割とも言えない再編)。v0.2.2 で追加 | major |
 | `THROUGH_SERVICE_INTRODUCED` / `_DISCONTINUED` | **新パターンが旧世代の異なる family の2パターンの連接 (concatenation) として説明できる**(接合点停留所が一致、時刻が連続)。想定は「1本の trip に統合」ケース | major |
 
 ### B. 運行パターンレベル (subject: family × 方向 × パターンクラスタ)

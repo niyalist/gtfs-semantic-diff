@@ -165,8 +165,8 @@ def test_identity_survives_full_id_churn(id_churn_snapshots, config):
             assert old_base == new_base
 
 
-def test_renamed_family_keeps_pattern_jaccard_hypothesis(tmp_path, config):
-    # 路線名変更 (1 → 100): 名称不一致だがパターン集合同一 → pattern_jaccard エッジ
+def test_renamed_family_linked_by_content(tmp_path, config):
+    # 路線名変更 (1 → 100): 名称不一致だが停留所集合同一 → 内容主導エッジ (M9)
     renamed = dict(NEW_FEED)
     renamed["routes.txt"] = (
         "route_id,agency_id,route_short_name,route_long_name,route_type\n"
@@ -178,8 +178,12 @@ def test_renamed_family_keeps_pattern_jaccard_hypothesis(tmp_path, config):
     family_edges = result.graph.for_type("route_family")
     assert len(family_edges) == 1
     edge = family_edges[0]
-    assert (edge.old_id, edge.new_id, edge.method) == ("1", "100", "pattern_jaccard")
-    assert edge.confidence == 1.0  # パターン集合が完全一致
+    assert (edge.old_id, edge.new_id, edge.method) == ("1", "100", "stops_translated")
+    assert edge.confidence == 1.0  # 停留所集合が完全一致
+    assert result.family_components == [
+        {"old": ["1"], "new": ["100"], "shape": "renamed",
+         "similarity": 1.0, "demoted": False, "pruned": False}
+    ]
 
 
 def test_pattern_cluster_separates_dissimilar(tmp_path, config):

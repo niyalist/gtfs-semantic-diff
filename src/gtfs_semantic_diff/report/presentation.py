@@ -440,7 +440,34 @@ class _Builder:
         )
         self.accept = config.get("events", "accept_confidence", default=0.5)
 
-        self.f2g = {**identity.old_family_to_group, **identity.new_family_to_group}
+        # M9: ページは新世代を背骨に。世代間で対応した旧 family は
+        # 新側 group のページへ写す (route_identity_review.md §3.3.1)
+        from ..identity.builder import page_family_maps
+
+        old_page, new_page = page_family_maps(identity)
+        self.f2g = {**old_page, **new_page}
+        # 旧名称注記: 対応成分 (非降格) の旧 family 名を新側 group に紐づける
+        self.former_by_group: dict[str, set[str]] = defaultdict(set)
+        for comp in identity.family_components:
+            if comp["demoted"]:
+                continue
+            renamed = set(comp["old"]) - set(comp["new"])
+            for nf in comp["new"]:
+                group = identity.new_family_to_group.get(nf, nf)
+                self.former_by_group[group] |= renamed
+        # 類似候補注記 (受理未満・降格): 廃止/新設ページの相互参照
+        from ..identity.route_family import METHOD_CANDIDATE
+        from ..model.matchgraph import ENTITY_ROUTE_FAMILY
+
+        self.cand_old_group: dict[str, list] = defaultdict(list)
+        self.cand_new_group: dict[str, list] = defaultdict(list)
+        for e in identity.graph.for_type(ENTITY_ROUTE_FAMILY):
+            if e.method != METHOD_CANDIDATE:
+                continue
+            og = identity.old_family_to_group.get(e.old_id, e.old_id)
+            ng = identity.new_family_to_group.get(e.new_id, e.new_id)
+            self.cand_old_group[og].append((e.confidence, e.new_id))
+            self.cand_new_group[ng].append((e.confidence, e.old_id))
         # trip → cluster (base_seq 経由)
         self.old_seq2cluster = self._seq_to_cluster(identity.old_pattern_clusters)
         self.new_seq2cluster = self._seq_to_cluster(identity.new_pattern_clusters)
@@ -637,9 +664,24 @@ class _Builder:
             for d in sorted(day_counts, key=day_sort_key)
         ]
 
+        # M9: 旧名称 (対応した family) と、廃止/新設ページの類似候補注記
+        former_names = sorted(self.former_by_group.get(group, ()))
+        similar = []
+        if summary["level1"]:
+            source = (self.cand_old_group if summary["level1"]["kind"] == "removed"
+                      else self.cand_new_group)
+            seen = set()
+            for conf, name in sorted(source.get(group, ()), key=lambda c: (-c[0], c[1])):
+                if name not in seen:
+                    seen.add(name)
+                    similar.append({"name": name, "similarity": conf})
+            similar = similar[:3]
+
         return {
             "route_group": group,
             "families": sorted({t.family for t in old_trips + new_trips}),
+            "former_names": former_names,
+            "similar_candidates": similar,
             "has_changes": has_changes,
             "day_totals": day_totals,
             "overview": {

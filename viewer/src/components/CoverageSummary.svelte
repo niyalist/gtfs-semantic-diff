@@ -38,6 +38,14 @@
           {tt("part4_title")}: {cov.events_by_part["4"] ?? 0})
         </td>
       </tr>
+      {#if cov.lev1_trip_ratio != null}
+        <!-- M9 (I3): family 対応の取りこぼし (改称・再編の見逃し) の煙感知器 -->
+        <tr>
+          <td>{tt("cov_lev1")}</td>
+          <td class="num"><strong>{cov.lev1_trip_ratio.toFixed(4)}</strong></td>
+          <td class="meta">{tt("cov_lev1_note")}</td>
+        </tr>
+      {/if}
     {/if}
   </tbody>
 </table>

@@ -225,6 +225,24 @@
   対応付け before/after を記録。性能を docs/perf に記録。detection.md /
   presentation.md 同期
 
+## M9: family 世代間対応の内容主導化 (route identity v2) 【完了 2026-07-09 (docs/verification/M9_route_identity.md)】 (設計: docs/design/route_identity_review.md)
+
+- 動機: 名古屋市営 (鳴.ワイ→鳴.メグ、route_id 同一の改称が停留所改称と共倒れ) と
+  朝日町 (命名規則全面変更+21→9 統合で 29 ページ全て新設/廃止扱い) の反例。
+  名前一致を主証拠にする限り改称は原理的に解けない — trip matching v2 の原則
+  「名前/ID の一致は弱い事前、内容整合が主証拠」を family linking に適用する
+- 内容: I1 停留所クラスタ対応で旧停留所名を翻訳した上での family 停留所集合
+  Jaccard による対応付け (N:M 関係、成分サイズ上限で注記に降格、route_id 一致は
+  弱い加点)。I2 ページは新世代を背骨に統合 (旧名称注記・類似候補注記)、
+  ROUTE_RENAMED/MERGED/SPLIT/RESTRUCTURED を成分の形で発火。
+  I3 lev1 便数比率 (新設/廃止ページに落ちた便の割合) を煙感知器メトリクスに。
+  route_group / route_family の2層は統合しない (役割宣言を明文化)
+- DoD: 合成テスト (停留所改称を伴う路線改称・N:1 統合・成分上限の降格・閾値境界)。
+  名古屋 鳴.ワイ→鳴.メグ が1ページ+RENAMED になること、朝日町の lev1 便数比率が
+  1.0 から大幅低下することを目視確認。回帰3フィード (徳島・永井・地鉄) で
+  explained_ratio 不変。名古屋・朝日町を検証フィードに追加。
+  ontology (v0.2.2 ROUTE_RESTRUCTURED)・detection.md・CLAUDE.md 同期
+
 ## W3: Web 公開 (ジョブ API + 公開運用) 【着手 2026-07-07】
 
 > 旧 W2 (静的ホスティングの手動運用) は独立マイルストーンとしては廃止し、

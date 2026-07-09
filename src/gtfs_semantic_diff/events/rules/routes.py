@@ -1,16 +1,18 @@
 """A群: 路線・系統レベルのイベント (subject: route family)。
 
-検出条件 (docs/design/ontology.md A群):
-- ROUTE_RENAMED: 名称不一致 family 対のパターン集合 Jaccard が
-  identity.route_family.pattern_jaccard_renamed 以上 (MatchGraph の
-  pattern_jaccard エッジを利用)。RENAMED を ADDED/DISCONTINUED より先に確定。
+検出条件 (docs/design/ontology.md A群、M9 で内容主導化):
+- ROUTE_RENAMED / ROUTE_MERGED / ROUTE_SPLIT / ROUTE_RESTRUCTURED:
+  identity の family 対応成分 (identity.family_components — 翻訳済み
+  停留所集合 Jaccard による受理エッジの連結成分) を形で分類して発火。
+  1:1=改称 / N:1=統合 / 1:N=分割 / N:M=再編。降格成分 (demoted) は対象外
+  (廃止/新設 + 類似候補注記に落ちる)。ADDED/DISCONTINUED より先に確定。
 - ROUTE_DISCONTINUED / ROUTE_ADDED: 上記でも対応しなかった family の消滅・出現。
   evidence は routes.txt の行と、その family に属する trip の
   trips.txt / stop_times.txt 行のカスケード。
 - TECHNICAL_ID_CHURN (route_id 張り替え): 対応済み family 内で route_id
   集合だけが変わった場合。routes.txt の行差分と trips.txt の route_id
   field_changed を消費する。
-- ROUTE_SPLIT / ROUTE_MERGED / THROUGH_SERVICE_*: M3 では未実装 (roadmap M5 以降)。
+- THROUGH_SERVICE_*: 未実装 (detection.md §7)。
 """
 
 from __future__ import annotations
@@ -19,6 +21,14 @@ from ...model.matchgraph import ENTITY_ROUTE_FAMILY
 from .base import RuleContext
 
 NAME = "routes"
+
+# 成分の形 → イベントタイプ
+_SHAPE_EVENT = {
+    "renamed": "ROUTE_RENAMED",
+    "merged": "ROUTE_MERGED",
+    "split": "ROUTE_SPLIT",
+    "restructured": "ROUTE_RESTRUCTURED",
+}
 
 
 def _family_trip_ids(trips_by_family: dict[str, list[str]], family: str) -> list[str]:
@@ -43,9 +53,6 @@ def _classify_appearance(trips: dict, trip_ids: list[str]) -> tuple[str, float]:
 
 
 def extract(ctx: RuleContext) -> None:
-    renamed_threshold = ctx.config.get(
-        "identity", "route_family", "pattern_jaccard_renamed", default=0.7
-    )
     old_families = ctx.identity.old_families
     new_families = ctx.identity.new_families
 
@@ -59,29 +66,54 @@ def extract(ctx: RuleContext) -> None:
     handled_old: set[str] = set()
     handled_new: set[str] = set()
 
-    # 1) ROUTE_RENAMED: pattern_jaccard エッジ (名称不一致) を先に確定
-    for edge in ctx.identity.graph.for_type(ENTITY_ROUTE_FAMILY):
-        if edge.method != "pattern_jaccard" or edge.confidence < renamed_threshold:
-            continue
-        if edge.old_id in handled_old or edge.new_id in handled_new:
-            continue
-        old_f, new_f = old_families[edge.old_id], new_families[edge.new_id]
+    # 1) family 対応成分 (M9) を形で分類して先に確定。
+    #    成分は名称一致エッジも含みうる (例: 旧A+旧B → 新A の吸収統合)。
+    #    改称・再編に伴う trips.txt の route_id 付け替えもここで消費する
+    for comp in ctx.identity.family_components:
+        if comp["demoted"]:
+            continue  # 破滅回避で注記に降格 (廃止/新設 + 類似候補注記へ)
+        renamed_old = [f for f in comp["old"] if f not in new_families]
+        renamed_new = [f for f in comp["new"] if f not in old_families]
+        route_ids = sorted(
+            {rid for f in comp["old"] for rid in old_families[f].route_ids}
+            | {rid for f in comp["new"] for rid in new_families[f].route_ids}
+        )
         evidence = [
             d.rawdiff_id
-            for rid in sorted(old_f.route_ids + new_f.route_ids)
+            for rid in route_ids
             for d in ctx.index.for_key("routes.txt", rid)
         ]
+        # 改称した family に属する trip の route_id 変更 (中身は trip 対応側で説明)
+        for f in renamed_new:
+            evidence += [
+                d.rawdiff_id
+                for tid in sorted(_family_trip_ids(new_trips_by_family, f))
+                for d in ctx.index.for_key("trips.txt", tid)
+                if d.kind == "field_changed" and d.column == "route_id"
+            ]
+        type_ = _SHAPE_EVENT[comp["shape"]]
+        if type_ == "ROUTE_RENAMED":
+            subject = {"route_family": comp["new"][0]}
+            old_ref = {"name": comp["old"][0],
+                       "route_ids": sorted(old_families[comp["old"][0]].route_ids)}
+            new_ref = {"name": comp["new"][0],
+                       "route_ids": sorted(new_families[comp["new"][0]].route_ids)}
+        else:
+            subject = ({"route_family": comp["new"][0]} if len(comp["new"]) == 1
+                       else {"route_families": comp["new"]})
+            old_ref = {"names": comp["old"]}
+            new_ref = {"names": comp["new"]}
         ctx.emit(
-            "ROUTE_RENAMED",
-            subject={"route_family": edge.new_id},
+            type_,
+            subject=subject,
             evidence=evidence,
-            old_ref={"name": edge.old_id, "route_ids": sorted(old_f.route_ids)},
-            new_ref={"name": edge.new_id, "route_ids": sorted(new_f.route_ids)},
-            quantification={"pattern_jaccard": edge.confidence},
-            confidence=edge.confidence,
+            old_ref=old_ref,
+            new_ref=new_ref,
+            quantification={"stop_set_similarity": comp["similarity"]},
+            confidence=comp["similarity"],
         )
-        handled_old.add(edge.old_id)
-        handled_new.add(edge.new_id)
+        handled_old.update(renamed_old)
+        handled_new.update(renamed_new)
 
     # 2) 対応済み family の route_id 張り替え (TECHNICAL_ID_CHURN)
     name_matched = {

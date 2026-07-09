@@ -112,6 +112,16 @@
     </span>
   </summary>
   <div class="body">
+    <!-- M9: 旧名称 (世代間で対応した family) / 廃止・新設ページの類似候補 -->
+    {#if page.former_names?.length}
+      <p class="meta">{tt("former_names")}: {page.former_names.join("、")}</p>
+    {/if}
+    {#if page.similar_candidates?.length}
+      <p class="meta">
+        {tt("similar_candidates")}:
+        {page.similar_candidates.map((c) => tt("similar_one", c.name, c.similarity)).join(" / ")}
+      </p>
+    {/if}
     <!-- ① 路線概要 -->
     <h3>{tt("overview")}</h3>
     <!-- ラベル列とバス停列の2カラム。折り返し行はラベル列を空けたまま

@@ -45,6 +45,18 @@ def build_bundle(
     )
     # V5: 全イベントの表示先 (レポートのどの部に現れるか) とレポート被覆率
     presentation["coverage"] = _coverage(event_set)
+    # M9 (I3): lev1 便数比率 = 新設/廃止扱いのページに落ちた便の割合。
+    # family 対応の取りこぼし (改称・再編の見逃し) の煙感知器 —
+    # 対応付けが働いていれば継続ページ側に便が乗り、この値は下がる
+    lev1 = total = 0
+    for p in presentation["route_pages"]:
+        n = sum(d["old"] + d["new"] for d in p["day_totals"])
+        total += n
+        if p["summary"]["level1"]:
+            lev1 += n
+    presentation["coverage"]["lev1_trip_ratio"] = (
+        round(lev1 / total, 4) if total else 0.0
+    )
 
     return {
         "events": event_set.to_dict(),
