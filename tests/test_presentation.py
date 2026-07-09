@@ -743,7 +743,7 @@ def test_level4_signed_band_sums(tmp_path, config):
 
 
 def test_level5_retimed_count(tmp_path, config):
-    # T2 全体を20分シフト → Lev.5 の時刻微調整 1便、Lev.4 は空 (ビン内移動)
+    # T2 全体を20分シフト → Lev.5 の時刻変更 (5分超) 1便、Lev.4 は空 (ビン内移動)
     new_st = (
         MINIMAL_FEED["stop_times.txt"]
         .replace("T2,09:00:00,09:00:00", "T2,09:20:00,09:20:00")
@@ -752,8 +752,102 @@ def test_level5_retimed_count(tmp_path, config):
     )
     model, _ = build(tmp_path, config, new_files={"stop_times.txt": new_st})
     page = page_of(model, "1")
-    assert page["summary"]["level5"]["retimed_trips"] == 1
+    assert page["summary"]["level5"]["retimed_major"] == 1
+    assert page["summary"]["level5"]["retimed_minor"] == 0
     assert page["summary"]["level4"] == []
+    # R19: ダイジェストにも同じ事実 (5分超の時刻変更) が出る
+    assert page["digest"] == [
+        {"kind": "retime", "trips": 1, "minor_max_min": 5}
+    ]
+
+
+# --- 便ラベルとダイジェスト (R19) ---
+
+
+def test_trip_pair_label_precedence_and_threshold():
+    from gtfs_semantic_diff.events.tripdelta import TripInfo
+    from gtfs_semantic_diff.report.presentation import trip_pair_label
+
+    def trip(stops, start_min=480, step=5):
+        times = tuple(
+            (f"{(start_min + i * step) // 60:02d}:{(start_min + i * step) % 60:02d}:00",) * 2
+            for i in range(len(stops))
+        )
+        return TripInfo(trip_id="T", route_id="R", family="F", direction="",
+                        day_type="weekday", base_seq=tuple(stops), times=times)
+
+    base = trip(["A", "B", "C", "D"])
+    # 経路系: 端点のみの削除 → 短縮 / 追加 → 延長 / 中間・複合 → 経由変更
+    assert trip_pair_label(base, trip(["A", "B", "C"]), 5) == "shortened"
+    assert trip_pair_label(base, trip(["A", "B", "C", "D", "E"]), 5) == "extended"
+    assert trip_pair_label(base, trip(["A", "X", "C", "D"]), 5) == "rerouted"
+    assert trip_pair_label(base, trip(["B", "C", "D", "E"]), 5) == "rerouted"  # 短縮+延長
+    # 時刻系: 閾値ちょうどは微調整、超えたら時刻変更。0分は変更なし
+    assert trip_pair_label(base, trip(["A", "B", "C", "D"], start_min=485), 5) == "retimed_minor"
+    assert trip_pair_label(base, trip(["A", "B", "C", "D"], start_min=486), 5) == "retimed"
+    assert trip_pair_label(base, trip(["A", "B", "C", "D"]), 5) == "unchanged"
+
+
+def test_labels_digest_and_timetable_counts(tmp_path, config):
+    # R19: 便ラベルの曜日別集計・ダイジェスト・時刻表の折りたたみ用件数。
+    # T1 短縮 / T2 3分シフト (微調整) / T3 20分シフト (時刻変更) /
+    # T4 変更なし / T5 新設
+    stops = ["S1", "S2", "S3", "S4"]
+    old_files = dict(SIX_STOPS)
+    old_files["trips.txt"] = (
+        "route_id,service_id,trip_id\n"
+        + "".join(f"R1,WD,T{i}\n" for i in (1, 2, 3, 4))
+    )
+    old_files["stop_times.txt"] = _stop_times([
+        ("T1", 8, stops), ("T2", 9, stops), ("T3", 10, stops), ("T4", 11, stops),
+    ])
+    new_files = dict(SIX_STOPS)
+    new_files["trips.txt"] = (
+        "route_id,service_id,trip_id\n"
+        + "".join(f"R1,WD,T{i}\n" for i in (1, 2, 3, 4, 5))
+    )
+    new_st = _stop_times([
+        ("T1", 8, stops[:3]),  # 短縮
+        ("T3", 10, stops), ("T4", 11, stops), ("T5", 12, stops),
+    ])
+    # T2 は 09:00 発を 09:03 発へ (3分シフト、各停留所同じ)
+    t2 = _stop_times([("T2", 9, stops)]).splitlines()[1:]
+    t2 = [line.replace(":00:00,", ":03:00,").replace(":05:00,", ":08:00,")
+              .replace(":10:00,", ":13:00,").replace(":15:00,", ":18:00,")
+          for line in t2]
+    # T3 は 20分シフト
+    new_st = new_st.replace("T3,10:00:00,10:00:00", "T3,10:20:00,10:20:00") \
+                   .replace("T3,10:05:00,10:05:00", "T3,10:25:00,10:25:00") \
+                   .replace("T3,10:10:00,10:10:00", "T3,10:30:00,10:30:00") \
+                   .replace("T3,10:15:00,10:15:00", "T3,10:35:00,10:35:00")
+    new_files["stop_times.txt"] = new_st + "\n".join(t2) + "\n"
+
+    model, _ = build(tmp_path, config, old_files=old_files, new_files=new_files)
+    page = page_of(model, "1")
+
+    wd = next(d for d in page["day_totals"] if d["day_type"] == "weekday")
+    assert (wd["old"], wd["new"]) == (4, 5)
+    assert wd["labels"] == {
+        "added": 1, "shortened": 1, "retimed": 1, "retimed_minor": 1,
+    }
+    # ダイジェスト: 経路系 > 便数増減 > 時刻系 の優先順で最大3件
+    assert page["digest"] == [
+        {"kind": "reroute", "trips": 1},
+        {"kind": "trips",
+         "days": [{"day_type": "weekday", "old": 4, "new": 5}]},
+        {"kind": "retime", "trips": 1, "minor_max_min": 5},
+    ]
+    assert page["summary"]["level5"]["retimed_major"] == 1
+    assert page["summary"]["level5"]["retimed_minor"] == 1
+    # 時刻表の折りたたみ用件数 (単一 leg・平日1枚)
+    tables = page["timetables"]
+    assert len(tables) == 1
+    tb = tables[0]
+    assert (tb["trips_old"], tb["trips_new"]) == (4, 5)
+    assert tb["label_counts"] == {
+        "added": 1, "shortened": 1, "retimed": 1, "retimed_minor": 1,
+        "unchanged": 1,
+    }
 
 
 # --- ③ 本数マトリクス / ④ 時刻表の差分素材 ---
@@ -815,8 +909,9 @@ def test_day_totals_fixed_order_and_removed_day(tmp_path, config):
     model, _ = build(tmp_path, config, old_files=old_files, new_files=None)
     page = page_of(model, "1")
     assert page["day_totals"] == [
-        {"day_type": "weekday", "old": 2, "new": 2},
-        {"day_type": "saturday", "old": 1, "new": 0},  # 廃止曜日もタブに残る
+        {"day_type": "weekday", "old": 2, "new": 2, "labels": {}},
+        # 廃止曜日もタブに残る。R19: ラベル別件数を持つ
+        {"day_type": "saturday", "old": 1, "new": 0, "labels": {"removed": 1}},
     ]
 
 

@@ -42,9 +42,34 @@ const DICT = {
     affected: "対象", coverage_of: (a, b) => `${b}便中${a}便`,
     net_inc: (n) => `純増${n}便`, net_dec: (n) => `純減${n}便`, net_zero: "増減なし",
     inc_dec: (i, d) => `増${i}・減${d}`,
-    retimed_note: (n) => `時刻の微調整 ${n}便`,
     shape_note: (n) => `経路形状の変更 ${n}件`,
     headsign_note: (n) => `行先表示の変更 ${n}箇所`,
+    // R19: 便ラベル (代表1ラベル) とその集約表示
+    trip_labels: {
+      added: "新規", removed: "廃止", rerouted: "経由変更",
+      shortened: "区間短縮", extended: "区間延長",
+      retimed: "時刻変更", retimed_minor: "微調整", unchanged: "変更なし",
+    },
+    chip_new: "新設", chip_removed: "廃止", chip_systems: "系統再編",
+    chip_reroute: "経由変更", chip_retime: "ダイヤ変更", chip_minor: "微調整",
+    digest_label: "一言で",
+    dg_route_added: (n) => `路線の新設 (${n}便)`,
+    dg_route_removed: (n) => `路線の廃止 (${n}便)`,
+    dg_systems: (a, r) =>
+      [a ? `系統の新設${a}` : "", r ? `系統の廃止${r}` : ""].filter(Boolean).join("・"),
+    dg_reroute: (n) => `経由変更${n}便`,
+    dg_trips_day: (day, o, n) =>
+      n > o ? `${day}${n - o}便増` : `${day}${o - n}便減`,
+    dg_retime: (n, m) => `${m}分超の時刻変更${n}便`,
+    dg_retime_minor: (n) => `ダイヤ微調整${n}便`,
+    dg_notes_only: (s, h) =>
+      "便・便数の変化なし ("
+      + [s ? `経路形状${s}件` : "", h ? `行先表示${h}箇所` : ""].filter(Boolean).join("・")
+      + "のみ)",
+    dg_sep: "、", dg_end: "。",
+    via_scale: (ns, nt) => `${ns}系統・${nt}便`,
+    retimed_major_note: (n, m) => `${m}分超の時刻変更 ${n}便`,
+    retimed_minor_note: (n) => `時刻の微調整 ${n}便`,
     mode_old: "旧", mode_new: "新", mode_diff: "差分",
     col_added: "新", col_removed: "廃",
     show_map: "地図を表示 (系統別)", legend: "凡例",
@@ -144,9 +169,36 @@ const DICT = {
     affected: "affected", coverage_of: (a, b) => `${a} of ${b} trips`,
     net_inc: (n) => `net +${n}`, net_dec: (n) => `net -${n}`, net_zero: "no net change",
     inc_dec: (i, d) => `+${i} / -${d}`,
-    retimed_note: (n) => `${n} trips re-timed slightly`,
     shape_note: (n) => `${n} shape change(s)`,
     headsign_note: (n) => `${n} headsign change(s)`,
+    // R19: trip labels (one representative label per trip) and their rollups
+    trip_labels: {
+      added: "new", removed: "cut", rerouted: "re-routed",
+      shortened: "shortened", extended: "extended",
+      retimed: "re-timed", retimed_minor: "minor re-time", unchanged: "unchanged",
+    },
+    chip_new: "NEW", chip_removed: "DISCONTINUED", chip_systems: "branches",
+    chip_reroute: "routing", chip_retime: "re-timed", chip_minor: "minor re-times",
+    digest_label: "In short",
+    dg_route_added: (n) => `new route (${n} trips)`,
+    dg_route_removed: (n) => `route discontinued (${n} trips)`,
+    dg_systems: (a, r) =>
+      [a ? `${a} branch(es) added` : "", r ? `${r} branch(es) removed` : ""]
+        .filter(Boolean).join(", "),
+    dg_reroute: (n) => `${n} trip(s) re-routed`,
+    dg_trips_day: (day, o, n) =>
+      `${day} ${n > o ? "+" : "−"}${Math.abs(n - o)} trips`,
+    dg_retime: (n, m) => `${n} trip(s) re-timed by more than ${m} min`,
+    dg_retime_minor: (n) => `${n} trip(s) re-timed slightly`,
+    dg_notes_only: (s, h) =>
+      "no trip/service changes ("
+      + [s ? `${s} shape change(s)` : "", h ? `${h} headsign change(s)` : ""]
+        .filter(Boolean).join(", ")
+      + " only)",
+    dg_sep: "; ", dg_end: ".",
+    via_scale: (ns, nt) => `${ns} branch(es), ${nt} trips`,
+    retimed_major_note: (n, m) => `${n} trip(s) re-timed >${m} min`,
+    retimed_minor_note: (n) => `${n} trip(s) re-timed slightly`,
     mode_old: "Old", mode_new: "New", mode_diff: "Diff",
     col_added: "NEW", col_removed: "CUT",
     show_map: "Show map (by branch)", legend: "Legend",

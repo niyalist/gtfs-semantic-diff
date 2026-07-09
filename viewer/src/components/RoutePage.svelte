@@ -67,15 +67,40 @@
   function dayJa(d) {
     return tt(d) === d ? d : tt(d);
   }
-  function marks(p) {
+  // R19: 折りたたみヘッダ = 曜日別便数 (旧→新、合計は出さない) + 質的チップ
+  function dayCount(d) {
+    if (d.old === d.new) return `${dayJa(d.day_type)} ${d.new}${tt("trips_count")}`;
+    const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
+    return `${dayJa(d.day_type)} ${d.old}→${d.new}${tt("trips_count")}${sym}`;
+  }
+  function chips(p) {
     const s = p.summary;
-    if (s.level1) return s.level1.kind === "added" ? "◆新設" : "◆廃止";
+    if (s.level1)
+      return [s.level1.kind === "added" ? `◆${tt("chip_new")}` : `◆${tt("chip_removed")}`];
+    const lt = {};
+    for (const d of p.day_totals ?? [])
+      for (const [k, v] of Object.entries(d.labels ?? {})) lt[k] = (lt[k] ?? 0) + v;
     const out = [];
-    if (s.level2.length) out.push("◆系統");
-    if (s.level3.some((u) => !u.absorbed_into_level2)) out.push("○経由");
-    if (s.level4.length) out.push("▲▼便数");
-    if (!out.length && (s.level5.retimed_trips || s.level5.notes.length)) out.push("・微調整");
-    return out.join(" ");
+    if (s.level2.length) out.push(`◆${tt("chip_systems")}`);
+    if ((lt.rerouted ?? 0) + (lt.shortened ?? 0) + (lt.extended ?? 0))
+      out.push(`○${tt("chip_reroute")}`);
+    if (s.level5.retimed_major) out.push(`＊${tt("chip_retime")}`);
+    else if (s.level5.retimed_minor) out.push(`・${tt("chip_minor")}`);
+    return out;
+  }
+  $: chipList = chips(page);
+  // R19: 時刻表の折りたたみ行 = 旧→新便数 + ラベル別件数 (変更なしは出さない)
+  function tbCount(tb) {
+    if (tb.trips_old === tb.trips_new) return `${tb.trips_new}${tt("trips_count")}`;
+    const sym = tb.trips_new > tb.trips_old ? "▲" : "▼";
+    return `${tb.trips_old}→${tb.trips_new}${tt("trips_count")}${sym}`;
+  }
+  function tbChips(tb) {
+    const names = tt("trip_labels");
+    return ["added", "removed", "rerouted", "shortened", "extended", "retimed", "retimed_minor"]
+      .filter((k) => tb.label_counts?.[k])
+      .map((k) => `${names[k]}${tb.label_counts[k]}`)
+      .join("・");
   }
 </script>
 
@@ -83,8 +108,7 @@
   <summary>
     {index}. {page.route_group}
     <span class="count">
-      {marks(page)}
-      ({page.overview.trip_totals.old}→{page.overview.trip_totals.new}{tt("trips_count")})
+      {(page.day_totals ?? []).map(dayCount).join(" ")}{chipList.length ? ` | ${chipList.join(" ")}` : ""}
     </span>
   </summary>
   <div class="body">
@@ -138,11 +162,12 @@
       <h3>{tt("timetables")}</h3>
       {#each dayTimetables as tb (`${tb.direction_group}|${tb.leg}|${tb.day_type}|${tb.sheet ?? 0}`)}
         {@const changed = changedTables.includes(tb)}
+        {@const chipsText = tbChips(tb)}
         <details class="tt-section" open={changed && changedTables.length <= 4}>
           <summary>
             {tb.label}{#if tb.sheet_label}<span class="sheet-label">({tb.sheet_label})</span>{/if}
             <span class="count">
-              {tb.columns.length}{tt("trips_count")}{changed ? " ＊" : ""}
+              {tbCount(tb)}{chipsText ? ` | ${chipsText}` : ""}
             </span>
           </summary>
           <DiffTimetable table={tb} />

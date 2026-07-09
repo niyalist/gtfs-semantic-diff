@@ -83,6 +83,9 @@ sheet_split_trigger_gap_per_trip = 1.5
 # 分冊時にパターン同士を同じ表に併合してよい「飛びの増加量/便」の上限。
 # 包含 (区間便) は増加 0 で必ず併合される
 sheet_merge_max_gap_per_trip = 0.5
+# 便ラベル (R19): 停車列が同一の対応便を「ダイヤ微調整」とみなす時刻差の上限 (分)。
+# これを超える変更は「時刻変更」として微調整と分けて数える
+retime_minor_max_min = 5
 
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"
