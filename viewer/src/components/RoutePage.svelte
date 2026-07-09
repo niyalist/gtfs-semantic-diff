@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/i18n.js";
+  import { lang, t, dayName } from "../lib/i18n.js";
   import LevSummary from "./LevSummary.svelte";
   import BandMatrix from "./BandMatrix.svelte";
   import DiffTimetable from "./DiffTimetable.svelte";
@@ -28,9 +28,14 @@
   let selectedDay = null;
   $: if (selectedDay === null && dayTabs.length) selectedDay = dayTabs[0].day_type;
   function tabLabel(d) {
-    if (d.old === d.new) return `${dayJa(d.day_type)} ${d.new}${tt("trips_count")}`;
+    const name = dayJa(d.day_type) + addedTo(d);
+    if (d.old === d.new) return `${name} ${d.new}${tt("trips_count")}`;
     const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
-    return `${dayJa(d.day_type)} ${d.old}${tt("trips_count")}→${d.new}${tt("trips_count")}${sym}`;
+    return `${name} ${d.old}${tt("trips_count")}→${d.new}${tt("trips_count")}${sym}`;
+  }
+  // M10: 増便/限定型の注記 (dow の曜日集合を包含する day_type が同居する場合)
+  function addedTo(d) {
+    return d.added_to ? tt("day_added_to", dayJa(d.added_to)) : "";
   }
   $: dayMatrix = {
     bands: page.band_matrix.bands,
@@ -65,7 +70,7 @@
     return out;
   }
   function dayJa(d) {
-    return tt(d) === d ? d : tt(d);
+    return dayName(d, $lang);
   }
   // R19: 折りたたみヘッダ = 曜日別便数 (旧→新、合計は出さない) + 質的チップ
   function dayCount(d) {

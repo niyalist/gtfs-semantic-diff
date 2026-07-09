@@ -18,7 +18,13 @@ const DICT = {
     band_table: "時間帯別本数 (旧→新)", direction: "方向", day: "曜日", total: "計",
     outbound: "往路", inbound: "復路",
     weekday: "平日", saturday: "土曜", sunday_holiday: "日祝", weekend: "土日",
-    daily: "毎日", irregular: "特定日",
+    daily: "毎日", irregular: "特定日", inactive: "運行日なし",
+    day_added_to: (base) => ` (${base}に追加)`,
+    fo_special_title: "特定日・運行日なしの内訳",
+    fo_special_dates: (n, a, b) => `${n}日間 (${a}〜${b})`,
+    fo_special_replaces: "期間中は通常ダイヤ運休 (置き換え)",
+    fo_special_extra: "通常ダイヤに追加",
+    fo_special_inactive: "運行日の定義なし (休止中の枠)",
     evidence: "根拠データ (RawDiff)", quantification: "数値詳細",
     timetable: "発車時刻表 (始発停留所基準)", map: "地図",
     pattern_change: "停車パターン変化", old: "旧", new: "新",
@@ -150,7 +156,13 @@ const DICT = {
     band_table: "Trips per time band (old→new)", direction: "Dir", day: "Days", total: "Total",
     outbound: "Outbound", inbound: "Inbound",
     weekday: "Weekday", saturday: "Saturday", sunday_holiday: "Sun/Hol", weekend: "Weekend",
-    daily: "Daily", irregular: "Irregular",
+    daily: "Daily", irregular: "Irregular", inactive: "No service days",
+    day_added_to: (base) => ` (extra on ${base})`,
+    fo_special_title: "Irregular / inactive services",
+    fo_special_dates: (n, a, b) => `${n} day(s) (${a}–${b})`,
+    fo_special_replaces: "replaces regular timetable on those dates",
+    fo_special_extra: "in addition to the regular timetable",
+    fo_special_inactive: "no service days defined (dormant)",
     evidence: "Evidence (raw diffs)", quantification: "Quantification",
     timetable: "Departures (at first stop)", map: "Map",
     pattern_change: "Stop pattern change", old: "old", new: "new",
@@ -276,6 +288,23 @@ export const t = derived(lang, ($lang) => (key, ...args) => {
   const v = DICT[$lang][key] ?? DICT.ja[key] ?? key;
   return typeof v === "function" ? v(...args) : v;
 });
+
+// day_type → 表示名 (M10)。dow_XXXXXXX (月→日の7ビット) は値から生成する
+const DOW_NAMES = {
+  ja: ["月", "火", "水", "木", "金", "土", "日"],
+  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+};
+export function dayName(dayType, language) {
+  if (typeof dayType === "string" && dayType.startsWith("dow_")) {
+    const names = DOW_NAMES[language] ?? DOW_NAMES.ja;
+    const days = [...dayType.slice(4)]
+      .map((b, i) => (b === "1" ? names[i] : null))
+      .filter(Boolean);
+    return language === "en" ? days.join("/") : `${days.join("・")}曜`;
+  }
+  const v = DICT[language]?.[dayType] ?? DICT.ja[dayType];
+  return typeof v === "string" ? v : dayType;
+}
 
 export function eventName(catalog, type, language) {
   const entry = catalog?.[type];

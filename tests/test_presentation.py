@@ -956,6 +956,39 @@ def test_band_matrix_single_direction_has_no_leg_rows(tmp_path, config):
     assert not [r for r in page["band_matrix"]["rows"] if r["kind"] == "leg"]
 
 
+def test_dow_day_type_tab_with_added_to(tmp_path, config):
+    # M10: 平日ベース + 月水のみの増便 → dow_1010000 が独立タブになり、
+    # 曜日集合の包含から「平日に追加」(added_to) が付く
+    files = {
+        "calendar.txt": MINIMAL_FEED["calendar.txt"]
+        + "MW,1,0,1,0,0,0,0,20260401,20270331\n",
+        "trips.txt": MINIMAL_FEED["trips.txt"] + "R1,MW,T8\n",
+        "stop_times.txt": MINIMAL_FEED["stop_times.txt"]
+        + "T8,07:00:00,07:00:00,S1,1\nT8,07:05:00,07:05:00,S2,2\nT8,07:10:00,07:10:00,S3,3\n",
+    }
+    model, _ = build(tmp_path, config, old_files=files, new_files=files)
+    page = page_of(model, "1")
+    assert page["day_totals"] == [
+        {"day_type": "weekday", "old": 2, "new": 2, "labels": {}},
+        {"day_type": "dow_1010000", "old": 1, "new": 1, "labels": {},
+         "added_to": "weekday"},  # R16 順: 平日が先、dow は後
+    ]
+
+
+def test_dow_no_added_to_when_not_coexisting(tmp_path, config):
+    # M10: 旧=平日運行 → 新=月水運行 (運行日の変更、同一世代で共存しない) は
+    # 「平日に追加」ではないので注記しない (朝日町の実例)
+    new_files = {
+        "calendar.txt": MINIMAL_FEED["calendar.txt"].replace(
+            "WD,1,1,1,1,1,0,0", "WD,1,0,1,0,0,0,0"
+        ),
+    }
+    model, _ = build(tmp_path, config, new_files=new_files)
+    page = page_of(model, "1")
+    dow = next(d for d in page["day_totals"] if d["day_type"] == "dow_1010000")
+    assert "added_to" not in dow
+
+
 def test_day_totals_fixed_order_and_removed_day(tmp_path, config):
     # R18: 曜日タブ用の day_totals。固定順で列挙し、廃止された運行日
     # (old>0, new=0) も残す

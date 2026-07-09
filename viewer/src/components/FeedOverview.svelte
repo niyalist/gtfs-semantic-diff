@@ -1,5 +1,5 @@
 <script>
-  import { lang, t } from "../lib/i18n.js";
+  import { lang, t, dayName } from "../lib/i18n.js";
 
   export let overview; // presentation.feed_overview
   export let feed = {}; // meta.feed (期間)
@@ -22,8 +22,25 @@
   const isoDate = (s) =>
     String(s ?? "").replace(/\b(\d{4})(\d{2})(\d{2})\b/g, "$1-$2-$3");
   function dayLabel(d) {
-    return tt(d) === d ? d : tt(d);
+    return dayName(d, $lang);
   }
+  // M10: 特定日・運行日なし service の内訳の1行 (置き換え/追加の別を明示)
+  function specialLine(s) {
+    const parts = [dayLabel(s.day_type)];
+    if (s.dates)
+      parts.push(tt("fo_special_dates", s.dates, isoDate(s.first_date), isoDate(s.last_date)));
+    parts.push(`${s.trips}${tt("trips_count")}`);
+    if (s.day_type === "inactive") parts.push(tt("fo_special_inactive"));
+    else if (s.replaces_regular) parts.push(tt("fo_special_replaces"));
+    else if (s.dates) parts.push(tt("fo_special_extra"));
+    return parts.join("・");
+  }
+  $: specials = [
+    ...(overview.special_days?.new ?? []).map((s) => ({ ...s, gen: "new" })),
+    ...(overview.special_days?.old ?? [])
+      .filter((s) => !(overview.special_days?.new ?? []).some((n) => n.service_id === s.service_id))
+      .map((s) => ({ ...s, gen: "old" })),
+  ];
   function detail(e) {
     const q = e.quantification || {};
     const files = (e.subject?.files || []).join(", ");
@@ -139,7 +156,7 @@
     <tbody>
       {#each overview.day_types as d}
         <tr class:quiet={d.old === d.new}>
-          <td>{tt(d.day_type) === d.day_type ? d.day_type : tt(d.day_type)}</td>
+          <td>{dayLabel(d.day_type)}</td>
           <td class="num">
             {#if d.old === d.new}{d.new}{:else}{d.old}→{d.new} {delta(d.old, d.new)}{/if}
           </td>
@@ -147,6 +164,17 @@
       {/each}
     </tbody>
   </table>
+  {#if specials.length}
+    <!-- M10: 「特定日」「運行日なし」が何を指すかを service 単位で説明する -->
+    <p class="meta">{tt("fo_special_title")}:</p>
+    <ul class="special-list">
+      {#each specials as s}
+        <li class:quiet={s.gen === "old"}>
+          {s.service_id}{s.gen === "old" ? `【${tt("old_gen")}】` : ""}: {specialLine(s)}
+        </li>
+      {/each}
+    </ul>
+  {/if}
 {/if}
 
 <h3>{tt("fo_meta_events")}</h3>
@@ -167,4 +195,7 @@
   }
   .fo-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   tr.quiet td { color: var(--fg-soft); }
+  .special-list { margin: 0.2rem 0 0.8rem 1.2rem; padding: 0; }
+  .special-list li { margin: 0.15rem 0; }
+  .special-list li.quiet { color: var(--fg-soft); }
 </style>

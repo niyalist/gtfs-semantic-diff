@@ -127,3 +127,37 @@ def test_cli_html_output(tmp_path):
     assert '"rawdiff_total": 9' in html or '"rawdiff_total":9' in html
     assert "<script" in html  # ビューア JS 同梱
     _ = MINIMAL_FEED
+
+
+def test_special_day_services(tmp_path, config):
+    # M10: 年末年始型 (置き換え) と運行日ゼロ (inactive) の内訳が第1部に出る
+    files = dict(MINIMAL_FEED)
+    files["calendar.txt"] = (
+        MINIMAL_FEED["calendar.txt"]
+        + "NY,0,0,0,0,0,0,0,20260401,20270331\n"
+        + "DORMANT,0,0,0,0,0,0,0,20260401,20270331\n"
+    )
+    files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\n"
+        "NY,20261230,1\nNY,20261231,1\nNY,20270102,1\n"
+        "WD,20261230,2\nWD,20261231,2\nWD,20270102,2\n"
+    )
+    files["trips.txt"] = MINIMAL_FEED["trips.txt"] + "R1,NY,T5\nR1,DORMANT,T6\n"
+    files["stop_times.txt"] = MINIMAL_FEED["stop_times.txt"] + (
+        "T5,10:00:00,10:00:00,S1,1\nT5,10:05:00,10:05:00,S2,2\nT5,10:10:00,10:10:00,S3,3\n"
+        "T6,11:00:00,11:00:00,S1,1\nT6,11:05:00,11:05:00,S2,2\nT6,11:10:00,11:10:00,S3,3\n"
+    )
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="o.zip"), config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="n.zip"), config=config)
+    event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
+        old, new, config
+    )
+    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    specials = bundle["presentation"]["feed_overview"]["special_days"]["new"]
+    by_id = {s["service_id"]: s for s in specials}
+    assert by_id["NY"]["day_type"] == "irregular"
+    assert by_id["NY"]["dates"] == 3
+    assert (by_id["NY"]["first_date"], by_id["NY"]["last_date"]) == ("20261230", "20270102")
+    assert by_id["NY"]["replaces_regular"] is True  # WD が同日を運休 → 置き換え型
+    assert by_id["DORMANT"]["day_type"] == "inactive"
+    assert by_id["DORMANT"]["replaces_regular"] is False

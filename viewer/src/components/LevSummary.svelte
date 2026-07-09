@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/i18n.js";
+  import { lang, t, dayName } from "../lib/i18n.js";
   import PatternDiff from "./PatternDiff.svelte";
 
   export let page;
@@ -8,7 +8,7 @@
   $: lev3visible = s.level3.filter((u) => !u.absorbed_into_level2);
 
   function dayJa(d) {
-    return tt(d) === d ? d : tt(d);
+    return dayName(d, $lang);
   }
   function lev4text(x) {
     const net = x.net > 0 ? tt("net_inc", x.net) : x.net < 0 ? tt("net_dec", -x.net) : tt("net_zero");

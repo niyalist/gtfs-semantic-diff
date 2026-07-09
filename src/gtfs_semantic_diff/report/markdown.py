@@ -374,6 +374,10 @@ def _validation_chapter(lines: list[str], events: list[dict], accounting: dict) 
 
 
 def _day_ja(day_type: str) -> str:
+    if day_type.startswith("dow_"):  # M10: 曜日指定 (例 dow_1010000 → 月・水曜)
+        names = "月火水木金土日"
+        days = [names[i] for i, b in enumerate(day_type[4:]) if b == "1"]
+        return "・".join(days) + "曜"
     return {
         "weekday": "平日",
         "saturday": "土曜",
@@ -381,6 +385,7 @@ def _day_ja(day_type: str) -> str:
         "weekend": "土日",
         "daily": "毎日",
         "irregular": "特定日",
+        "inactive": "運行日なし",
     }.get(day_type, day_type)
 
 

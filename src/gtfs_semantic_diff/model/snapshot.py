@@ -35,8 +35,9 @@ class GtfsSnapshot:
 
     - tables: ファイル名 (拡張子なし, 例 "stops") → DataFrame。
       全列 str dtype・欠損は空文字列 "" に正規化済み (L0 diff の前提)。
-    - day_types: service_id → day_type ラベル
-      ("weekday" / "saturday" / "sunday_holiday" / "weekend" / "daily" / "irregular")
+    - day_types: service_id → day_type ラベル ("weekday" / "saturday" /
+      "sunday_holiday" / "weekend" / "daily" / "dow_XXXXXXX" (曜日指定) /
+      "irregular" (特定日) / "inactive" (運行日なし) — load/day_types.py)
     """
 
     meta: SnapshotMeta

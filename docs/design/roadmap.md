@@ -243,6 +243,19 @@
   explained_ratio 不変。名古屋・朝日町を検証フィードに追加。
   ontology (v0.2.2 ROUTE_RESTRUCTURED)・detection.md・CLAUDE.md 同期
 
+## M10: day_type 語彙の精密化 (「特定日」の解体) 【完了 2026-07-10 (docs/verification/M10_day_types.md)】 (設計: docs/design/day_types.md)
+
+- 動機: 「特定日」の実態は 83% (便数) が完全に規則的な曜日指定運行 (コミュバスの
+  通学日・診療日等) で、語が実態と逆。また day_type は週の分割ではなく重なりを
+  持つ (平日ベース+月水増便が組める) ため、関係を示さないと誤読される
+- 内容: 曜日フラグ由来の `dow_XXXXXXX` を day_type として一級化 (表示「月・水曜」)、
+  運行日ゼロを `inactive` (運行日なし) に分離、真の特定日 (短期 calendar_dates) は
+  irregular のまま第1部に内訳 (日数・期間・置き換え/追加の別) を表示。
+  増便型 (曜日集合の包含) はタブに「(平日に追加)」を注記
+- DoD: 分類・包含注記・置き換え判定の合成テスト。朝日町 (月火水金/木)・
+  永井 (年末年始=置き換え)・名古屋 (運行日ゼロ) で表示を目視確認。
+  回帰フィードで explained_ratio 不変。detection.md / presentation.md 同期
+
 ## W3: Web 公開 (ジョブ API + 公開運用) 【着手 2026-07-07】
 
 > 旧 W2 (静的ホスティングの手動運用) は独立マイルストーンとしては廃止し、

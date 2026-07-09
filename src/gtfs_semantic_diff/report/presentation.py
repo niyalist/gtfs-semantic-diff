@@ -28,17 +28,28 @@ from ..model.matchgraph import ENTITY_PATTERN_CLUSTER
 
 logger = logging.getLogger(__name__)
 
-# R16: 曜日の固定順 (閾値ではなく表示仕様の定数)
-DAY_ORDER = ["weekday", "saturday", "sunday_holiday", "weekend", "daily", "irregular"]
+# R16 (M10 改): 曜日の固定順。dow_* (曜日指定) は 毎日 と 特定日 の間に
+# ビット列 (早い曜日優先) で決定的に整列、運行日なし (inactive) は最後
+DAY_ORDER = ["weekday", "saturday", "sunday_holiday", "weekend", "daily",
+             "irregular", "inactive"]
 
 _PATTERN_EVENT_TYPES = {
     "PATTERN_EXTENDED", "PATTERN_TRUNCATED", "STOP_INSERTED_IN_PATTERN",
     "STOP_REMOVED_FROM_PATTERN", "DETOUR_ADDED", "DETOUR_REMOVED",
 }
 
+_DAILY_INDEX = DAY_ORDER.index("daily")
 
-def day_sort_key(day_type: str) -> int:
-    return DAY_ORDER.index(day_type) if day_type in DAY_ORDER else len(DAY_ORDER)
+
+def day_sort_key(day_type: str) -> tuple:
+    if day_type.startswith("dow_"):
+        # '1' < '0' になるよう反転: 月曜を含むパターンが先に来る
+        bits = day_type[4:]
+        inverted = "".join("0" if b == "1" else "1" for b in bits)
+        return (_DAILY_INDEX, 1, inverted)
+    if day_type in DAY_ORDER:
+        return (DAY_ORDER.index(day_type), 0, "")
+    return (len(DAY_ORDER), 0, day_type)
 
 
 # --- 便ラベル (R19): 便ごとの変化を代表1ラベルに分類 ---
@@ -663,6 +674,28 @@ class _Builder:
                         if day_labels[d].get(k)}}
             for d in sorted(day_counts, key=day_sort_key)
         ]
+        # M10: 増便/限定型の注記。dow_* の曜日集合を包含する day_type の便が
+        # **同じ世代で共存**する場合のみ「◯◯に追加」— 最小の上位集合
+        # (同点は R16 順)。旧=平日 → 新=月水 のような運行日の変更
+        # (共存しない) は追加ではないので注記しない
+        from ..load.day_types import day_set_of
+
+        def coexists(a: dict, b: dict) -> bool:
+            return (a["old"] > 0 and b["old"] > 0) or (a["new"] > 0 and b["new"] > 0)
+
+        for entry in day_totals:
+            if not entry["day_type"].startswith("dow_"):
+                continue
+            own = day_set_of(entry["day_type"])
+            covers = [
+                (len(day_set_of(other["day_type"])), day_sort_key(other["day_type"]),
+                 other["day_type"])
+                for other in day_totals
+                if other is not entry and day_set_of(other["day_type"])
+                and own < day_set_of(other["day_type"]) and coexists(entry, other)
+            ]
+            if covers:
+                entry["added_to"] = min(covers)[2]
 
         # M9: 旧名称 (対応した family) と、廃止/新設ページの類似候補注記
         former_names = sorted(self.former_by_group.get(group, ()))

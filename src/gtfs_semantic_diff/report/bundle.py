@@ -182,6 +182,13 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
         {"day_type": d, "old": c[0], "new": c[1]}
         for d, c in sorted(day_counts.items(), key=lambda kv: day_sort_key(kv[0]))
     ]
+    # M10: 特定日 (irregular) / 運行日なし (inactive) service の内訳。
+    # 「その全日付を他 service が exception_type=2 で運休しているか」で
+    # 置き換え型 (年末年始ダイヤ等) と追加型 (臨時便) を見分ける
+    special_days = {
+        "old": _special_day_services(old),
+        "new": _special_day_services(new),
+    }
 
     # フィード級イベント (第1部) — 表示はビューアが catalog の表示名で行う
     meta_events = [
@@ -208,11 +215,64 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
     return {
         "files": files,
         "day_types": day_types,
+        "special_days": special_days,
         "meta_events": meta_events,
         "others": [
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
     }
+
+
+def _special_day_services(snapshot) -> list[dict]:
+    """特定日 (irregular) / 運行日なし (inactive) service の内訳 (M10)。
+
+    replaces_regular: この service の全運行日を、他の service が
+    exception_type=2 で運休している (= 通常ダイヤの置き換え。年末年始等)。
+    """
+    specials = [
+        (sid, dt) for sid, dt in sorted(snapshot.day_types.items())
+        if dt in ("irregular", "inactive")
+    ]
+    if not specials:
+        return []
+    trips = snapshot.table("trips")
+    trip_counts: dict[str, int] = {}
+    if trips is not None:
+        for sid in trips["service_id"]:
+            trip_counts[sid] = trip_counts.get(sid, 0) + 1
+
+    added_dates: dict[str, list[str]] = {}
+    removed_dates: dict[str, set[str]] = {}
+    cd = snapshot.table("calendar_dates")
+    if cd is not None and not cd.empty and {"service_id", "date",
+                                            "exception_type"} <= set(cd.columns):
+        for sid, date, et in zip(cd["service_id"], cd["date"], cd["exception_type"]):
+            sid, date, et = str(sid), str(date).strip(), str(et).strip()
+            if et == "1":
+                added_dates.setdefault(sid, []).append(date)
+            elif et == "2":
+                removed_dates.setdefault(sid, set()).add(date)
+
+    result = []
+    for sid, dt in specials:
+        if not trip_counts.get(sid):
+            continue  # 便が無い定義だけの service は出さない
+        dates = sorted(added_dates.get(sid, []))
+        removed_by_others = set().union(
+            *(v for k, v in removed_dates.items() if k != sid)
+        ) if removed_dates else set()
+        result.append({
+            "service_id": sid,
+            "day_type": dt,
+            "trips": trip_counts[sid],
+            "dates": len(dates),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+            "replaces_regular": bool(dates) and all(
+                d in removed_by_others for d in dates
+            ),
+        })
+    return result
 
 
 def _agency_names(snapshot) -> list[str]:

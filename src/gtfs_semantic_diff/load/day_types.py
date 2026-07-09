@@ -3,13 +3,18 @@
 service_id ごとに運行曜日の型を分類し、世代間で service_id が異なっても
 「平日ダイヤ同士」を比較できるようにする (L1 同定・C群ルールの前提)。
 
-区分:
+区分 (M10 で精密化、docs/design/day_types.md):
 - weekday        月–金のみ
 - saturday       土のみ
 - sunday_holiday 日のみ (日本のフィードでは日祝一体運用が多い)
 - weekend        土日のみ
 - daily          毎日
-- irregular      上記いずれにも該当しない (特定日運行など)
+- dow_XXXXXXX    上記以外の曜日指定 (月→日の7ビット。例: dow_1010000 = 月・水曜)。
+                 コミュバスの通学日・診療日運行等 — 完全に規則的な週次運行であり
+                 「特定日」ではない (43フィード実測で旧 irregular の便数の83%)
+- irregular      特定日運行 (calendar_dates のみで日数が少ない、または
+                 曜日多数決に届かない)。年末年始ダイヤ・連休臨時等
+- inactive       運行日なし (全フラグ0・追加運行日なし = 休止中の定義枠)
 
 制約 (M0 時点): 日本の国民の祝日カレンダーは参照しない。祝日が平日に
 かかる場合の calendar_dates 例外は irregular 側に倒れることがある。
@@ -30,6 +35,28 @@ DAY_TYPE_SUNDAY_HOLIDAY = "sunday_holiday"
 DAY_TYPE_WEEKEND = "weekend"
 DAY_TYPE_DAILY = "daily"
 DAY_TYPE_IRREGULAR = "irregular"
+DAY_TYPE_INACTIVE = "inactive"
+DOW_PREFIX = "dow_"  # + 月→日の7ビット (例 dow_1010000 = 月・水曜)
+
+
+def day_set_of(day_type: str) -> frozenset[int] | None:
+    """day_type → 運行曜日集合 (月=0…日=6)。集合で表せない型は None。
+
+    dow_* は値そのものから決まるため、消費者 (表示・包含判定) は
+    追加のメタデータなしで曜日集合を復元できる。
+    """
+    fixed = {
+        DAY_TYPE_WEEKDAY: frozenset(range(5)),
+        DAY_TYPE_SATURDAY: frozenset({5}),
+        DAY_TYPE_SUNDAY_HOLIDAY: frozenset({6}),
+        DAY_TYPE_WEEKEND: frozenset({5, 6}),
+        DAY_TYPE_DAILY: frozenset(range(7)),
+    }
+    if day_type in fixed:
+        return fixed[day_type]
+    if day_type.startswith(DOW_PREFIX) and len(day_type) == len(DOW_PREFIX) + 7:
+        return frozenset(i for i, b in enumerate(day_type[len(DOW_PREFIX):]) if b == "1")
+    return None
 
 _CALENDAR_DAY_COLUMNS = [
     "monday",
@@ -57,7 +84,9 @@ def _classify_day_flags(flags: tuple[bool, ...]) -> str:
             return DAY_TYPE_SATURDAY
         if sun:
             return DAY_TYPE_SUNDAY_HOLIDAY
-    return DAY_TYPE_IRREGULAR
+    # 6分類外の曜日指定 (月水金・木のみ等) は「特定日」ではなく
+    # 規則的な週次運行 — フラグをそのまま型にする (M10)
+    return DOW_PREFIX + "".join("1" if f else "0" for f in flags)
 
 
 def _classify_dates(dates: list[str], majority: float, short_max_days: int) -> str:
@@ -131,8 +160,9 @@ def normalize_day_types(
         else:
             logger.warning("calendar_dates.txt に必須カラムがありません")
 
-    # 全フラグ 0 で calendar_dates にも追加日がない service
+    # 全フラグ 0 で calendar_dates にも追加日がない service = 運行日なし
+    # (休止中の定義枠。特定日と混ぜると「走らない便」が便数に紛れる)
     for service_id in zero_flag_services:
-        result.setdefault(service_id, DAY_TYPE_IRREGULAR)
+        result.setdefault(service_id, DAY_TYPE_INACTIVE)
 
     return result

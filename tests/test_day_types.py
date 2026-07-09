@@ -39,7 +39,7 @@ def test_calendar_flag_classification():
         "SUN": "sunday_holiday",
         "WE": "weekend",
         "ALL": "daily",
-        "MWF": "irregular",
+        "MWF": "dow_1010100",  # M10: 曜日指定は特定日ではなく一級の型
     }
 
 
@@ -103,6 +103,17 @@ def test_zero_flag_service_falls_back_to_dates():
     assert normalize_day_types(cal, dates, 0.8) == {"Z1": "saturday"}
 
 
-def test_zero_flag_service_without_dates_is_irregular():
+def test_zero_flag_service_without_dates_is_inactive():
+    # M10: 運行日ゼロは「運行日なし」— 特定日と混ぜない (名古屋の休止枠の実例)
     cal = calendar_df({"Z2": "0000000"})
-    assert normalize_day_types(cal, None, 0.8) == {"Z2": "irregular"}
+    assert normalize_day_types(cal, None, 0.8) == {"Z2": "inactive"}
+
+
+def test_day_set_of():
+    from gtfs_semantic_diff.load.day_types import day_set_of
+
+    assert day_set_of("weekday") == frozenset(range(5))
+    assert day_set_of("dow_1010000") == frozenset({0, 2})
+    assert day_set_of("dow_1010000") < day_set_of("weekday")  # 増便型の包含判定
+    assert day_set_of("irregular") is None
+    assert day_set_of("inactive") is None

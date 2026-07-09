@@ -31,7 +31,9 @@ GtfsSnapshot ×2
 | `saturday` / `sunday_holiday` | 土のみ / 日のみ |
 | `weekend` | 土日のみ |
 | `daily` | 全曜日 |
-| `irregular` | 上記いずれにも該当しない |
+| `dow_XXXXXXX` | 上記以外の曜日フラグ (月→日の7ビット。例 `dow_1010000` = 月・水曜)。コミュバスの通学日・診療日等の曜日指定運行 — 規則的な週次運行であり「特定日」ではない (M10、43フィード実測で旧 irregular の便数の83%。docs/design/day_types.md) |
+| `irregular` | 特定日運行 (下記の calendar_dates 判定) |
+| `inactive` | 運行日なし (全フラグ 0 かつ追加運行日なし = 休止中の定義枠) |
 
 calendar に現れない (または全フラグ 0 の) service は calendar_dates の追加運行日
 (exception_type=1) で判定する。運行日数が `[load.day_types] short_service_max_days`
@@ -40,6 +42,11 @@ calendar に現れない (または全フラグ 0 の) service は calendar_date
 多数決: `calendar_dates_majority` (0.8) 以上が単一区分 (平日/土/日) に収まれば
 その区分、収まらなければ `irregular`。
 国民の祝日カレンダーは参照しない (祝日が平日に落ちる場合の誤差は許容)。
+day_type は週の分割ではなく**重なり**を持ちうる (平日ベース + 月水増便が組める)。
+レポートは dow の曜日集合を包含する day_type が同一世代で共存する場合に
+「(平日に追加)」と注記し、特定日/運行日なしの service は第1部に内訳
+(日数・期間・置き換え判定 = 全運行日を他 service が exception_type=2 で
+運休しているか) を表示する (M10)。
 
 ---
 

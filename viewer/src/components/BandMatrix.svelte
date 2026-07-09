@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/i18n.js";
+  import { lang, t, dayName } from "../lib/i18n.js";
 
   export let matrix; // {bands, rows}
   $: tt = $t;
@@ -8,7 +8,7 @@
   );
 
   function dayJa(d) {
-    return tt(d) === d ? d : tt(d);
+    return dayName(d, $lang);
   }
   function cellText(v) {
     if (!v) return "";
