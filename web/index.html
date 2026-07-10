@@ -10,7 +10,7 @@
          max-width: 46rem; padding: 1.2rem; line-height: 1.65; color: #1c1e21; }
   h1 { font-size: 1.25rem; }
   .tabs { display: flex; gap: 0.3rem; border-bottom: 2px solid var(--line);
-          margin: 1rem 0 0.8rem; }
+          margin: 1rem 0 0.8rem; flex-wrap: wrap; }
   .tabs button { font: inherit; cursor: pointer; padding: 0.35rem 0.9rem;
     border: 1px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0;
     background: var(--bg-soft); }
@@ -25,15 +25,25 @@
     padding: 0.45rem 1.4rem; border: 2px solid var(--accent); border-radius: 6px;
     background: var(--accent); color: #fff; }
   button.run:disabled { opacity: 0.5; cursor: default; }
+  button.small { font: inherit; font-size: 0.82em; cursor: pointer;
+    padding: 0.1rem 0.5rem; border: 1px solid var(--accent); border-radius: 4px;
+    background: #fff; color: var(--accent); }
   #status { margin-top: 1rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line);
     border-radius: 6px; background: var(--bg-soft); display: none; }
   #status.error { border: 2px solid #b0004e; font-weight: 600; }
   #status a { font-weight: 700; }
   .note { color: #555; font-size: 0.85em; }
   .hidden { display: none; }
+  #userbar { float: right; font-size: 0.85em; text-align: right; }
+  #userbar button { font: inherit; cursor: pointer; }
+  table.hist { border-collapse: collapse; width: 100%; font-size: 0.88em; }
+  table.hist th, table.hist td { border: 1px solid var(--line);
+    padding: 0.25rem 0.45rem; text-align: left; vertical-align: top; }
+  table.hist th { background: var(--bg-soft); }
 </style>
 </head>
 <body>
+<div id="userbar"></div>
 <h1>GTFS ダイヤ改正 意味的差分レポート</h1>
 <p>2世代の GTFS フィードを比較し、路線ごとの変化 (系統・経由・便数・時刻)、
 停留所の変化、フィード全体の変化をレポートします。
@@ -43,6 +53,7 @@
 <div class="tabs" role="tablist">
   <button id="tab-repo" class="active" role="tab">gtfs-data.jp から選択</button>
   <button id="tab-upload" role="tab">zip をアップロード</button>
+  <button id="tab-my" class="hidden" role="tab">マイページ</button>
 </div>
 
 <section id="pane-repo">
@@ -60,13 +71,30 @@
 </section>
 
 <section id="pane-upload" class="hidden">
+  <div id="saved-note" class="note hidden">ログイン中: アップロードした zip は保存され、
+  次回からは下のプルダウンで再利用できます。結果 URL は削除されず残ります。</div>
   <label for="file-old">旧世代の GTFS zip</label>
+  <select id="saved-old" class="hidden"></select>
   <input id="file-old" type="file" accept=".zip">
   <label for="file-new">新世代の GTFS zip</label>
+  <select id="saved-new" class="hidden"></select>
   <input id="file-new" type="file" accept=".zip">
-  <p class="note">上限 100MB / ファイル。アップロードされた zip と結果は
+  <p class="note" id="upload-policy">上限 100MB / ファイル。アップロードされた zip と結果は
   30日後に自動削除されます。</p>
   <div><button id="run-upload" class="run" disabled>比較レポートを作成</button></div>
+</section>
+
+<section id="pane-my" class="hidden">
+  <h2 style="font-size:1.05rem">比較の履歴</h2>
+  <label for="hist-sort">並べ替え</label>
+  <select id="hist-sort">
+    <option value="date">日付 (新しい順)</option>
+    <option value="operator">事業者順</option>
+    <option value="gen">世代 (開始日) 順</option>
+  </select>
+  <div id="hist-box" style="margin-top:0.6rem"><p class="note">読み込み中…</p></div>
+  <h2 style="font-size:1.05rem; margin-top:1.4rem">保存済みのアップロード zip</h2>
+  <div id="zips-box"><p class="note">読み込み中…</p></div>
 </section>
 
 <div id="status" role="status"></div>
@@ -85,6 +113,8 @@ const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山�
 
 const $ = (id) => document.getElementById(id);
 const status = $("status");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function showStatus(html, isError = false) {
   status.style.display = "block";
@@ -92,28 +122,123 @@ function showStatus(html, isError = false) {
   status.innerHTML = html;
 }
 
-// タブ切替
-function selectTab(repo) {
-  $("tab-repo").classList.toggle("active", repo);
-  $("tab-upload").classList.toggle("active", !repo);
-  $("pane-repo").classList.toggle("hidden", !repo);
-  $("pane-upload").classList.toggle("hidden", repo);
+async function getJson(url, headers = {}) {
+  const r = await fetch(url, { headers });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+  return r.json();
 }
-$("tab-repo").onclick = () => selectTab(true);
-$("tab-upload").onclick = () => selectTab(false);
 
-// 都道府県 → フィード → 世代
+// ---- ログイン (Cognito Hosted UI + Google、PKCE 付き認可コード) ----
+const AUTH = { cfg: { login_enabled: false }, token: null, email: null };
+const authHeaders = () => (AUTH.token ? { authorization: `Bearer ${AUTH.token}` } : {});
+
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function login() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  sessionStorage.setItem("pkce_verifier", verifier);
+  const challenge = b64url(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const u = new URL(`https://${AUTH.cfg.cognito_domain}/oauth2/authorize`);
+  u.search = new URLSearchParams({
+    client_id: AUTH.cfg.client_id, response_type: "code", scope: "openid email",
+    redirect_uri: location.origin + "/", identity_provider: "Google",
+    code_challenge_method: "S256", code_challenge: challenge,
+  });
+  location.href = u;
+}
+
+async function exchangeCode(code) {
+  const r = await fetch(`https://${AUTH.cfg.cognito_domain}/oauth2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code", client_id: AUTH.cfg.client_id,
+      code, redirect_uri: location.origin + "/",
+      code_verifier: sessionStorage.getItem("pkce_verifier") || "",
+    }),
+  });
+  sessionStorage.removeItem("pkce_verifier");
+  const data = await r.json();
+  if (!data.id_token) throw new Error(data.error || "ログインに失敗しました");
+  localStorage.setItem("id_token", data.id_token);
+  localStorage.setItem("id_token_exp",
+    String(Date.now() + (data.expires_in || 3600) * 1000));
+}
+
+function loadToken() {
+  const tok = localStorage.getItem("id_token");
+  const exp = Number(localStorage.getItem("id_token_exp") || 0);
+  if (!tok || Date.now() > exp - 60000) return;
+  try {
+    const claims = JSON.parse(
+      atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    AUTH.token = tok;
+    AUTH.email = claims.email || "";
+  } catch { /* 壊れたトークンは無視 */ }
+}
+
+function logout() {
+  localStorage.removeItem("id_token");
+  localStorage.removeItem("id_token_exp");
+  AUTH.token = null; AUTH.email = null;
+  renderUserbar(); selectTab("repo");
+}
+
+function renderUserbar() {
+  const bar = $("userbar");
+  $("tab-my").classList.toggle("hidden", !AUTH.token);
+  $("saved-note").classList.toggle("hidden", !AUTH.token);
+  $("upload-policy").textContent = AUTH.token
+    ? "上限 100MB / ファイル。ログイン中のため zip と結果は保存されます (マイページから再利用可能)。"
+    : "上限 100MB / ファイル。アップロードされた zip と結果は30日後に自動削除されます。";
+  if (AUTH.token) {
+    bar.innerHTML = `<strong>${esc(AUTH.email)}</strong> でログイン中
+      <button id="btn-logout">ログアウト</button>`;
+    $("btn-logout").onclick = logout;
+    loadSavedZipSelectors();
+  } else if (AUTH.cfg.login_enabled) {
+    bar.innerHTML = `<button id="btn-login">Google でログイン</button>
+      <br><span class="note">ログインすると履歴・再比較・zip の保存が使えます</span>`;
+    $("btn-login").onclick = login;
+  } else {
+    bar.innerHTML = "";
+  }
+}
+
+async function initAuth() {
+  try { AUTH.cfg = await getJson("/api/config"); } catch { /* ログインなし運用 */ }
+  const params = new URLSearchParams(location.search);
+  if (params.get("code") && sessionStorage.getItem("pkce_verifier")) {
+    try { await exchangeCode(params.get("code")); }
+    catch (e) { showStatus(`ログインエラー: ${esc(e.message)}`, true); }
+    history.replaceState(null, "", location.pathname);
+  }
+  loadToken();
+  renderUserbar();
+}
+
+// ---- タブ切替 ----
+function selectTab(which) {
+  for (const t of ["repo", "upload", "my"]) {
+    $(`tab-${t}`).classList.toggle("active", t === which);
+    $(`pane-${t}`).classList.toggle("hidden", t !== which);
+  }
+  if (which === "my") loadMyPage();
+}
+$("tab-repo").onclick = () => selectTab("repo");
+$("tab-upload").onclick = () => selectTab("upload");
+$("tab-my").onclick = () => selectTab("my");
+
+// ---- 都道府県 → フィード → 世代 ----
 PREFS.forEach((name, i) => {
   const o = document.createElement("option");
   o.value = i + 1; o.textContent = name;
   $("pref").appendChild(o);
 });
 
-async function getJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
-  return r.json();
-}
+let currentFiles = [];  // 選択中フィードの世代一覧 (uid・from_date を履歴用に保持)
 
 $("pref").onchange = async () => {
   $("feed").disabled = true; $("gen-old").disabled = true;
@@ -130,7 +255,7 @@ $("pref").onchange = async () => {
       $("feed").appendChild(o);
     }
     $("feed").disabled = false;
-  } catch (e) { showStatus(`フィード一覧の取得に失敗: ${e.message}`, true); }
+  } catch (e) { showStatus(`フィード一覧の取得に失敗: ${esc(e.message)}`, true); }
 };
 
 $("feed").onchange = async () => {
@@ -141,6 +266,7 @@ $("feed").onchange = async () => {
   $("gen-old").innerHTML = $("gen-new").innerHTML = "<option>読み込み中…</option>";
   try {
     const data = await getJson(`/api/gtfs/files?org=${org}&feed=${feed}`);
+    currentFiles = data.files;
     const label = (f) => `${f.rid} (${f.from_date || "?"} 〜 ${f.to_date || "?"})`;
     for (const sel of [$("gen-old"), $("gen-new")]) {
       sel.innerHTML = "";
@@ -157,15 +283,16 @@ $("feed").onchange = async () => {
     $("run-repo").disabled = data.files.length < 2;
     if (data.files.length < 2)
       showStatus("このフィードには比較できる世代が2つ以上ありません。", true);
-  } catch (e) { showStatus(`世代一覧の取得に失敗: ${e.message}`, true); }
+  } catch (e) { showStatus(`世代一覧の取得に失敗: ${esc(e.message)}`, true); }
 };
 
-// ジョブ投入とポーリング
+// ---- ジョブ投入とポーリング ----
 async function submitAndPoll(body) {
   showStatus("ジョブを投入しています…");
-  const r = await fetch("/api/jobs", {
+  const endpoint = AUTH.token ? "/api/me/jobs" : "/api/jobs";
+  const r = await fetch(endpoint, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   const job = await r.json();
@@ -190,22 +317,62 @@ async function submitAndPoll(body) {
   }
 }
 
+function repoBody(org, feed, oldUid, newUid, extra = {}) {
+  return { type: "gtfs_data_jp", org, feed, old_uid: oldUid, new_uid: newUid, ...extra };
+}
+
 $("run-repo").onclick = async () => {
   const [org, feed] = $("feed").value.split("/");
-  const body = { type: "gtfs_data_jp", org, feed,
-                 old_uid: $("gen-old").value, new_uid: $("gen-new").value };
-  if (body.old_uid === body.new_uid)
+  const oldUid = $("gen-old").value, newUid = $("gen-new").value;
+  if (oldUid === newUid)
     return showStatus("新旧に同じ世代が選ばれています。", true);
+  const byUid = Object.fromEntries(currentFiles.map((f) => [f.uid, f]));
+  const feedLabel = $("feed").selectedOptions[0]?.textContent || "";
+  const body = repoBody(org, feed, oldUid, newUid, {
+    org_name: feedLabel.split(" — ")[0] || "",
+    feed_name: feedLabel.split(" — ")[1] || "",
+    old_from_date: byUid[oldUid]?.from_date || "",
+    new_from_date: byUid[newUid]?.from_date || "",
+  });
   $("run-repo").disabled = true;
   try { await submitAndPoll(body); }
-  catch (e) { showStatus(`エラー: ${e.message}`, true); }
+  catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
   finally { $("run-repo").disabled = false; }
 };
 
-// アップロード
+// ---- アップロード (ログイン時は保存済み zip の再利用も可) ----
+const sideReady = (side) =>
+  ($(`saved-${side}`).value || "") !== "" || Boolean($(`file-${side}`).files[0]);
 const updateUploadButton = () =>
-  ($("run-upload").disabled = !($("file-old").files[0] && $("file-new").files[0]));
+  ($("run-upload").disabled = !(sideReady("old") && sideReady("new")));
 $("file-old").onchange = $("file-new").onchange = updateUploadButton;
+$("saved-old").onchange = () => {
+  $("file-old").classList.toggle("hidden", $("saved-old").value !== "");
+  updateUploadButton();
+};
+$("saved-new").onchange = () => {
+  $("file-new").classList.toggle("hidden", $("saved-new").value !== "");
+  updateUploadButton();
+};
+
+let savedZips = [];
+async function loadSavedZipSelectors() {
+  if (!AUTH.token) return;
+  try {
+    savedZips = (await getJson("/api/me/zips", authHeaders())).items;
+  } catch { savedZips = []; }
+  for (const side of ["old", "new"]) {
+    const sel = $(`saved-${side}`);
+    sel.classList.toggle("hidden", savedZips.length === 0);
+    sel.innerHTML = "<option value=''>新しくアップロードする…</option>";
+    for (const z of savedZips) {
+      const o = document.createElement("option");
+      o.value = z.zip_id;
+      o.textContent = `保存済み: ${z.display_name}`;
+      sel.appendChild(o);
+    }
+  }
+}
 
 async function uploadTo(post, file) {
   const form = new FormData();
@@ -216,24 +383,141 @@ async function uploadTo(post, file) {
 }
 
 $("run-upload").onclick = async () => {
-  const fo = $("file-old").files[0], fn = $("file-new").files[0];
   $("run-upload").disabled = true;
   try {
-    showStatus("アップロード用 URL を取得しています…");
-    const r = await fetch("/api/uploads", { method: "POST" });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-    if (fo.size > data.max_bytes || fn.size > data.max_bytes)
-      throw new Error("ファイルが上限 (100MB) を超えています");
-    showStatus("旧世代をアップロード中…");
-    await uploadTo(data.uploads.old, fo);
-    showStatus("新世代をアップロード中…");
-    await uploadTo(data.uploads.new, fn);
-    await submitAndPoll({ type: "upload",
-      old_key: data.uploads.old.key, new_key: data.uploads.new.key });
-  } catch (e) { showStatus(`エラー: ${e.message}`, true); }
+    const body = { type: "upload" };
+    const needUpload = [];
+    for (const side of ["old", "new"]) {
+      const zipId = $(`saved-${side}`).value;
+      if (zipId) { body[`${side}_zip_id`] = zipId; }
+      else { needUpload.push(side); }
+    }
+    if (needUpload.length) {
+      showStatus("アップロード用 URL を取得しています…");
+      const r = await fetch("/api/uploads", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      for (const side of needUpload) {
+        const file = $(`file-${side}`).files[0];
+        if (file.size > data.max_bytes)
+          throw new Error("ファイルが上限 (100MB) を超えています");
+        showStatus(`${side === "old" ? "旧" : "新"}世代をアップロード中…`);
+        await uploadTo(data.uploads[side], file);
+        body[`${side}_key`] = data.uploads[side].key;
+        body[`${side}_name`] = file.name;
+      }
+    }
+    await submitAndPoll(body);
+    loadSavedZipSelectors();  // 新規保存分をプルダウンへ反映
+  } catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
   finally { updateUploadButton(); }
 };
+
+// ---- マイページ (履歴・再比較・保存 zip) ----
+let histItems = [];
+
+function histLabel(it) {
+  if (it.kind === "repo") {
+    const name = [it.org_name, it.feed_name].filter(Boolean).join(" — ")
+      || `${it.org || ""}/${it.feed || ""}`;
+    const gens = (it.old_from_date || it.new_from_date)
+      ? `${it.old_from_date || "?"} → ${it.new_from_date || "?"}` : "";
+    return { name, gens };
+  }
+  const name = [it.old_label || it.old_name || "旧zip",
+                it.new_label || it.new_name || "新zip"].join(" ⇔ ");
+  return { name: `(アップロード) ${name}`, gens: "" };
+}
+
+function sortHist(items, mode) {
+  const arr = [...items];
+  if (mode === "operator")
+    arr.sort((a, b) => histLabel(a).name.localeCompare(histLabel(b).name, "ja"));
+  else if (mode === "gen")
+    arr.sort((a, b) => (b.new_from_date || "").localeCompare(a.new_from_date || ""));
+  else arr.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  return arr;
+}
+
+function renderHistory() {
+  const box = $("hist-box");
+  if (!histItems.length) {
+    box.innerHTML = "<p class='note'>まだ履歴がありません。比較を実行するとここに残ります。</p>";
+    return;
+  }
+  const sorted = sortHist(histItems, $("hist-sort").value);
+  const rows = sorted.map((it, i) => {
+    const { name, gens } = histLabel(it);
+    const date = (it.created_at || "").slice(0, 10);
+    const acts = [`<a href="${esc(it.result_url)}">開く</a>`];
+    if (it.kind === "repo" && it.old_uid && it.new_uid) {
+      acts.push(`<button class="small" data-re="${i}">同条件で再比較</button>`);
+      acts.push(`<button class="small" data-latest="${i}">最新世代と比較</button>`);
+    }
+    return `<tr><td>${esc(date)}</td><td>${esc(name)}` +
+      (gens ? `<br><span class="note">${esc(gens)}</span>` : "") +
+      `</td><td>${acts.join(" ")}</td></tr>`;
+  });
+  box.innerHTML = `<table class="hist"><tr><th>日付</th><th>比較対象</th><th></th></tr>` +
+    rows.join("") + `</table>`;
+  box.querySelectorAll("button[data-re]").forEach((b) => {
+    b.onclick = () => recompare(sorted[Number(b.dataset.re)], false);
+  });
+  box.querySelectorAll("button[data-latest]").forEach((b) => {
+    b.onclick = () => recompare(sorted[Number(b.dataset.latest)], true);
+  });
+}
+
+async function recompare(it, useLatest) {
+  try {
+    let newUid = it.new_uid, newFrom = it.new_from_date || "";
+    if (useLatest) {
+      showStatus("最新世代を確認しています…");
+      const data = await getJson(`/api/gtfs/files?org=${it.org}&feed=${it.feed}`);
+      const latest = data.files[0];
+      if (!latest || !latest.uid) throw new Error("最新世代を取得できません");
+      newUid = latest.uid; newFrom = latest.from_date || "";
+    }
+    await submitAndPoll(repoBody(it.org, it.feed, it.old_uid, newUid, {
+      org_name: it.org_name || "", feed_name: it.feed_name || "",
+      old_from_date: it.old_from_date || "", new_from_date: newFrom,
+    }));
+    loadMyPage();
+  } catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
+}
+
+function renderZips() {
+  const box = $("zips-box");
+  if (!savedZips.length) {
+    box.innerHTML = "<p class='note'>保存済みの zip はありません。ログイン中にアップロードすると自動保存されます。</p>";
+    return;
+  }
+  const mb = (n) => (Number(n || 0) / 1048576).toFixed(1);
+  box.innerHTML = `<table class="hist"><tr><th>表示名</th><th>サイズ</th><th>保存日</th></tr>` +
+    savedZips.map((z) =>
+      `<tr><td>${esc(z.display_name)}</td><td>${mb(z.size)} MB</td>` +
+      `<td>${esc((z.created_at || "").slice(0, 10))}</td></tr>`).join("") +
+    `</table><p class="note">再利用は「zip をアップロード」タブのプルダウンから。</p>`;
+}
+
+async function loadMyPage() {
+  if (!AUTH.token) return;
+  try {
+    const [hist] = await Promise.all([
+      getJson("/api/me/history", authHeaders()),
+      loadSavedZipSelectors(),
+    ]);
+    histItems = hist.items;
+    renderHistory();
+    renderZips();
+  } catch (e) {
+    $("hist-box").innerHTML =
+      `<p class='note'>読み込みに失敗しました: ${esc(e.message)} (ログインし直してください)</p>`;
+  }
+}
+$("hist-sort").onchange = renderHistory;
+
+initAuth();
 </script>
 </body>
 </html>

@@ -8,19 +8,26 @@
   api がジョブを DynamoDB に登録し worker を非同期起動、worker が compare →
   HTML を S3 へ書く。UI はポーリングで完成を待つ
 - AWS Budgets: 月額の実績アラート (メールは -c alert_email= で指定。未指定なら作らない)
+- ログイン (W3-2b): Cognito UserPool + Hosted UI + Google IdP。自前パスワードは
+  持たない。Google IdP は -c google_client_id=... 指定時のみ作成 (client secret は
+  Secrets Manager の gtfs-semdiff/google-oauth から)。IdP 未接続でも他機能は動く。
+  /api/me/* だけ JWT オーソライザで保護し、匿名機能はそのまま
 """
 
 from aws_cdk import (
     CfnOutput,
     Duration,
     RemovalPolicy,
+    SecretValue,
     Size,
     Stack,
     aws_apigatewayv2 as apigwv2,
+    aws_apigatewayv2_authorizers as apigw_authorizers,
     aws_apigatewayv2_integrations as apigw_integrations,
     aws_budgets as budgets,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
+    aws_cognito as cognito,
     aws_dynamodb as dynamodb,
     aws_lambda as lambda_,
     aws_s3 as s3,
@@ -81,10 +88,25 @@ class DeliveryStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,  # ジョブ行は使い捨て
         )
 
+        # ログインユーザーのデータ (W3-2b): pk=user_id, sk=run#…/zip#… の単一テーブル
+        userdata_table = dynamodb.Table(
+            self,
+            "UserData",
+            partition_key=dynamodb.Attribute(
+                name="user_id", type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="sk", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,  # 履歴・保存 zip 台帳は消さない
+        )
+
         image_dir = "../"  # ビルドコンテキスト = リポジトリルート (.dockerignore 参照)
         common_env = {
             "RESULTS_BUCKET": bucket.bucket_name,
             "JOBS_TABLE": jobs_table.table_name,
+            "USERDATA_TABLE": userdata_table.table_name,
             "MAX_UPLOAD_BYTES": str(MAX_UPLOAD_BYTES),
         }
         worker_fn = lambda_.DockerImageFunction(
@@ -129,7 +151,43 @@ class DeliveryStack(Stack):
         bucket.grant_read(api_fn, "r/*")
         jobs_table.grant_read_write_data(worker_fn)
         jobs_table.grant_read_write_data(api_fn)
+        userdata_table.grant_read_write_data(worker_fn)
+        userdata_table.grant_read_write_data(api_fn)
         worker_fn.grant_invoke(api_fn)
+
+        # --- ログイン (W3-2b): Cognito + Google IdP ---
+        user_pool = cognito.UserPool(
+            self,
+            "Users",
+            self_sign_up_enabled=False,  # 自前パスワードユーザーは作らない
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+        pool_domain = user_pool.add_domain(
+            "HostedUi",
+            cognito_domain=cognito.CognitoDomainOptions(
+                domain_prefix="gtfs-semdiff"
+            ),
+        )
+        google_client_id = self.node.try_get_context("google_client_id") or ""
+        idps = []
+        if google_client_id:
+            google_idp = cognito.UserPoolIdentityProviderGoogle(
+                self,
+                "Google",
+                user_pool=user_pool,
+                client_id=google_client_id,
+                # 事前に: aws secretsmanager create-secret --name gtfs-semdiff/google-oauth
+                #   --secret-string '{"client_secret":"..."}'
+                client_secret_value=SecretValue.secrets_manager(
+                    "gtfs-semdiff/google-oauth", json_field="client_secret"
+                ),
+                scopes=["openid", "email"],
+                attribute_mapping=cognito.AttributeMapping(
+                    email=cognito.ProviderAttribute.GOOGLE_EMAIL
+                ),
+            )
+            idps.append(cognito.UserPoolClientIdentityProvider.GOOGLE)
 
         http_api = apigwv2.HttpApi(
             self,
@@ -169,6 +227,48 @@ class DeliveryStack(Stack):
             # 日本を含むアジアのエッジまで (ALL より安い)
             price_class=cloudfront.PriceClass.PRICE_CLASS_200,
         )
+
+        # Hosted UI からの戻り先 = CloudFront (distribution 作成後にクライアントを作る)
+        site_url = f"https://{distribution.distribution_domain_name}/"
+        client_kwargs = dict(
+            o_auth=cognito.OAuthSettings(
+                flows=cognito.OAuthFlows(authorization_code_grant=True),  # + PKCE
+                scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
+                callback_urls=[site_url],
+                logout_urls=[site_url],
+            ),
+            generate_secret=False,  # SPA (PKCE) なのでシークレットなし
+            prevent_user_existence_errors=True,
+        )
+        if idps:
+            client_kwargs["supported_identity_providers"] = idps
+        app_client = user_pool.add_client("Web", **client_kwargs)
+        if google_client_id:
+            app_client.node.add_dependency(google_idp)
+
+        # /api/me/* だけ JWT (Cognito ID トークン) で保護。他は匿名のまま
+        jwt_authorizer = apigw_authorizers.HttpJwtAuthorizer(
+            "MeAuth",
+            f"https://cognito-idp.{self.region}.amazonaws.com/"
+            f"{user_pool.user_pool_id}",
+            jwt_audience=[app_client.user_pool_client_id],
+        )
+        me_integration = apigw_integrations.HttpLambdaIntegration(
+            "MeIntegration", api_fn
+        )
+        for path in ("/api/me", "/api/me/{proxy+}"):
+            http_api.add_routes(
+                path=path,
+                methods=[apigwv2.HttpMethod.ANY],
+                integration=me_integration,
+                authorizer=jwt_authorizer,
+            )
+        cognito_domain = (
+            f"{pool_domain.domain_name}.auth.{self.region}.amazoncognito.com"
+        )
+        api_fn.add_environment("COGNITO_DOMAIN", cognito_domain)
+        api_fn.add_environment("COGNITO_CLIENT_ID", app_client.user_pool_client_id)
+        api_fn.add_environment("GOOGLE_LOGIN", "1" if google_client_id else "")
 
         # 入力 UI (web/) をバケット直下へ配備。prune は絶対に無効
         # (有効だと r/ の公開済みレポートが消される)
@@ -218,3 +318,7 @@ class DeliveryStack(Stack):
         CfnOutput(self, "DistributionDomain", value=distribution.distribution_domain_name)
         CfnOutput(self, "ApiEndpoint", value=http_api.api_endpoint)
         CfnOutput(self, "JobsTable", value=jobs_table.table_name)
+        CfnOutput(self, "UserDataTable", value=userdata_table.table_name)
+        CfnOutput(self, "UserPoolId", value=user_pool.user_pool_id)
+        CfnOutput(self, "CognitoDomain", value=cognito_domain)
+        CfnOutput(self, "WebClientId", value=app_client.user_pool_client_id)
