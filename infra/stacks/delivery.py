@@ -98,8 +98,9 @@ class DeliveryStack(Stack):
             # Apple Silicon でのローカルビルド (arm64) と一致させる
             architecture=lambda_.Architecture.ARM_64,
             # 大規模フィード (産交バス: stop_times 55万行×2世代) に耐えるサイズ。
-            # Lambda は memory に比例して vCPU も増える (4096MB ≈ 2.3 vCPU)
-            memory_size=4096,
+            # Lambda は memory に比例して vCPU も増える。4096 はこのアカウントの
+            # クォータ (3008MB) を超えたため上限値を使う (引き上げ申請は任意)
+            memory_size=3008,
             ephemeral_storage_size=Size.gibibytes(2),
             timeout=Duration.minutes(15),
             environment=common_env,
