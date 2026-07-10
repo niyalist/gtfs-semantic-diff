@@ -32,8 +32,8 @@ for row in sorted(old_counter - new_counter):
 
 ## あわせて実施した Web 側の対策
 
-- worker Lambda を 2048→4096MB (Lambda は memory 比例で vCPU も増える。
-  産交級のフィードの余裕)
+- worker Lambda を 2048→3008MB (アカウントのクォータ上限。Lambda は
+  memory 比例で vCPU も増える。産交級のフィードの余裕)
 - **running スタック対策**: worker が Lambda タイムアウト/OOM で死ぬと例外
   ハンドラが走れず status=running が残る → status API が経過時間 (>16分) で
   failed と判定してポーリングを止める (infra/runtime/handler.py)
