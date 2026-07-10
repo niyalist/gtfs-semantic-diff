@@ -178,9 +178,9 @@ class DeliveryStack(Stack):
                 user_pool=user_pool,
                 client_id=google_client_id,
                 # 事前に: aws secretsmanager create-secret --name gtfs-semdiff/google-oauth
-                #   --secret-string '{"client_secret":"..."}'
+                #   --secret-string '<client secret 文字列そのまま>'
                 client_secret_value=SecretValue.secrets_manager(
-                    "gtfs-semdiff/google-oauth", json_field="client_secret"
+                    "gtfs-semdiff/google-oauth"
                 ),
                 scopes=["openid", "email"],
                 attribute_mapping=cognito.AttributeMapping(

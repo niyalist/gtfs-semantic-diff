@@ -1,6 +1,7 @@
 {
   "app": "../.venv.nosync/bin/python app.py",
   "context": {
-    "@aws-cdk/core:bootstrapQualifier": "hnb659fds"
+    "@aws-cdk/core:bootstrapQualifier": "hnb659fds",
+    "google_client_id": "726788463489-17lau6jic1gsa1bu4dp4li8dg660iktj.apps.googleusercontent.com"
   }
 }
