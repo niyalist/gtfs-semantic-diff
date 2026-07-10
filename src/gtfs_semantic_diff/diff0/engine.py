@@ -195,16 +195,19 @@ def _diff_rows_hashed(
     old_counter = Counter(old_df[shared_cols].itertuples(index=False, name=None))
     new_counter = Counter(new_df[shared_cols].itertuples(index=False, name=None))
     out = []
-    for row in sorted(old_counter - new_counter):
-        count = (old_counter - new_counter)[row]
+    # Counter の差はループの外で1回だけ計算する (差分計算は全行走査 O(N)。
+    # ループ内で再計算すると O(差分行数×N) の二次爆発 — 山交バスの
+    # stop_times 3万行で実質ハングした実例。docs/perf/diff0_hashed.md)
+    removed = old_counter - new_counter
+    for row in sorted(removed):
         content = ",".join(row)
-        for i in range(count):
+        for i in range(removed[row]):
             out.append(
                 (filename, KIND_ROW_REMOVED, (_row_digest(row), str(i)), "", content, None)
             )
-    for row in sorted(new_counter - old_counter):
-        count = (new_counter - old_counter)[row]
+    added = new_counter - old_counter
+    for row in sorted(added):
         content = ",".join(row)
-        for i in range(count):
+        for i in range(added[row]):
             out.append((filename, KIND_ROW_ADDED, (_row_digest(row), str(i)), "", None, content))
     return out

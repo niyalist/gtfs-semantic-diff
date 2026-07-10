@@ -180,11 +180,23 @@ def _api_submit(body: dict) -> dict:
                        "status_url": f"/api/jobs/{urllib.parse.quote(job_id)}"})
 
 
+WORKER_MAX_SECONDS = 16 * 60  # worker Lambda の timeout (15分) + 余裕
+
+
 def _api_status(job_id: str) -> dict:
     item = _jobs_table().get_item(Key={"job_id": job_id}).get("Item")
     if not item:
         return _resp(404, {"error": "unknown job"})
-    body = {"job_id": job_id, "status": item["status"]}
+    status = item["status"]
+    # worker が Lambda タイムアウト/OOM で死ぬと running のまま残る
+    # (例外ハンドラは走れない)。経過時間で失敗と判定してポーリングを止める
+    if status == "running":
+        since = int(item.get("running_since") or item.get("created_at") or 0)
+        if since and time.time() - since > WORKER_MAX_SECONDS:
+            status = "failed"
+            _update(job_id, status="failed",
+                    error="処理が制限時間 (15分) を超えました")
+    body = {"job_id": job_id, "status": status}
     if "result_url" in item:
         body["result_url"] = item["result_url"]
     if "error" in item:
@@ -208,7 +220,7 @@ def _update(job_id: str, **attrs) -> None:
 def worker(event, context):  # noqa: ARG001 - Lambda signature
     job_id = event["job_id"]
     job_input = event["input"]
-    _update(job_id, status="running")
+    _update(job_id, status="running", running_since=int(time.time()))
     try:
         result_key = _run_compare(job_id, job_input)
         _update(job_id, status="succeeded", result_url=f"/{result_key}")
