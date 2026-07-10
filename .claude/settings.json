@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash scripts/build_viewer.sh)"
+      "Bash(bash scripts/build_viewer.sh)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -sL https://raw.githubusercontent.com/Kai-Z-JP/LibreDiaNet/pro/frontend/src/features/libre-dianet-pro/model/timetable-column-sort.ts -o /private/tmp/claude-501/-Users-niya-Documents-itolab-2026-gtfs-semdiff/4dfde931-6d04-44ac-a34f-3f60e0d78c60/scratchpad/timetable-column-sort.ts)",
+      "Bash(python3 -)"
     ]
   }
 }

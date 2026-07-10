@@ -46,6 +46,8 @@
 </div>
 
 <section id="pane-repo">
+  <p class="note">公開フィード同士の比較結果は、同じ世代ペアで共通の公開 URL に
+  なります (生成済みなら即座に表示されます)。</p>
   <label for="pref">都道府県</label>
   <select id="pref"><option value="">選択してください</option></select>
   <label for="feed">事業者・フィード</label>
@@ -144,7 +146,8 @@ $("feed").onchange = async () => {
       sel.innerHTML = "";
       for (const f of data.files) {
         const o = document.createElement("option");
-        o.value = f.rid; o.textContent = label(f);
+        // uid = 世代の恒久 ID (rid は世代が進むとずれるため送らない)
+        o.value = f.uid || f.rid; o.textContent = label(f);
         sel.appendChild(o);
       }
       sel.disabled = false;
@@ -167,6 +170,11 @@ async function submitAndPoll(body) {
   });
   const job = await r.json();
   if (!r.ok) throw new Error(job.error || `HTTP ${r.status}`);
+  if (job.status === "succeeded" && job.result_url) {
+    showStatus(`生成済みの結果があります → <a href="${job.result_url}">レポートを開く</a>` +
+      `<br><span class="note">この URL は後から共有・再訪できます</span>`);
+    return;
+  }
   const started = Date.now();
   while (true) {
     await new Promise((ok) => setTimeout(ok, 3000));
@@ -185,8 +193,8 @@ async function submitAndPoll(body) {
 $("run-repo").onclick = async () => {
   const [org, feed] = $("feed").value.split("/");
   const body = { type: "gtfs_data_jp", org, feed,
-                 old_rid: $("gen-old").value, new_rid: $("gen-new").value };
-  if (body.old_rid === body.new_rid)
+                 old_uid: $("gen-old").value, new_uid: $("gen-new").value };
+  if (body.old_uid === body.new_uid)
     return showStatus("新旧に同じ世代が選ばれています。", true);
   $("run-repo").disabled = true;
   try { await submitAndPoll(body); }

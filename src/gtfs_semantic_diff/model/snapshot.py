@@ -18,9 +18,12 @@ class SnapshotMeta:
     source: str = ""  # ローカルパスまたはダウンロード URL
     org_id: str = ""
     feed_id: str = ""
-    rid: str = ""  # current / prev_1 / ... (gtfs-data.jp の世代 ID)
+    rid: str = ""  # current / prev_1 / ... (取得時点の相対 ID。世代が進むとずれる)
+    uid: str = ""  # gtfs_file_uid (gtfs-data.jp の世代恒久 UUID。記録キーはこちら)
     from_date: str = ""  # YYYY-MM-DD (gtfs-data.jp が返す有効期間)
     to_date: str = ""
+    published_at: str = ""  # gtfs-data.jp での公開日時 (ISO 8601)
+    feed_license: str = ""  # 例: "CC BY 4.0"
 
     def label(self) -> str:
         """ログ・レポート用の短い識別ラベル。"""

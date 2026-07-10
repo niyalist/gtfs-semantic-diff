@@ -7,6 +7,7 @@
   import FileDiffBrowser from "./components/FileDiffBrowser.svelte";
   import RoutePage from "./components/RoutePage.svelte";
   import StopChangesPage from "./components/StopChangesPage.svelte";
+  import VersionBar from "./components/VersionBar.svelte";
 
   export let bundle = null;
   const index = bundle ? buildIndex(bundle) : null;
@@ -72,6 +73,7 @@
     {tt("generated")}: {index.meta?.generated_at} / {index.meta?.tool} {index.meta?.version}
     / explained_ratio {index.accounting.explained_ratio.toFixed(4)}
   </p>
+  <VersionBar ownVersion={index.meta?.version || ""} />
 
   {#if mode === "report" && presentation}
     <p class="meta">{tt("verify_hint")}</p>

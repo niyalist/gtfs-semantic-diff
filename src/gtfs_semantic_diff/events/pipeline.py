@@ -108,10 +108,17 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
             "feed_id": new.meta.feed_id or old.meta.feed_id,
             "old_rid": old.meta.rid,
             "new_rid": new.meta.rid,
+            # uid = gtfs-data.jp の世代恒久 UUID (rid は取得時点の相対 ID)。
+            # 再比較・正準 URL の同定はこちらを正とする (W3-2a)
+            "old_uid": old.meta.uid,
+            "new_uid": new.meta.uid,
             "old_source": old.meta.source,
             "new_source": new.meta.source,
             "old_period": [old.meta.from_date, old.meta.to_date],
             "new_period": [new.meta.from_date, new.meta.to_date],
+            "old_published_at": old.meta.published_at,
+            "new_published_at": new.meta.published_at,
+            "feed_license": new.meta.feed_license or old.meta.feed_license,
         },
         generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         config_snapshot=config.raw,

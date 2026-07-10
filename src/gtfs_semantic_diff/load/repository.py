@@ -3,8 +3,11 @@
 API 仕様 (2026-07 動作確認済み, CLAUDE.md 参照):
 - GET /feeds?pref=<id> / /feeds?org_id=<id>      フィード一覧 (body: list)
 - GET /organizations/{org}/feeds/{feed}?max_prev=N  世代付きファイル一覧
-  (body.gtfs_files: [{rid, gtfs_url, from_date, to_date, memo}, ...])
-- RID 体系: current, prev_1, prev_2, ...
+  (body.gtfs_files: [{gtfs_file_uid, rid, gtfs_url, from_date, to_date,
+   published_at, memo}, ...]。body 直下に feed_license 等のフィード情報)
+- RID 体系: current, prev_1, prev_2, ... (相対 ID。世代が進むとずれる)
+- gtfs_file_uid: 世代の恒久 UUID。gtfs_url も uid ベースで rid 非依存 (W3-2a から
+  記録・同定はこちらを正とする)
 
 ダウンロードは cache_dir (config: repository.cache_dir) にキャッシュする。
 rid は世代が進むとずれる (current → prev_1) ため、キャッシュキーには
@@ -48,10 +51,13 @@ class FeedInfo:
 class GtfsFileInfo:
     org_id: str
     feed_id: str
-    rid: str  # current, prev_1, ...
+    rid: str  # current, prev_1, ... (取得時点の相対 ID)
     download_url: str
+    uid: str = ""  # gtfs_file_uid (恒久 UUID)
     from_date: str = ""
     to_date: str = ""
+    published_at: str = ""
+    feed_license: str = ""  # フィード単位の値を世代ごとに複製して保持
     memo: str = ""
 
     def snapshot_meta(self, local_path: Path | None = None) -> SnapshotMeta:
@@ -60,8 +66,11 @@ class GtfsFileInfo:
             org_id=self.org_id,
             feed_id=self.feed_id,
             rid=self.rid,
+            uid=self.uid,
             from_date=self.from_date,
             to_date=self.to_date,
+            published_at=self.published_at,
+            feed_license=self.feed_license,
         )
 
 
@@ -143,17 +152,22 @@ class GtfsDataRepository:
     def get_feed_files(self, org_id: str, feed_id: str, max_prev: int = 9) -> list[GtfsFileInfo]:
         url = f"{self.base_url}/organizations/{org_id}/feeds/{feed_id}"
         data = self._get_json(url, {"max_prev": max_prev})
-        gtfs_files = data.get("body", {}).get("gtfs_files", []) if isinstance(data, dict) else []
+        body = data.get("body", {}) if isinstance(data, dict) else {}
+        gtfs_files = body.get("gtfs_files", [])
         if not gtfs_files:
             raise RepositoryError(f"世代ファイルが見つかりません: {org_id}/{feed_id}")
+        feed_license = body.get("feed_license", "")
         return [
             GtfsFileInfo(
                 org_id=org_id,
                 feed_id=feed_id,
                 rid=gf.get("rid", ""),
                 download_url=gf.get("gtfs_url", ""),
+                uid=gf.get("gtfs_file_uid", ""),
                 from_date=gf.get("from_date", ""),
                 to_date=gf.get("to_date", ""),
+                published_at=gf.get("published_at", ""),
+                feed_license=feed_license,
                 memo=gf.get("memo", ""),
             )
             for gf in gtfs_files

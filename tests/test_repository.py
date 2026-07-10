@@ -30,22 +30,27 @@ FEEDS_RESPONSE = {
 def files_response(zip_url_current: str, zip_url_prev: str) -> dict:
     return {
         "body": {
+            "feed_license": "CC BY 4.0",
             "gtfs_files": [
                 {
+                    "gtfs_file_uid": "17ab34e1-dcb8-4b2e-9cda-ae2b68f4c444",
                     "rid": "current",
                     "gtfs_url": zip_url_current,
                     "from_date": "2026-04-01",
                     "to_date": "2027-03-31",
+                    "published_at": "2026-07-08T18:09:26+09:00",
                     "memo": "",
                 },
                 {
+                    "gtfs_file_uid": "b1be1add-3553-4b31-86bc-348479c25526",
                     "rid": "prev_1",
                     "gtfs_url": zip_url_prev,
                     "from_date": "2025-10-01",
                     "to_date": "2026-03-31",
+                    "published_at": "2025-09-26T06:23:03+09:00",
                     "memo": "",
                 },
-            ]
+            ],
         }
     }
 
@@ -128,6 +133,19 @@ def test_get_feed_files(repo_setup):
     files = repo.get_feed_files("nagai-unyu", "Nagaibus")
     assert [f.rid for f in files] == ["current", "prev_1"]
     assert files[0].from_date == "2026-04-01"
+
+
+def test_get_feed_files_uid_and_license(repo_setup):
+    """W3-2a: 世代恒久 UUID とライセンスを保持し、SnapshotMeta まで流れる。"""
+    repo, _ = repo_setup
+    files = repo.get_feed_files("nagai-unyu", "Nagaibus")
+    assert files[0].uid == "17ab34e1-dcb8-4b2e-9cda-ae2b68f4c444"
+    assert files[1].uid == "b1be1add-3553-4b31-86bc-348479c25526"
+    assert all(f.feed_license == "CC BY 4.0" for f in files)
+    meta = files[0].snapshot_meta()
+    assert meta.uid == files[0].uid
+    assert meta.published_at == "2026-07-08T18:09:26+09:00"
+    assert meta.feed_license == "CC BY 4.0"
 
 
 def test_fetch_generations_downloads_and_caches(repo_setup):
