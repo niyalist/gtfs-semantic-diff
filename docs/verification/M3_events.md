@@ -36,7 +36,7 @@ stop_times 22行)、`SHAPE_CHANGED` ×6、`FARE_CHANGED`、`HOLIDAY_EXCEPTION_CH
 `ROUTE_DISCONTINUED` 鶴１２ + `ROUTE_ADDED` 鶴１２０ (テストデータの意図通り)。
 trip カスケード消費により 5,051 diff 中の trips/stop_times 差分を2イベントで説明。
 
-## 説明会計の設計メモ (M3 で確立した規約)
+## 説明台帳の設計メモ (M3 で確立した規約)
 
 - 上位イベントは配下の差分をカスケード消費する (ROUTE_DISCONTINUED は
   routes + trips + stop_times の行差分を丸ごと evidence に持つ)。
@@ -52,4 +52,4 @@ trip カスケード消費により 5,051 diff 中の trips/stop_times 差分を
 - TIME_BAND_VARIANT、SHAPE_CHANGED の Fréchet 局在化 (B群詳細)
 - TRAVEL_TIME_CHANGED の区間別 quantification (C群詳細)
 - FARE_CHANGED の運賃表分解、DEMAND_RESPONSIVE_CHANGE (F群詳細)
-- HOLIDAY_EXCEPTION_CHANGED の有効期間正規化 (E群、現状 confidence 0.8 の粗い会計)
+- HOLIDAY_EXCEPTION_CHANGED の有効期間正規化 (E群、現状 confidence 0.8 の粗い計上)

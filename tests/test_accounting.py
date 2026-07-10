@@ -70,6 +70,6 @@ def test_residual_not_counted_as_explained(rawdiffs):
     ledger.residual_events()
     # 残差イベントが全件を consume しても explained は増えない
     assert ledger.explained_count() == 0
-    assert len(ledger.unexplained()) == 4  # 会計上は依然として未説明
+    assert len(ledger.unexplained()) == 4  # 台帳上は依然として未説明
     assert ledger.unconsumed() == []  # ただし二重に残差イベント化はされない
     assert ledger.residual_events(event_id_start=100) == []

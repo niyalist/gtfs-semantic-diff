@@ -2,7 +2,7 @@
 
 各ルールモジュールは `extract(ctx: RuleContext) -> None` を実装し、
 ctx.emit() でイベントを発行する。emit は同時に evidence を台帳へ記録する
-(発行と会計を分離しない — evidence の付け忘れを構造的に防ぐ)。
+(発行と記帳を分離しない — evidence の付け忘れを構造的に防ぐ)。
 カスケード順序は events/rules/__init__.py の CASCADE が定義する。
 """
 

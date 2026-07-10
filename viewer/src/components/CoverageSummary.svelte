@@ -3,7 +3,7 @@
   import EventRow from "./EventRow.svelte";
 
   // 網羅性ビューの先頭: 2つの被覆率と残差。
-  // - RawDiff 被覆 (explained_ratio): 生差分がイベントに説明された割合 (会計の背骨)
+  // - RawDiff 被覆 (explained_ratio): 生差分がイベントに説明された割合 (台帳の背骨)
   // - レポート被覆率: イベントがレポート第1〜3部で個別に説明される割合
   export let index;
 

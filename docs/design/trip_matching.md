@@ -32,7 +32,7 @@
    コアに吸収する。データモデルは1つ (CLAUDE.md 原則2) — 移行は一括で完遂する。
 3. **決定的・config 閾値** (原則4)。コスト関数の重み・受理閾値はすべて
    config/default.toml。同じ入力から常に同じ対応付け。
-4. **会計・JSON スキーマは不変**。ChangeEvent の構造・説明会計の仕組みは
+4. **台帳・JSON スキーマは不変**。ChangeEvent の構造・説明台帳の仕組みは
    変えない。変わるのはイベントの「中身の質」(増減便の数え方が正確になる等)。
 
 ## 3. 定式化
@@ -106,7 +106,7 @@ added:    list[new]
 | B群 patterns (区間延長短縮・経由変更) | modified (同一ID) | matched (kind=rerouted系) に置換。**ID が張り替わる/連番ズレのフィードでもパターン変化を検出できるようになる** (現在は検出漏れ) |
 | TECHNICAL_ID_CHURN | churn_pairs | 導出値なので実質不変 |
 | presentation ④/Lev.3/Lev.5 | modified + ③表示ペアリング | **③ (_pair_leftovers) を削除**し matched を直接使う。表示層の特例が消え実装が簡素化 |
-| 会計 | evidence 台帳 | 仕組み不変。explained_ratio 維持を検証項目に |
+| 説明台帳 | evidence 台帳 | 仕組み不変。explained_ratio 維持を検証項目に |
 
 detection.md (§ trip 照合・C群・B群) と presentation.md (表示ペアリングの記述)
 を同期更新。ontology (イベントタイプ) は不変。

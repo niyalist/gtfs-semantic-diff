@@ -1,4 +1,4 @@
-"""L2: ChangeEvent 抽出ルールカスケードと説明会計 (accounting)."""
+"""L2: ChangeEvent 抽出ルールカスケードと説明台帳 (accounting)."""
 
 from .accounting import EvidenceLedger, UnknownRawDiffError
 from .pipeline import compare_snapshots

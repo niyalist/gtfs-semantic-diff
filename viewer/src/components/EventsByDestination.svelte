@@ -4,7 +4,7 @@
 
   // 全イベントを「レポートのどこに現れるか (表示先)」で分類して列挙する。
   // 第3部は route_group ごとの小見出し。各行は既存の EventRow (クリックで
-  // evidence → RawDiff 生値へ到達 = 説明会計への導線を維持)
+  // evidence → RawDiff 生値へ到達 = 説明台帳への導線を維持)
   export let index;
 
   $: tt = $t;

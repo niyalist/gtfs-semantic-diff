@@ -1,7 +1,7 @@
 """プレゼンテーションモデル生成 (docs/design/presentation.md、凍結要件 R1〜R17)。
 
 events + identity + trip_delta から、路線 (route_group) ページのビューモデルを
-決定的ルールで合成する。コア (イベント・説明会計) は読み取りのみ (設計原則1)。
+決定的ルールで合成する。コア (イベント・説明台帳) は読み取りのみ (設計原則1)。
 スコープは「路線に紐付く変更」— 運賃・メタデータ等は対象外 (検証モード側)。
 
 構成 (1 route_group = 1 ページ):
@@ -675,7 +675,7 @@ class _Builder:
                         if day_labels[d].get(k)}}
             for d in sorted(day_counts, key=day_sort_key)
         ]
-        # 整合の不変条件 (presentation の会計): ヘッダ (day_totals) の便数と
+        # 整合の不変条件 (presentation の台帳): ヘッダ (day_totals) の便数と
         # ④時刻表の列数合計が day_type ごとに一致する。便が ③④ から
         # 静かに消えるバグ (M9 の N:1 クラスタ崩落で実際に起きた) の再発防止
         tt_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
@@ -1274,7 +1274,7 @@ class _Builder:
         (b) 時刻表の表示用ペアリングで組めた対 (trip_id が張り替わるフィード)。
         B群イベント経由にしない (direction_id の無いフィードではイベントが
         両方向を1件に束ねるため、系統への帰属が不正確になる)。
-        検出の正当性は B群イベント (説明会計) が担保し、ここは表示用の再集計。
+        検出の正当性は B群イベント (説明台帳) が担保し、ここは表示用の再集計。
         """
         # 系統の解決は ④時刻表と同じ機構 (seq2cluster → system) に統一する。
         # 旧実装は「代表パターンの停車列の完全一致」で、対のパターンが代表と

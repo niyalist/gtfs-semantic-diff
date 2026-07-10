@@ -1161,5 +1161,5 @@ def test_presentation_does_not_mutate_events(tmp_path, config):
     before = json.dumps(event_set.to_dict(), ensure_ascii=False, sort_keys=True)
     model = build_presentation(event_set, identity, trip_delta, config)
     after = json.dumps(event_set.to_dict(), ensure_ascii=False, sort_keys=True)
-    assert before == after  # ビューモデル生成はイベント/会計を変更しない
+    assert before == after  # ビューモデル生成はイベント/台帳を変更しない
     json.dumps(model, ensure_ascii=False)  # JSON 直列化可能

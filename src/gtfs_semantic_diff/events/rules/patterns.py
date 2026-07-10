@@ -11,7 +11,7 @@
 
 evidence はその trip の stop_times.txt 差分 (行追加・削除・stop_id 変更)。
 trip が丸ごと入れ替わるパターン変化 (removed/added 対) は C群の便数比較と
-区別が難しいため M3 では C群 (SERVICE_*) 側で会計する。
+区別が難しいため M3 では C群 (SERVICE_*) 側で計上する。
 
 TIME_BAND_VARIANT / SHAPE_CHANGED 詳細は M5 (roadmap 参照)。
 """

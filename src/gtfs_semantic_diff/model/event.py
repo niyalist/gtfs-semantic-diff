@@ -19,7 +19,7 @@ class ChangeEvent:
     """意味的変化イベント1件。
 
     evidence はこのイベントが「説明」する RawDiff の ID リストで、
-    説明会計の台帳になる。1つの RawDiff を複数イベントが参照してよいが、
+    説明台帳の記帳先になる。1つの RawDiff を複数イベントが参照してよいが、
     主説明イベントは accounting 側で一意に管理する。
     """
 
@@ -86,7 +86,7 @@ class ChangeEvent:
 
 @dataclass
 class Accounting:
-    """説明会計のサマリ。explained_ratio は常に計測・表示する (最重要設計原則 1)。"""
+    """説明台帳のサマリ。explained_ratio は常に計測・表示する (最重要設計原則 1)。"""
 
     rawdiff_total: int = 0
     explained: int = 0

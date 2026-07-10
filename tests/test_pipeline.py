@@ -20,7 +20,7 @@ def test_compare_snapshots_accounting_invariant(tmp_path, config):
     acc = event_set.accounting
     assert acc.rawdiff_total == len(rawdiffs) == 9
 
-    # 説明会計の不変条件: 全 RawDiff がいずれかのイベントの evidence に載る
+    # 説明台帳の不変条件: 全 RawDiff がいずれかのイベントの evidence に載る
     covered = {rid for e in event_set.events for rid in e.evidence}
     assert covered == set(rawdiffs.by_id().keys())
     # 残差 + 説明済み = 全体

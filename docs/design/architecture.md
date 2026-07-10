@@ -81,7 +81,7 @@ gtfs-semantic-diff compare ... -o events.json --report report.md
   "generated_at": "...",
   "config_snapshot": {...},
   "events": [...],
-  "accounting": {
+  "accounting": {          // 説明台帳のサマリ (キー名は安定インタフェースのため旧称 accounting のまま)
     "rawdiff_total": 12345,
     "explained": 12290,
     "explained_ratio": 0.9955,

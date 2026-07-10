@@ -1,4 +1,4 @@
-"""RawDiff: L0 網羅diff の1件。説明会計 (explanation accounting) の最小単位。
+"""RawDiff: L0 網羅diff の1件。説明台帳 (explanation ledger) の最小単位。
 
 diff0/ が全ファイル・全フィールドを列挙して生成し、events/ の各ルールが
 evidence として消費する。未消費のものは UNEXPLAINED_RESIDUAL になる。
@@ -73,7 +73,7 @@ class RawDiff:
 
 @dataclass
 class RawDiffSet:
-    """世代ペア1組分の RawDiff 全件。件数集計は説明会計の分母になる。"""
+    """世代ペア1組分の RawDiff 全件。件数集計は説明台帳の分母になる。"""
 
     diffs: list[RawDiff] = field(default_factory=list)
 

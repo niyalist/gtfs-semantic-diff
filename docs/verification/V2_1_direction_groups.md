@@ -14,7 +14,7 @@
   - leg 割当: 「代表と端点完全逆転か」→「代表との順序整合度 ≤ 0.2 で reverse」
 - `config/default.toml [presentation]`: `direction_reversed_max_agreement = 0.2`,
   `direction_same_min_agreement = 0.8`, `direction_min_shared_stops = 3`
-- identity 層 (系統=パターンクラスタ)・コア・説明会計・JSON スキーマは不変。
+- identity 層 (系統=パターンクラスタ)・コア・説明台帳・JSON スキーマは不変。
   束ね範囲も route_group ページ内のまま
 
 ## 事前計測 (修正の根拠、修正前コードで実施)

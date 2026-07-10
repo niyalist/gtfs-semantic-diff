@@ -1,6 +1,6 @@
 """コアパイプライン: GtfsSnapshot 2つ → ChangeEventSet (純粋関数)。
 
-L0 (diff0) → L1 (identity) → L2 (ルールカスケード) → 説明会計 → 残差。
+L0 (diff0) → L1 (identity) → L2 (ルールカスケード) → 説明台帳 → 残差。
 """
 
 from __future__ import annotations

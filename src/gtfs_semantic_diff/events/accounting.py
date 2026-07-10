@@ -1,4 +1,4 @@
-"""説明会計 (explanation accounting): evidence 台帳と explained_ratio 算出。
+"""説明台帳 (explanation ledger): evidence 台帳と explained_ratio 算出。
 
 最重要設計原則 1 (CLAUDE.md): L0 の全 RawDiff は、いずれかの ChangeEvent の
 evidence に紐づくか、UNEXPLAINED_RESIDUAL としてレポートされる。
@@ -56,7 +56,7 @@ class EvidenceLedger:
         return sum(1 for rid in self._explained_by if self._is_explained(rid))
 
     def unexplained(self) -> list[RawDiff]:
-        """UNEXPLAINED_RESIDUAL 以外に説明されていない RawDiff (ID 順)。会計の残差。"""
+        """UNEXPLAINED_RESIDUAL 以外に説明されていない RawDiff (ID 順)。台帳の残差。"""
         return [d for d in self.rawdiffs.diffs if not self._is_explained(d.rawdiff_id)]
 
     def unconsumed(self) -> list[RawDiff]:
