@@ -13,6 +13,6 @@ ENV GTFS_SEMDIFF_CONFIG=${LAMBDA_TASK_ROOT}/config/default.toml
 # キャッシュ (~/.cache) を書き込み可能な /tmp に向ける
 ENV HOME=/tmp
 
-COPY infra/runtime/handler.py infra/runtime/versioning.py ${LAMBDA_TASK_ROOT}/
+COPY infra/runtime/handler.py infra/runtime/versioning.py infra/runtime/webusers.py ${LAMBDA_TASK_ROOT}/
 
 CMD ["handler.api"]
