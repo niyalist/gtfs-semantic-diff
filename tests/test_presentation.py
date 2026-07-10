@@ -802,6 +802,81 @@ def test_level4_signed_band_sums(tmp_path, config):
     assert (lev4[0]["net"], lev4[0]["increased"], lev4[0]["decreased"]) == (0, 1, 1)
 
 
+def test_level4_counts_real_add_remove_in_same_band(tmp_path, config):
+    # R14 改 (2026-07-10): 同一時間帯で「本当の廃止+新設」(対応ゲート不成立) が
+    # 起きても相殺しない。旧ビン集計は 増0減0 になり④の 新/廃 マークと矛盾した
+    files_old = dict(SIX_STOPS)
+    files_old["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,T1\n"
+    files_old["stop_times.txt"] = _stop_times([("T1", 8, ["S1", "S2", "S3"])])
+    files_new = dict(SIX_STOPS)
+    files_new["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,T9\n"
+    files_new["stop_times.txt"] = _stop_times([("T9", 8, ["S4", "S5", "S6"])])  # 別経路
+    model, _ = build(tmp_path, config, old_files=files_old, new_files=files_new)
+    page = page_of(model, "1")
+    assert page["summary"]["level4"] == [
+        {"day_type": "weekday", "net": 0, "increased": 1, "decreased": 1}
+    ]
+
+
+def test_level4_ignores_cross_band_retime(tmp_path, config):
+    # R14 改: 時間帯を跨ぐ時刻変更 (08:30→09:10、対応成立) は増減便ではない。
+    # 旧ビン集計は 増1減1 と二重計上した (朝日町 藤塚線の実例)
+    files_old = dict(SIX_STOPS)
+    files_old["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,T1\n"
+    files_old["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        "T1,08:30:00,08:30:00,S1,1\nT1,08:35:00,08:35:00,S2,2\n"
+        "T1,08:40:00,08:40:00,S3,3\n"
+    )
+    files_new = dict(files_old)
+    files_new["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        "T1,09:10:00,09:10:00,S1,1\nT1,09:15:00,09:15:00,S2,2\n"
+        "T1,09:20:00,09:20:00,S3,3\n"
+    )
+    model, _ = build(tmp_path, config, old_files=files_old, new_files=files_new)
+    page = page_of(model, "1")
+    assert page["summary"]["level4"] == []
+    assert page["summary"]["level5"]["retimed_major"] == 1
+
+
+def test_level3_denominator_with_merged_families(tmp_path, config):
+    # Lev.3 の分母 (R13 影響率) は ④ と同じ cluster 経由で系統を解決する。
+    # 旧実装 (代表パターンの完全一致) は統合 family で解決に失敗し、
+    # 分母がページ総便数を超えた (朝日町 南保線 3/6 の実例)
+    stops = SIX_STOPS["stops.txt"]
+    old = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "RA,A1,［駅前線］朝便,,3\nRB,A1,［駅前線］,,3\n"),
+        "trips.txt": "route_id,service_id,trip_id\nRA,WD,T1\nRB,WD,T2\nRB,WD,T3\n",
+        "stop_times.txt": _stop_times([
+            ("T1", 7, ["S1", "S2", "S3", "S4", "S5"]),
+            ("T2", 10, ["S1", "S2", "S3", "S4", "S5"]),
+            ("T3", 15, ["S1", "S2", "S3", "S4", "S5"]),
+        ]),
+    }
+    new = {
+        "stops.txt": stops,
+        "routes.txt": ("route_id,agency_id,route_short_name,route_long_name,route_type\n"
+                       "1,A1,A1駅前線,,3\n"),
+        "trips.txt": "route_id,service_id,trip_id\n1,WD,T1\n1,WD,T2\n1,WD,T3\n",
+        "stop_times.txt": _stop_times([
+            ("T1", 7, ["S1", "S2", "S3", "S5"]),  # S4 を抜く経由変更
+            ("T2", 10, ["S1", "S2", "S3", "S4", "S5"]),
+            ("T3", 15, ["S1", "S2", "S3", "S4", "S5"]),
+        ]),
+    }
+    model, _ = build(tmp_path, config, old_files=old, new_files=new)
+    page = page_of(model, "駅前線")
+    units = page["summary"]["level3"]
+    assert len(units) == 1
+    total_trips = sum(d["new"] for d in page["day_totals"])
+    assert units[0]["affected_trips"] == 1
+    assert units[0]["system_trips"] <= total_trips  # 分母はページ総便数を超えない
+    assert units[0]["system_trips"] == 3
+
+
 def test_level5_retimed_count(tmp_path, config):
     # T2 全体を20分シフト → Lev.5 の時刻変更 (5分超) 1便、Lev.4 は空 (ビン内移動)
     new_st = (

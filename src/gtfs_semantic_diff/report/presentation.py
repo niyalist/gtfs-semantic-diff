@@ -653,7 +653,8 @@ class _Builder:
             label_totals.update(c)
 
         summary = self._summary(group, dgroups, systems, band_matrix,
-                                len(old_trips), len(new_trips), label_totals)
+                                len(old_trips), len(new_trips), label_totals,
+                                day_labels)
 
         has_changes = bool(
             summary["level1"] or summary["level2"] or summary["level3"]
@@ -1157,7 +1158,7 @@ class _Builder:
     # --- ② 変化サマリー (R12 カスケード) ---
 
     def _summary(self, group, dgroups, systems, band_matrix, n_old, n_new,
-                 label_totals) -> dict:
+                 label_totals, day_labels) -> dict:
         empty5 = {"retimed_minor": 0, "retimed_major": 0,
                   "minor_max_min": self.retime_minor, "notes": []}
         # Lev.1
@@ -1188,20 +1189,20 @@ class _Builder:
         # Lev.3: 経由停変化ユニット (影響率 R13)。素材は modified + 表示ペアリング
         level3 = self._level3_units(group, systems, lev2_system_ids)
 
-        # Lev.4: 増減便 = 集計行のビン別差分の符号別合計 (R14)。
-        # 表示は曜日単位に集約する (R19 改: 方向・系統別の内訳は③が担う)
-        day_acc: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
-        for row in band_matrix["rows"]:
-            if row["kind"] != "aggregate":
-                continue
-            acc = day_acc[row["day_type"]]
-            acc[0] += sum(max(0, v[1] - v[0]) for v in row["cells"].values())
-            acc[1] += sum(max(0, v[0] - v[1]) for v in row["cells"].values())
-            acc[2] += row["total"][1] - row["total"][0]
+        # Lev.4: 増減便 = 便ラベルの added / removed 件数 (R14 改訂 2026-07-10)。
+        # 旧定義「ビン別本数差分の符号別合計」は M8 以前 (便対応が不確か) の
+        # 頑健策で、対応付けが内容主導になった今は
+        # (a) 同一時間帯の本当の廃止+新設を相殺し (b) 時間帯を跨ぐ時刻変更を
+        # 増減として二重計上して、④の 新/廃 マークと矛盾した (朝日町の実例)。
+        # ラベル由来なら ヘッダ・④・ダイジェストと構造的に一致する
+        # (net = 新旧便数差 = added − removed。ビン別の内訳は③が担う)
         level4 = [
-            {"day_type": d, "net": acc[2], "increased": acc[0], "decreased": acc[1]}
-            for d, acc in sorted(day_acc.items(), key=lambda kv: day_sort_key(kv[0]))
-            if acc[0] or acc[1]
+            {"day_type": d,
+             "net": day_labels[d].get("added", 0) - day_labels[d].get("removed", 0),
+             "increased": day_labels[d].get("added", 0),
+             "decreased": day_labels[d].get("removed", 0)}
+            for d in sorted(day_labels, key=day_sort_key)
+            if day_labels[d].get("added") or day_labels[d].get("removed")
         ]
 
         notes = []
@@ -1275,9 +1276,17 @@ class _Builder:
         両方向を1件に束ねるため、系統への帰属が不正確になる)。
         検出の正当性は B群イベント (説明会計) が担保し、ここは表示用の再集計。
         """
-        sys_by_key = {}
+        # 系統の解決は ④時刻表と同じ機構 (seq2cluster → system) に統一する。
+        # 旧実装は「代表パターンの停車列の完全一致」で、対のパターンが代表と
+        # 違うと解決に失敗し、フォールバックの加算で分母が壊れた
+        # (朝日町 南保線で 3/6 — ページ総便数を超える分母。2026-07-10 修正)
+        sys_by_new_cluster: dict[str, dict] = {}
+        sys_by_old_cluster: dict[str, dict] = {}
         for s in systems:
-            sys_by_key[(s["family"], s["direction"], tuple(s["stops"]))] = s
+            if not s["system_id"].startswith("old:"):
+                sys_by_new_cluster[s["system_id"]] = s
+            for oid in s.get("old_system_ids", []):
+                sys_by_old_cluster[oid] = s
 
         units: dict[tuple, dict] = {}
         for old_t, new_t in self.delta.modified:
@@ -1289,6 +1298,12 @@ class _Builder:
                 "affected": 0,
                 "old_pattern": list(old_t.base_seq),
                 "new_pattern": list(new_t.base_seq),
+                "_new_cluster": self.new_seq2cluster.get(
+                    (new_t.family, new_t.direction, new_t.base_seq)
+                ),
+                "_old_cluster": self.old_seq2cluster.get(
+                    (old_t.family, old_t.direction, old_t.base_seq)
+                ),
             })
             unit["affected"] += 1
 
@@ -1297,8 +1312,8 @@ class _Builder:
         # (一般ルール。豊前市の実例: 上り下り×複数パターン対が同一の追加/削除集合に束なる)
         merged: dict[tuple, dict] = {}
         for (family, direction, old_p, new_p), unit in sorted(units.items(), key=str):
-            system = sys_by_key.get((family, direction, new_p)) \
-                or sys_by_key.get((family, direction, old_p))
+            system = sys_by_new_cluster.get(unit["_new_cluster"]) \
+                or sys_by_old_cluster.get(unit["_old_cluster"])
             affected = unit["affected"]
             total = (system["trips_new"] or system["trips_old"]) if system else affected
             added = set(new_p) - set(old_p)
