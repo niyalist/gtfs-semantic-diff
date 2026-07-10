@@ -149,6 +149,9 @@ class DeliveryStack(Stack):
         bucket.grant_put(api_fn, "uploads/*")  # presigned POST の署名元
         # lazy 再生成の判定で版台帳 (r/{pair}/index.json) を読む (W3-2a)
         bucket.grant_read(api_fn, "r/*")
+        # 削除機能 (W3-2b): 本人のアップロード結果と保存 zip のみ
+        bucket.grant_delete(api_fn, "r/u/*")
+        bucket.grant_delete(api_fn, "userzips/*")
         jobs_table.grant_read_write_data(worker_fn)
         jobs_table.grant_read_write_data(api_fn)
         userdata_table.grant_read_write_data(worker_fn)

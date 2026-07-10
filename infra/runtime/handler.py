@@ -129,7 +129,7 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
         if method == "GET" and path == "/api/config":
             return _api_config()
         if path == "/api/me" or path.startswith("/api/me/"):
-            return _api_me(event, method, path)
+            return _api_me(event, method, path, qs)
         if method == "GET" and path == "/api/gtfs/feeds":
             return _api_feeds(qs)
         if method == "GET" and path == "/api/gtfs/files":
@@ -202,7 +202,7 @@ def _claims(event) -> dict:
             .get("jwt", {}).get("claims", {}))
 
 
-def _api_me(event, method: str, path: str) -> dict:
+def _api_me(event, method: str, path: str, qs: dict) -> dict:
     """ログイン必須 API 群。認証は API Gateway の JWT オーソライザが済ませている
     (このパスに素の HTTP API 経由で来た場合のみ claims が空 → 401)。"""
     claims = _claims(event)
@@ -220,6 +220,10 @@ def _api_me(event, method: str, path: str) -> dict:
     if method == "POST" and path == "/api/me/jobs":
         body = json.loads(event.get("body") or "{}")
         return _api_submit(body, user_id=user_id)
+    if method == "DELETE" and path == "/api/me/history":
+        return _api_me_history_delete(user_id, qs.get("sk", ""))
+    if method == "DELETE" and path == "/api/me/zips":
+        return _api_me_zip_delete(user_id, qs.get("id", ""))
     return _resp(404, {"error": "not found"})
 
 
@@ -260,6 +264,36 @@ def _api_me_zips(user_id: str) -> dict:
         key=lambda it: it.get("created_at", ""), reverse=True,
     )
     return _resp(200, {"items": items})
+
+
+def _api_me_history_delete(user_id: str, sk: str) -> dict:
+    """履歴1件の削除。リポジトリ由来は行のみ (共通の公開結果は残す)。
+    アップロード由来は本人の結果レポート (r/u/) も削除する。"""
+    if not sk.startswith("run#"):
+        return _bad("invalid history key")
+    table = _userdata_table()
+    item = table.get_item(Key={"user_id": user_id, "sk": sk}).get("Item")
+    if not item:
+        return _resp(404, {"error": "not found"})
+    result_url = str(item.get("result_url", ""))
+    if item.get("kind") == "upload" and result_url.startswith("/r/u/"):
+        s3.delete_object(Bucket=RESULTS_BUCKET, Key=result_url[1:])
+    table.delete_item(Key={"user_id": user_id, "sk": sk})
+    return _resp(200, {"ok": True})
+
+
+def _api_me_zip_delete(user_id: str, zip_id: str) -> dict:
+    """保存 zip の削除 (台帳と S3 実体の両方)。"""
+    sk = webusers.zip_sk(_safe_id(zip_id))
+    table = _userdata_table()
+    item = table.get_item(Key={"user_id": user_id, "sk": sk}).get("Item")
+    if not item:
+        return _resp(404, {"error": "not found"})
+    s3_key = str(item.get("s3_key", ""))
+    if s3_key.startswith(f"userzips/{user_id}/"):
+        s3.delete_object(Bucket=RESULTS_BUCKET, Key=s3_key)
+    table.delete_item(Key={"user_id": user_id, "sk": sk})
+    return _resp(200, {"ok": True})
 
 
 def _api_uploads() -> dict:

@@ -456,6 +456,7 @@ function renderHistory() {
       acts.push(`<button class="small" data-re="${i}">同条件で再比較</button>`);
       acts.push(`<button class="small" data-latest="${i}">新側を最新にして再比較</button>`);
     }
+    acts.push(`<button class="small" data-del="${i}">削除</button>`);
     return `<tr><td>${esc(date)}</td><td>${esc(name)}` +
       (gens ? `<br><span class="note">${esc(gens)}</span>` : "") +
       `</td><td>${acts.join(" ")}</td></tr>`;
@@ -470,6 +471,32 @@ function renderHistory() {
   box.querySelectorAll("button[data-latest]").forEach((b) => {
     b.onclick = () => recompare(sorted[Number(b.dataset.latest)], true);
   });
+  box.querySelectorAll("button[data-del]").forEach((b) => {
+    b.onclick = () => deleteHistory(sorted[Number(b.dataset.del)]);
+  });
+}
+
+async function deleteHistory(it) {
+  const msg = it.kind === "upload"
+    ? "この履歴と結果レポート (アップロード比較の URL) を削除します。よろしいですか?"
+    : "この履歴を削除します (共通の公開レポート自体は残ります)。よろしいですか?";
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch(`/api/me/history?sk=${encodeURIComponent(it.sk)}`,
+      { method: "DELETE", headers: authHeaders() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    loadMyPage();
+  } catch (e) { showStatus(`削除に失敗: ${esc(e.message)}`, true); }
+}
+
+async function deleteZip(z) {
+  if (!confirm(`保存済み zip「${z.display_name}」を削除します。よろしいですか?`)) return;
+  try {
+    const r = await fetch(`/api/me/zips?id=${encodeURIComponent(z.zip_id)}`,
+      { method: "DELETE", headers: authHeaders() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    loadMyPage();
+  } catch (e) { showStatus(`削除に失敗: ${esc(e.message)}`, true); }
 }
 
 async function recompare(it, useLatest) {
@@ -500,11 +527,15 @@ function renderZips() {
     return;
   }
   const mb = (n) => (Number(n || 0) / 1048576).toFixed(1);
-  box.innerHTML = `<table class="hist"><tr><th>表示名</th><th>サイズ</th><th>保存日</th></tr>` +
-    savedZips.map((z) =>
+  box.innerHTML = `<table class="hist"><tr><th>表示名</th><th>サイズ</th><th>保存日</th><th></th></tr>` +
+    savedZips.map((z, i) =>
       `<tr><td>${esc(z.display_name)}</td><td>${mb(z.size)} MB</td>` +
-      `<td>${esc(jdate(z.created_at))}</td></tr>`).join("") +
+      `<td>${esc(jdate(z.created_at))}</td>` +
+      `<td><button class="small" data-zdel="${i}">削除</button></td></tr>`).join("") +
     `</table><p class="note">再利用は「zip をアップロード」タブのプルダウンから。</p>`;
+  box.querySelectorAll("button[data-zdel]").forEach((b) => {
+    b.onclick = () => deleteZip(savedZips[Number(b.dataset.zdel)]);
+  });
 }
 
 async function loadMyPage() {
