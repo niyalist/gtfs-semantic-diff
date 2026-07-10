@@ -111,7 +111,7 @@ zip ×2 | gtfs-data.jp API
 
 ## バージョン
 
-日付ベースの CalVer (`YYYY.M.D`、公開時点の日付)。`pyproject.toml` の `version` が
+日付ベースの CalVer (`YYYY.M.D.N`、公開時点の日付 + 同日内のリリース通番。例: `2026.7.11.1`)。`pyproject.toml` の `version` が
 唯一の定義で、生成される HTML レポートのメタ情報 (`generated_at` とともに) にも
 埋め込まれる。
 

@@ -28,7 +28,7 @@ input (zip x N generations | gtfs-data.jp API)
 - docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.2)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 現在の状態 (2026-07-09)
+## 現在の状態 (2026-07-11)
 
 roadmap M0–M9 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 167件、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
@@ -51,9 +51,12 @@ V トラック (認知単位のレポート再構築 V1〜V5) は 2026-07-07 に
 レポートは4部構成 (①フィード全体 ②停留所 ③路線毎 ④その他) + 曜日タブ +
 検証モード=網羅性ビュー (レポート被覆率・ファイル別生差分)。要件は
 presentation.md R1〜R18 (凍結+改訂履歴)。コア・JSON スキーマ・説明台帳は不変。
-W3 は W3-0 (S3+CloudFront 配信基盤、CDK Python、ap-northeast-1、ドメイン後付け)
-→ W3-1 (Lambda ジョブ API + 入力 UI) → W3-2 (ログイン・保存ポリシー・
-フィードバック・コストガード) の3フェーズ。旧 W2 は W3-0 に吸収。
+W3 は W3-0 (S3+CloudFront 配信基盤、CDK Python、ap-northeast-1) と W3-1
+(Lambda ジョブ API + 入力 UI) が完了、W3-2 (ログイン・保存ポリシー・フィード
+バック・コストガード) は**方針確定済み** — docs/design/w3_2_directions.md
+(アカウント=Google のみ+内部 user_id、結果 URL=uid ベース正準+不変版管理、
+zip 保存・再利用、ログ研究利用の同意)。旧 W2 は W3-0 に吸収。
+バージョンは CalVer `YYYY.M.D.N` (同日通番付き、2026-07-11〜)。
 V6 本体 (運賃深掘り)・X1 (bundle スキーマ文書化) は並行可能な残タスク。**
 
 ## 過去プロジェクトからの資産移植 (完了)
