@@ -115,6 +115,8 @@ const $ = (id) => document.getElementById(id);
 const status = $("status");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// ISO 8601 (UTC) をブラウザのタイムゾーンの日付文字列に (例: 2026/07/11)
+const jdate = (iso) => (iso ? new Date(iso).toLocaleDateString("ja-JP") : "");
 
 function showStatus(html, isError = false) {
   status.style.display = "block";
@@ -448,18 +450,20 @@ function renderHistory() {
   const sorted = sortHist(histItems, $("hist-sort").value);
   const rows = sorted.map((it, i) => {
     const { name, gens } = histLabel(it);
-    const date = (it.created_at || "").slice(0, 10);
+    const date = jdate(it.created_at);
     const acts = [`<a href="${esc(it.result_url)}">開く</a>`];
     if (it.kind === "repo" && it.old_uid && it.new_uid) {
       acts.push(`<button class="small" data-re="${i}">同条件で再比較</button>`);
-      acts.push(`<button class="small" data-latest="${i}">最新世代と比較</button>`);
+      acts.push(`<button class="small" data-latest="${i}">新側を最新にして再比較</button>`);
     }
     return `<tr><td>${esc(date)}</td><td>${esc(name)}` +
       (gens ? `<br><span class="note">${esc(gens)}</span>` : "") +
       `</td><td>${acts.join(" ")}</td></tr>`;
   });
   box.innerHTML = `<table class="hist"><tr><th>日付</th><th>比較対象</th><th></th></tr>` +
-    rows.join("") + `</table>`;
+    rows.join("") + `</table>` +
+    `<p class="note">「新側を最新にして再比較」は旧世代 (比較元) はそのまま、` +
+    `新側だけを現在の最新世代に差し替えて比較します。</p>`;
   box.querySelectorAll("button[data-re]").forEach((b) => {
     b.onclick = () => recompare(sorted[Number(b.dataset.re)], false);
   });
@@ -477,6 +481,9 @@ async function recompare(it, useLatest) {
       const latest = data.files[0];
       if (!latest || !latest.uid) throw new Error("最新世代を取得できません");
       newUid = latest.uid; newFrom = latest.from_date || "";
+      const same = latest.uid === it.new_uid ? " (この比較の新側が現在も最新です)" : "";
+      showStatus(`旧世代 (${esc(it.old_from_date || "?")}〜) はそのまま、` +
+        `新側を最新世代 (${esc(newFrom || "?")}〜) にして比較します${same}…`);
     }
     await submitAndPoll(repoBody(it.org, it.feed, it.old_uid, newUid, {
       org_name: it.org_name || "", feed_name: it.feed_name || "",
@@ -496,7 +503,7 @@ function renderZips() {
   box.innerHTML = `<table class="hist"><tr><th>表示名</th><th>サイズ</th><th>保存日</th></tr>` +
     savedZips.map((z) =>
       `<tr><td>${esc(z.display_name)}</td><td>${mb(z.size)} MB</td>` +
-      `<td>${esc((z.created_at || "").slice(0, 10))}</td></tr>`).join("") +
+      `<td>${esc(jdate(z.created_at))}</td></tr>`).join("") +
     `</table><p class="note">再利用は「zip をアップロード」タブのプルダウンから。</p>`;
 }
 

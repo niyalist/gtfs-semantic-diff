@@ -65,11 +65,20 @@ def _userdata_table():
     return ddb.Table(USERDATA_TABLE)
 
 
+def _json_default(v):
+    """DynamoDB (boto3 resource) は数値を Decimal で返すため JSON 化時に変換する。"""
+    import decimal
+
+    if isinstance(v, decimal.Decimal):
+        return int(v) if v == int(v) else float(v)
+    raise TypeError(f"not JSON serializable: {type(v)}")
+
+
 def _resp(status: int, body: dict) -> dict:
     return {
         "statusCode": status,
         "headers": {"content-type": "application/json; charset=utf-8"},
-        "body": json.dumps(body, ensure_ascii=False),
+        "body": json.dumps(body, ensure_ascii=False, default=_json_default),
     }
 
 
@@ -555,13 +564,16 @@ def _save_user_zips(job_input: dict, snaps: dict) -> None:
     import datetime
 
     user_id = job_input["user_id"]
-    created = datetime.datetime.now(datetime.timezone.utc).isoformat(
-        timespec="seconds")
+    now = datetime.datetime.now(datetime.timezone.utc)
+    created = now.isoformat(timespec="seconds")
+    # 表示名に焼き込む日付はユーザー向けなので JST (データの created_at は UTC)
+    jst = now.astimezone(datetime.timezone(datetime.timedelta(hours=9)))
     labels = {}
     for side in ("old", "new"):
         name, from_date = _snapshot_label_parts(snaps[side])
         src_name = job_input.get(f"{side}_name", "") or f"{side}.zip"
-        label = webusers.zip_display_name(name, from_date, created,
+        label = webusers.zip_display_name(name, from_date,
+                                          jst.isoformat(timespec="seconds"),
                                           fallback=src_name)
         labels[side] = label
         if side not in job_input.get("save", []):
