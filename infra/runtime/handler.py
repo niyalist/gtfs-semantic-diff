@@ -83,10 +83,18 @@ def _tool_version() -> str:
 
 
 def _get_index(pair: str) -> dict | None:
-    """版台帳 index.json を読む。未生成なら None。"""
+    """版台帳 index.json を読む。未生成なら None。
+
+    読み取りに失敗しても None (= 生成し直す) に倒す — lazy キャッシュの判定は
+    最悪でも「余計に1回計算する」で済ませ、投入自体は失敗させない。"""
+    import botocore.exceptions
+
     try:
         obj = s3.get_object(Bucket=RESULTS_BUCKET, Key=versioning.index_key(pair))
     except s3.exceptions.NoSuchKey:
+        return None
+    except botocore.exceptions.ClientError as e:
+        logger.warning("index.json 読み取り失敗 (%s): %s", pair, e)
         return None
     return json.loads(obj["Body"].read())
 

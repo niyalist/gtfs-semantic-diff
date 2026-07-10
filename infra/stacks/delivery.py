@@ -125,6 +125,8 @@ class DeliveryStack(Stack):
 
         bucket.grant_read_write(worker_fn)
         bucket.grant_put(api_fn, "uploads/*")  # presigned POST の署名元
+        # lazy 再生成の判定で版台帳 (r/{pair}/index.json) を読む (W3-2a)
+        bucket.grant_read(api_fn, "r/*")
         jobs_table.grant_read_write_data(worker_fn)
         jobs_table.grant_read_write_data(api_fn)
         worker_fn.grant_invoke(api_fn)
