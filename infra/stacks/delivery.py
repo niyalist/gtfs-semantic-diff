@@ -29,8 +29,10 @@ from aws_cdk import (
     aws_cloudfront_origins as origins,
     aws_cognito as cognito,
     aws_dynamodb as dynamodb,
+    aws_iam as iam,
     aws_lambda as lambda_,
     aws_s3 as s3,
+    aws_ses as ses,
     aws_s3_deployment as s3deploy,
 )
 from constructs import Construct
@@ -102,11 +104,23 @@ class DeliveryStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,  # 履歴・保存 zip 台帳は消さない
         )
 
+        # フィードバック (W3-2c): {結果の版固定 URL, event_id, 記述}。恒久保存
+        feedback_table = dynamodb.Table(
+            self,
+            "Feedback",
+            partition_key=dynamodb.Attribute(
+                name="feedback_id", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         image_dir = "../"  # ビルドコンテキスト = リポジトリルート (.dockerignore 参照)
         common_env = {
             "RESULTS_BUCKET": bucket.bucket_name,
             "JOBS_TABLE": jobs_table.table_name,
             "USERDATA_TABLE": userdata_table.table_name,
+            "FEEDBACK_TABLE": feedback_table.table_name,
             "MAX_UPLOAD_BYTES": str(MAX_UPLOAD_BYTES),
         }
         worker_fn = lambda_.DockerImageFunction(
@@ -156,7 +170,24 @@ class DeliveryStack(Stack):
         jobs_table.grant_read_write_data(api_fn)
         userdata_table.grant_read_write_data(worker_fn)
         userdata_table.grant_read_write_data(api_fn)
+        feedback_table.grant_read_write_data(api_fn)
         worker_fn.grant_invoke(api_fn)
+
+        # フィードバックの通知先 (SES)。メールは -c feedback_email= で指定。
+        # sandbox のままでよい (自分宛て送信のみ)。未指定なら記録のみ
+        feedback_email = self.node.try_get_context("feedback_email") or ""
+        if feedback_email:
+            ses.EmailIdentity(
+                self, "FeedbackEmail", identity=ses.Identity.email(feedback_email)
+            )
+            api_fn.add_environment("FEEDBACK_EMAIL", feedback_email)
+            api_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["ses:SendEmail"],
+                resources=[
+                    f"arn:aws:ses:{self.region}:{self.account}:identity/"
+                    f"{feedback_email}"
+                ],
+            ))
 
         # --- ログイン (W3-2b): Cognito + Google IdP ---
         user_pool = cognito.UserPool(

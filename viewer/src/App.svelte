@@ -8,6 +8,7 @@
   import RoutePage from "./components/RoutePage.svelte";
   import StopChangesPage from "./components/StopChangesPage.svelte";
   import VersionBar from "./components/VersionBar.svelte";
+  import FeedbackForm from "./components/FeedbackForm.svelte";
 
   export let bundle = null;
   const index = bundle ? buildIndex(bundle) : null;
@@ -72,6 +73,12 @@
     <br />
     {tt("generated")}: {index.meta?.generated_at} / {index.meta?.tool} {index.meta?.version}
     / explained_ratio {index.accounting.explained_ratio.toFixed(4)}
+    {#if feed.feed_license}
+      <br />
+      {tt("src_line")}: <a href="https://gtfs-data.jp" target="_blank"
+        rel="noopener">GTFSデータリポジトリ</a>
+      <code>{feedIds}</code> — {tt("src_license")}: {feed.feed_license}
+    {/if}
   </p>
   <VersionBar ownVersion={index.meta?.version || ""} />
 
@@ -148,6 +155,7 @@
     <FileDiffBrowser {index} />
   {/if}
 
+  <FeedbackForm ownVersion={index.meta?.version || ""} />
   <p class="note">{tt("attribution_note")}</p>
 {/if}
 

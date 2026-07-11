@@ -39,6 +39,8 @@ import os  # noqa: E402
 RESULTS_BUCKET = os.environ.get("RESULTS_BUCKET", "")
 JOBS_TABLE = os.environ.get("JOBS_TABLE", "")
 USERDATA_TABLE = os.environ.get("USERDATA_TABLE", "")
+FEEDBACK_TABLE = os.environ.get("FEEDBACK_TABLE", "")
+FEEDBACK_EMAIL = os.environ.get("FEEDBACK_EMAIL", "")
 COGNITO_DOMAIN = os.environ.get("COGNITO_DOMAIN", "")
 COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
 GOOGLE_LOGIN = os.environ.get("GOOGLE_LOGIN", "")
@@ -136,6 +138,8 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
             return _api_files(qs)
         if method == "POST" and path == "/api/uploads":
             return _api_uploads()
+        if method == "POST" and path == "/api/feedback":
+            return _api_feedback(json.loads(event.get("body") or "{}"))
         if method == "POST" and path == "/api/jobs":
             return _api_submit(json.loads(event.get("body") or "{}"))
         m = re.fullmatch(r"/api/jobs/([A-Za-z0-9._-]+)", path)
@@ -294,6 +298,43 @@ def _api_me_zip_delete(user_id: str, zip_id: str) -> dict:
         s3.delete_object(Bucket=RESULTS_BUCKET, Key=s3_key)
     table.delete_item(Key={"user_id": user_id, "sk": sk})
     return _resp(200, {"ok": True})
+
+
+def _api_feedback(body: dict) -> dict:
+    """結果ページからの問題報告 (匿名可・W3-2c)。DynamoDB へ恒久記録し、
+    通知先が設定されていれば SES で自分宛てにメールする (失敗しても記録は残す)。"""
+    import datetime
+
+    message = str(body.get("message", "")).strip()
+    if not message:
+        return _bad("報告内容が空です")
+    item = {
+        "feedback_id": f"fb-{secrets.token_hex(6)}",
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(
+            timespec="seconds"),
+        "result_url": str(body.get("result_url", ""))[:300],
+        "event_id": str(body.get("event_id", ""))[:100],
+        "message": message[:4000],
+    }
+    ddb.Table(FEEDBACK_TABLE).put_item(Item=item)
+    if FEEDBACK_EMAIL:
+        try:
+            boto3.client("ses").send_email(
+                Source=FEEDBACK_EMAIL,
+                Destination={"ToAddresses": [FEEDBACK_EMAIL]},
+                Message={
+                    "Subject": {"Data": "[gtfs-semdiff] フィードバック",
+                                "Charset": "UTF-8"},
+                    "Body": {"Text": {"Charset": "UTF-8", "Data": (
+                        f"result: {item['result_url']}\n"
+                        f"event:  {item['event_id']}\n"
+                        f"id:     {item['feedback_id']}\n\n"
+                        f"{item['message']}\n")}},
+                },
+            )
+        except Exception:
+            logger.exception("SES 送信失敗 (記録済み: %s)", item["feedback_id"])
+    return _resp(200, {"ok": True, "feedback_id": item["feedback_id"]})
 
 
 def _api_uploads() -> dict:

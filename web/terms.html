@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>利用規約・プライバシー — GTFS ダイヤ改正 意味的差分レポート</title>
+<style>
+  body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0 auto;
+         max-width: 46rem; padding: 1.2rem; line-height: 1.75; color: #1c1e21; }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem;
+       margin-top: 1.6rem; }
+  table { border-collapse: collapse; font-size: 0.9em; }
+  th, td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
+  th { background: #f4f5f6; }
+  .note { color: #555; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<p><a href="/">← トップへ戻る</a></p>
+<h1>利用規約・プライバシーポリシー</h1>
+<p>「GTFS ダイヤ改正 意味的差分レポート」(以下「本サービス」) は、公共交通の
+オープンデータ (GTFS) の世代間の変化を分析・可視化する研究プロジェクトとして
+運営されています。本サービスを利用 (比較の実行・結果の閲覧) した時点で、
+本規約に同意したものとみなします。</p>
+
+<h2>1. 結果 URL の公開範囲</h2>
+<ul>
+  <li><a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFSデータリポジトリ</a>
+  の公開フィードから作成した結果は、同じ世代ペアに対して共通の URL を持つ
+  <strong>公開ページ</strong>になります (誰が実行しても同じ結果になる、公開データの
+  機械的な派生物です)。</li>
+  <li>zip をアップロードして作成した結果は、推測不能なランダム URL を持つ
+  <strong>限定公開ページ</strong> (URL を知る人だけがアクセス可能) になります。
+  検索エンジンには登録されませんが、URL を共有すれば誰でも閲覧できます。</li>
+</ul>
+
+<h2>2. データの保存</h2>
+<table>
+  <tr><th>対象</th><th>匿名利用</th><th>ログイン利用</th></tr>
+  <tr><td>アップロードした zip</td><td>7日で自動削除</td>
+      <td>保存 (マイページから再利用・削除が可能)</td></tr>
+  <tr><td>アップロード比較の結果ページ</td><td>30日で自動削除</td>
+      <td>保存 (マイページから削除が可能)</td></tr>
+  <tr><td>公開フィード同士の結果ページ</td><td colspan="2">保存 (共有キャッシュとして。
+      入力はリポジトリ側にあるため zip は保存しません)</td></tr>
+</table>
+<p>ログインは Google アカウントで行い、本サービスがパスワードを保持することは
+ありません。アカウントに保存されるのは、メールアドレス・比較の履歴・保存した
+zip とその表示名です。</p>
+
+<h2>3. 利用状況の記録と研究利用</h2>
+<p>本サービスは、次の利用状況を記録します: 比較対象 (事業者・フィード・世代の ID)、
+実行日時、結果ページの生成・閲覧の状況、フィードバックの内容、アップロードされた
+ファイルのメタ情報 (サイズ等)。IP アドレスは不正利用対策の目的に限り短期間
+(最長90日) 保持します。</p>
+<p><strong>これらの記録は、匿名化・集計した形でのみ、学術研究 (論文・発表等) に
+利用します。</strong>メールアドレス等のアカウント情報は研究データから分離し、
+個人が特定できる形で公表することはありません。
+<strong>アップロードされた GTFS データそのもの (zip の中身) は研究に使いません</strong>
+(保存の目的は結果の再現・検証と、ご本人による再利用に限ります)。</p>
+
+<h2>4. 機密データを扱う場合</h2>
+<p>アップロードされたデータはサーバに保存され得ます。外部に出せないデータを
+分析したい場合は、本サービスにアップロードせず、同じ分析ができるオープンソースの
+CLI 版 (<a href="https://github.com/niyalist/gtfs-semantic-diff" target="_blank"
+rel="noopener">gtfs-semantic-diff</a>) をローカル環境でご利用ください。
+CLI 版は単一 HTML ファイルのレポートを生成でき、ネットワークに一切送信しません。</p>
+
+<h2>5. 出典とライセンス</h2>
+<p>GTFSデータリポジトリ由来の結果ページには、元データの事業者名とライセンス
+(多くは CC BY 4.0) を表示します。結果ページの再利用は元データのライセンスに
+従ってください。アップロード由来の結果の権利関係は、アップロードした本人の
+責任で管理してください (第三者の権利を侵害するデータをアップロードしないでください)。</p>
+
+<h2>6. 免責</h2>
+<p>レポートは決定的な規則による機械生成であり、内容の正確性・完全性を保証する
+ものではありません。運行情報の確認は必ず各事業者の公式情報によってください。
+本サービスの利用により生じた損害について、運営者は責任を負いません。
+本サービスは予告なく変更・停止することがあります。</p>
+
+<h2>7. 削除依頼・お問い合わせ</h2>
+<p>データの権利者・交通事業者からの削除依頼、その他のお問い合わせは、
+結果ページの「問題を報告」フォーム、または
+<a href="https://github.com/niyalist/gtfs-semantic-diff/issues" target="_blank"
+rel="noopener">GitHub Issues</a> からお寄せください。正当な依頼には速やかに
+対応します。</p>
+
+<p class="note">制定: 2026-07-11。本規約は必要に応じて改訂され、重要な変更は
+このページで告知します。</p>
+</body>
+</html>
