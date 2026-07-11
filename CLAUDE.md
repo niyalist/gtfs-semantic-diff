@@ -51,12 +51,14 @@ V トラック (認知単位のレポート再構築 V1〜V5) は 2026-07-07 に
 レポートは4部構成 (①フィード全体 ②停留所 ③路線毎 ④その他) + 曜日タブ +
 検証モード=網羅性ビュー (レポート被覆率・ファイル別生差分)。要件は
 presentation.md R1〜R18 (凍結+改訂履歴)。コア・JSON スキーマ・説明台帳は不変。
-W3 は W3-0 (S3+CloudFront 配信基盤、CDK Python、ap-northeast-1) と W3-1
-(Lambda ジョブ API + 入力 UI) が完了、W3-2 (ログイン・保存ポリシー・フィード
-バック・コストガード) は**方針確定済み** — docs/design/w3_2_directions.md
-(アカウント=Google のみ+内部 user_id、結果 URL=uid ベース正準+不変版管理、
-zip 保存・再利用、ログ研究利用の同意)。旧 W2 は W3-0 に吸収。
-バージョンは CalVer `YYYY.M.D.N` (同日通番付き、2026-07-11〜)。
+**W3 全フェーズ完了 (2026-07-11)**: W3-0 配信基盤 / W3-1 ジョブ API+入力 UI /
+W3-2a uid 正準 URL+不変版管理 (lazy 再生成) / W3-2b Google ログイン+履歴+
+zip 保存再利用+削除 / W3-2c 規約+フィードバック (SES)+コストガード。
+検証ログは docs/ops/w3_2*.md、コスト実績は docs/ops/costs.md。方針決定の経緯は
+docs/design/w3_2_directions.md (観測所構想などの将来案も §4〜5 に)。
+バージョンは CalVer `YYYY.M.D.N` (同日通番付き)。Web 本番:
+https://d22mbbm5uatfcc.cloudfront.net/ (CDK は infra/、デプロイは
+AWS_PROFILE=AdministratorAccess-948645358251 で npx cdk deploy)。
 V6 本体 (運賃深掘り)・X1 (bundle スキーマ文書化) は並行可能な残タスク。**
 
 ## 過去プロジェクトからの資産移植 (完了)
