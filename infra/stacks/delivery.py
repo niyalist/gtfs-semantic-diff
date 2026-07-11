@@ -143,6 +143,9 @@ class DeliveryStack(Stack):
             environment=common_env,
             description="gtfs-semantic-diff compare worker",
         )
+        # 失敗ジョブ (OOM/タイムアウト) を Lambda が自動再実行しない。
+        # 既定の2回リトライだと poison job が3回走り「終わらない」ように見える
+        worker_fn.configure_async_invoke(retry_attempts=0)
         api_fn = lambda_.DockerImageFunction(
             self,
             "Api",

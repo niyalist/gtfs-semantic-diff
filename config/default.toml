@@ -93,6 +93,14 @@ sheet_merge_max_gap_per_trip = 0.5
 # これを超える変更は「時刻変更」として微調整と分けて数える
 retime_minor_max_min = 5
 
+[diff0]
+# 1ファイルの行差分 (追加+削除+変更行) がこの件数を超えたら、行単位の列挙を
+# やめて集約 RawDiff (rows_*_bulk、行数保持) にする。0 = 無効。
+# 検出ルールが行粒度の evidence を使うコアファイルは対象外
+# (diff0/engine.py ROW_EVIDENCE_TABLES)。実例: 鹿沼市リーバスの fare_rules
+# 200万行 → RawDiff 215万件・ピーク 3.2GB・HTML 490MB で Lambda OOM
+bulk_row_threshold = 100000
+
 [repository]
 base_url = "https://api.gtfs-data.jp/v2"
 cache_dir = "~/.cache/gtfs-semantic-diff"

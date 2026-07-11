@@ -153,6 +153,9 @@ const DICT = {
     kind_column_added: "列追加", kind_column_removed: "列削除",
     kind_row_added: "行追加", kind_row_removed: "行削除",
     kind_field_changed: "値変更",
+    kind_rows_removed_bulk: "行削除 (集約: 値=行数)",
+    kind_rows_added_bulk: "行追加 (集約: 値=行数)",
+    kind_rows_changed_bulk: "行変更 (集約: 値=行数)",
   },
   en: {
     title: "GTFS semantic diff report",
@@ -305,6 +308,9 @@ const DICT = {
     kind_column_added: "Column added", kind_column_removed: "Column removed",
     kind_row_added: "Rows added", kind_row_removed: "Rows removed",
     kind_field_changed: "Values changed",
+    kind_rows_removed_bulk: "Rows removed (aggregated; value = row count)",
+    kind_rows_added_bulk: "Rows added (aggregated; value = row count)",
+    kind_rows_changed_bulk: "Rows changed (aggregated; value = row count)",
   },
 };
 

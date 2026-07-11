@@ -65,7 +65,12 @@ def _fare(ctx: RuleContext) -> None:
         for fid in sorted(set(old_prices) & set(new_prices))
         if old_prices[fid] != new_prices[fid]
     ]
-    rules_changed = len(ctx.index.by_file.get("fare_rules.txt", []))
+    # 集約 RawDiff (rows_*_bulk) は保持している行数で数える (鹿沼の
+    # fare_rules 200万行級。台帳上は1件でも「規模」はこちらが実態)
+    rules_changed = sum(
+        int(d.old_value or d.new_value or 1) if d.kind.endswith("_bulk") else 1
+        for d in ctx.index.by_file.get("fare_rules.txt", [])
+    )
     quantification = {"fare_rules_diffs": rules_changed}
     if removed:
         quantification["removed_fares"] = removed[:20]

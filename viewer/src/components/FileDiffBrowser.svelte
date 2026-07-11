@@ -12,6 +12,7 @@
   const KIND_ORDER = [
     "file_added", "file_removed", "column_added", "column_removed",
     "row_added", "row_removed", "field_changed",
+    "rows_removed_bulk", "rows_added_bulk", "rows_changed_bulk",
   ];
 
   $: tt = $t;

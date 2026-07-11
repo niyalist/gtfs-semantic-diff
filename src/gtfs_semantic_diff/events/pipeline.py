@@ -38,7 +38,7 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
     HTML バンドル生成 (report/bundle.py) など、幾何や時刻表の素材を必要とする
     消費者向け。JSON の安定インタフェースには影響しない。
     """
-    rawdiffs = enumerate_rawdiffs(old, new)
+    rawdiffs = enumerate_rawdiffs(old, new, config)
     ledger = EvidenceLedger(rawdiffs)
     index = EvidenceIndex(rawdiffs)
 

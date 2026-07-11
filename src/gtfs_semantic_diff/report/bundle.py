@@ -148,13 +148,21 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
     """
     from .presentation import day_sort_key
 
-    # ファイル対応表
+    # ファイル対応表。集約 RawDiff (rows_*_bulk) は保持している行数で計上する
+    # (台帳上は1件だが、ファイル表は「何行変わったか」を示すのが役割)
     old_names = {f"{n}.txt" for n in old.tables}
     new_names = {f"{n}.txt" for n in new.tables}
     per_file: dict[str, dict[str, int]] = {}
     for d in rawdiffs.diffs:
         b = per_file.setdefault(d.file, {})
-        b[d.kind] = b.get(d.kind, 0) + 1
+        if d.kind == "rows_removed_bulk":
+            b["row_removed"] = b.get("row_removed", 0) + int(d.old_value or 0)
+        elif d.kind == "rows_added_bulk":
+            b["row_added"] = b.get("row_added", 0) + int(d.new_value or 0)
+        elif d.kind == "rows_changed_bulk":
+            b["rows_changed"] = b.get("rows_changed", 0) + int(d.old_value or 0)
+        else:
+            b[d.kind] = b.get(d.kind, 0) + 1
     files = []
     for name in sorted(old_names | new_names | set(per_file)):
         stem = name.removesuffix(".txt")
@@ -169,7 +177,8 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
             "rows_new": len(t_new) if t_new is not None else None,
             "row_added": counts.get("row_added", 0),
             "row_removed": counts.get("row_removed", 0),
-            "field_changed": counts.get("field_changed", 0),
+            "field_changed": counts.get("field_changed", 0)
+            + counts.get("rows_changed", 0),
             "column_changes": counts.get("column_added", 0)
             + counts.get("column_removed", 0),
         })

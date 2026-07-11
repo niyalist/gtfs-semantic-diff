@@ -17,6 +17,13 @@ KIND_COLUMN_REMOVED = "column_removed"
 KIND_ROW_ADDED = "row_added"
 KIND_ROW_REMOVED = "row_removed"
 KIND_FIELD_CHANGED = "field_changed"
+# 集約 (bulk): 1ファイルの行差分が閾値 (config [diff0].bulk_row_threshold) を
+# 超えたとき、行単位の列挙に代えて件数を保持した1件で表す (鹿沼市の
+# fare_rules 200万行対策 — docs/perf/kanuma_fare_bulk.md)。
+# 台帳上は1件と数え、行数は old_value / new_value に十進文字列で保持する
+KIND_ROWS_REMOVED_BULK = "rows_removed_bulk"
+KIND_ROWS_ADDED_BULK = "rows_added_bulk"
+KIND_ROWS_CHANGED_BULK = "rows_changed_bulk"
 
 RAWDIFF_KINDS = frozenset(
     {
@@ -27,11 +34,14 @@ RAWDIFF_KINDS = frozenset(
         KIND_ROW_ADDED,
         KIND_ROW_REMOVED,
         KIND_FIELD_CHANGED,
+        KIND_ROWS_REMOVED_BULK,
+        KIND_ROWS_ADDED_BULK,
+        KIND_ROWS_CHANGED_BULK,
     }
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RawDiff:
     """L0 で検出した生差分1件。ID は世代ペア内で安定・一意 (rawdiff_XXXXXX)。"""
 

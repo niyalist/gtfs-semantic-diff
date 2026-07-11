@@ -142,3 +142,121 @@ def test_duplicate_key_falls_back_to_hash(tmp_path, config):
     # 重複2行 + 座標表記差 (36.0 vs 36.0000 等) → 全行が削除+追加として現れる
     assert all(d.kind in ("row_added", "row_removed") for d in diffs)
     assert any(d.old_value and "駅前(重複)" in d.old_value for d in diffs)
+
+
+# --- 行差分の集約 (bulk、W3 後の鹿沼 fare_rules 200万行対策) ---
+
+def _config_with_threshold(config, n):
+    from gtfs_semantic_diff.config import Config
+
+    raw = dict(config.raw)
+    raw["diff0"] = {"bulk_row_threshold": n}
+    return Config(raw=raw, source_path=config.source_path)
+
+
+FARE_RULES_OLD = {
+    "fare_rules.txt": (
+        "fare_id,route_id,origin_id,destination_id\n"
+        + "".join(f"F{i},R1,Z{i},Z{i + 1}\n" for i in range(5))
+    ),
+}
+FARE_RULES_NEW = {
+    "fare_rules.txt": "fare_id,route_id,origin_id,destination_id\nF0,R1,Z0,Z1\n",
+}
+
+
+def test_bulk_aggregates_keyed_rows(tmp_path, config):
+    """閾値超過の非コアファイルは行列挙せず、行数を保持した集約1件になる。"""
+    old = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_OLD, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_NEW, name="n.zip"), config=config)
+    diffs = [d for d in enumerate_rawdiffs(
+        old, new, _config_with_threshold(config, 3)).diffs
+        if d.file == "fare_rules.txt"]
+    assert [d.kind for d in diffs] == ["rows_removed_bulk"]
+    assert diffs[0].old_value == "4"  # F1〜F4 の4行 (台帳上は1件、行数は値に保持)
+
+
+def test_bulk_not_applied_under_threshold(tmp_path, config):
+    old = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_OLD, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_NEW, name="n.zip"), config=config)
+    diffs = [d for d in enumerate_rawdiffs(
+        old, new, _config_with_threshold(config, 100)).diffs
+        if d.file == "fare_rules.txt"]
+    assert [d.kind for d in diffs] == ["row_removed"] * 4  # 従来どおりの全列挙
+
+
+def test_bulk_never_applies_to_row_evidence_tables(tmp_path, config):
+    """stop_times 等のコアファイルは検出 evidence に行粒度が必要なため集約しない。"""
+    old = load_snapshot(make_gtfs_zip(tmp_path, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=NEW_FILES, name="n.zip"), config=config)
+    diffs = enumerate_rawdiffs(old, new, _config_with_threshold(config, 1))
+    st = [d.kind for d in diffs.diffs if d.file == "stop_times.txt"]
+    assert "rows_removed_bulk" not in st and st.count("row_removed") == 3
+
+
+def test_bulk_changed_rows_keyed(tmp_path, config):
+    """キー突合で「変更行」が閾値を超えた場合は rows_changed_bulk に集約。"""
+    old_files = {
+        "fare_attributes.txt": (
+            "fare_id,price,currency_type\n"
+            + "".join(f"F{i},{100 + i},JPY\n" for i in range(4))
+        ),
+    }
+    new_files = {
+        "fare_attributes.txt": (
+            "fare_id,price,currency_type\n"
+            + "".join(f"F{i},{200 + i},JPY\n" for i in range(4))
+        ),
+    }
+    old = load_snapshot(
+        make_gtfs_zip(tmp_path, files=old_files, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=new_files, name="n.zip"), config=config)
+    bulk = [d for d in enumerate_rawdiffs(
+        old, new, _config_with_threshold(config, 3)).diffs
+        if d.file == "fare_attributes.txt"]
+    assert [d.kind for d in bulk] == ["rows_changed_bulk"]
+    assert bulk[0].old_value == "4"
+    # 閾値内なら従来どおりセル単位
+    exact = [d for d in enumerate_rawdiffs(
+        old, new, _config_with_threshold(config, 100)).diffs
+        if d.file == "fare_attributes.txt"]
+    assert [d.kind for d in exact] == ["field_changed"] * 4
+    assert {(d.key[0], d.old_value, d.new_value) for d in exact} == {
+        (f"F{i}", str(100 + i), str(200 + i)) for i in range(4)
+    }
+
+
+def test_bulk_hashed_fallback(tmp_path, config):
+    """主キー未定義ファイル (ハッシュ突合) でも閾値超過は集約される。"""
+    old_files = {"pass_rules.txt": "a,b\n" + "".join(f"x{i},y\n" for i in range(5))}
+    new_files = {"pass_rules.txt": "a,b\nx0,y\n"}
+    old = load_snapshot(
+        make_gtfs_zip(tmp_path, files=old_files, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=new_files, name="n.zip"), config=config)
+    diffs = [d for d in enumerate_rawdiffs(
+        old, new, _config_with_threshold(config, 3)).diffs
+        if d.file == "pass_rules.txt"]
+    assert [d.kind for d in diffs] == ["rows_removed_bulk"]
+    assert diffs[0].old_value == "4"
+
+
+def test_bulk_diffs_are_explained_by_fare_rule(tmp_path, config):
+    """集約 RawDiff も説明台帳に載り、FARE_CHANGED が行数込みで消費する。"""
+    from gtfs_semantic_diff.events.pipeline import compare_snapshots
+
+    old = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_OLD, name="o.zip"), config=config)
+    new = load_snapshot(
+        make_gtfs_zip(tmp_path, files=FARE_RULES_NEW, name="n.zip"), config=config)
+    event_set, _ = compare_snapshots(old, new, _config_with_threshold(config, 3))
+    assert event_set.accounting.explained_ratio == 1.0
+    fare = [e for e in event_set.events if e.type == "FARE_CHANGED"]
+    assert len(fare) == 1
+    assert fare[0].quantification["fare_rules_diffs"] == 4  # bulk は行数で計上
