@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- gtfs-semantic-diff ブランドマーク: 起点から分岐する新旧2本の路線。
+       旧 = 破線 + 白抜き停留所 / 新 = 実線 + 塗り停留所 (色に依存しない差分表現) -->
+  <rect width="64" height="64" rx="13" fill="#1a4f8b"/>
+  <!-- 起点 (共通) -->
+  <circle cx="32" cy="12" r="5.5" fill="#fff"/>
+  <!-- 旧路線 (破線・白抜き) -->
+  <path d="M32 16 L21 30 L21 48" fill="none" stroke="#fff" stroke-opacity="0.62"
+        stroke-width="4.5" stroke-dasharray="6.5 4.5" stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <circle cx="21" cy="52" r="5" fill="none" stroke="#fff" stroke-opacity="0.62"
+          stroke-width="3.4"/>
+  <!-- 新路線 (実線・塗り) -->
+  <path d="M32 16 L43 30 L43 46" fill="none" stroke="#fff" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="43" cy="52" r="5.5" fill="#fff"/>
+</svg>

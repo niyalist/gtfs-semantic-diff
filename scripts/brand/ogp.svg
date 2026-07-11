@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <!-- 左: ブランドマーク -->
+  <g transform="translate(90,167)">
+    <rect width="296" height="296" rx="60" fill="#1a4f8b"/>
+    <g transform="scale(4.625)">
+      <circle cx="32" cy="12" r="5.5" fill="#fff"/>
+      <path d="M32 16 L21 30 L21 48" fill="none" stroke="#fff" stroke-opacity="0.62"
+            stroke-width="4.5" stroke-dasharray="6.5 4.5" stroke-linecap="round"
+            stroke-linejoin="round"/>
+      <circle cx="21" cy="52" r="5" fill="none" stroke="#fff" stroke-opacity="0.62"
+              stroke-width="3.4"/>
+      <path d="M32 16 L43 30 L43 46" fill="none" stroke="#fff" stroke-width="5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="43" cy="52" r="5.5" fill="#fff"/>
+    </g>
+  </g>
+  <!-- 右: テキスト -->
+  <g font-family="Hiragino Sans, Noto Sans JP, sans-serif" fill="#1c1e21">
+    <text x="470" y="235" font-size="76" font-weight="700">GTFS ダイヤ改正</text>
+    <text x="470" y="340" font-size="76" font-weight="700">意味的差分レポート</text>
+    <text x="470" y="425" font-size="31" fill="#444444">路線・便数・時刻・停留所の変化を自動で読み解く</text>
+    <text x="470" y="510" font-size="44" font-weight="700" fill="#1a4f8b">diff.gtfs.jp</text>
+  </g>
+  <rect x="0" y="614" width="1200" height="16" fill="#1a4f8b"/>
+</svg>

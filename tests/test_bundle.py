@@ -107,6 +107,25 @@ def test_bundle_timetables_cover_service_events(tmp_path, config):
             assert (s["route_family"], s.get("direction", ""), s["day_type"]) in keys
 
 
+def test_render_html_injects_page_meta():
+    """W3-2 追補: SNS プレビュー用の題名・説明の静的注入 (クローラは JS 非実行)。"""
+    template = ('<title>__GTFS_SEMDIFF_TITLE__</title>'
+                '<meta content="__GTFS_SEMDIFF_DESC__">'
+                '<s>__GTFS_SEMDIFF_DATA__</s>')
+    bundle = {"meta": {
+        "agency_names": ["永井バス"],
+        "feed": {"org_id": "nagai-unyu", "feed_id": "Nagaibus",
+                 "old_period": ["2025-04-01", "2025-09-30"],
+                 "new_period": ["2025-10-01", "2026-03-31"]},
+    }}
+    html = render_html(bundle, template)
+    assert "<title>永井バス のダイヤ改正 意味的差分レポート (2025-04-01 → 2025-10-01)</title>" in html
+    assert "__GTFS_SEMDIFF_DESC__" not in html
+    # 欠損時のフォールバック (アップロード等でメタが無い場合)
+    html2 = render_html({"meta": {}}, template)
+    assert "<title>GTFS 比較レポート</title>" in html2
+
+
 def test_render_html_embeds_data():
     template = '<html><script id="d" type="application/json">__GTFS_SEMDIFF_DATA__</script></html>'
     html = render_html({"a": "</script>攻撃", "b": 1}, template)

@@ -330,7 +330,9 @@ class DeliveryStack(Stack):
             destination_bucket=bucket,
             prune=False,
             distribution=distribution,
-            distribution_paths=["/index.html", "/"],
+            distribution_paths=["/index.html", "/", "/terms.html",
+                                "/favicon.svg", "/favicon.ico",
+                                "/apple-touch-icon.png", "/ogp.png"],
         )
 
         alert_email = self.node.try_get_context("alert_email")

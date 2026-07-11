@@ -15,6 +15,7 @@ core は bundle を知らない (設計原則 3 の consumer)。
 from __future__ import annotations
 
 import datetime
+import html as html_lib
 import importlib.metadata
 import json
 from typing import Any
@@ -416,8 +417,34 @@ def _timetables(event_set: ChangeEventSet, trip_delta) -> list[dict]:
 
 
 def render_html(bundle: dict[str, Any], template_html: str) -> str:
-    """ビルド済みビューアテンプレートにバンドル JSON を埋め込む。"""
+    """ビルド済みビューアテンプレートにバンドル JSON を埋め込む。
+
+    タイトル・説明 (OGP) も静的に注入する — SNS のクローラは JS を実行しない
+    ため、共有時のプレビューはここで焼き込んだ値が使われる。"""
     payload = json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
     # </script> でパースが壊れないようエスケープ
     payload = payload.replace("</", "<\\/")
-    return template_html.replace("__GTFS_SEMDIFF_DATA__", payload)
+    title, desc = _page_meta(bundle)
+    return (template_html
+            .replace("__GTFS_SEMDIFF_DATA__", payload)
+            .replace("__GTFS_SEMDIFF_TITLE__", html_lib.escape(title, quote=True))
+            .replace("__GTFS_SEMDIFF_DESC__", html_lib.escape(desc, quote=True)))
+
+
+def _page_meta(bundle: dict[str, Any]) -> tuple[str, str]:
+    """レポートの題名と説明文 (OGP 用)。欠損時は一般名にフォールバック。"""
+    meta = bundle.get("meta", {})
+    feed = meta.get("feed", {}) or {}
+    names = meta.get("agency_names") or []
+    subject = "・".join(names) or "/".join(
+        v for v in (feed.get("org_id"), feed.get("feed_id")) if v)
+    old_from = (feed.get("old_period") or ["", ""])[0]
+    new_from = (feed.get("new_period") or ["", ""])[0]
+    period = f" ({old_from} → {new_from})" if old_from or new_from else ""
+    if subject:
+        title = f"{subject} のダイヤ改正 意味的差分レポート{period}"
+    else:
+        title = f"GTFS 比較レポート{period}"
+    desc = ("GTFS 2世代の変化を路線・便数・時刻・停留所の観点で"
+            "自動で読み解いたレポートです。diff.gtfs.jp")
+    return title, desc
