@@ -25,6 +25,7 @@ from aws_cdk import (
     aws_apigatewayv2_authorizers as apigw_authorizers,
     aws_apigatewayv2_integrations as apigw_integrations,
     aws_budgets as budgets,
+    aws_certificatemanager as acm,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_cognito as cognito,
@@ -236,11 +237,24 @@ class DeliveryStack(Stack):
             throttling_rate_limit=10, throttling_burst_limit=20
         )
 
+        # 独自ドメイン (方式A: さくら DNS に CNAME、証明書は us-east-1 の ACM を
+        # ARN 参照。検証用 CNAME は自動更新のため恒久設置 — docs/ops/domain.md)
+        site_domain = self.node.try_get_context("site_domain") or ""
+        cert_arn = self.node.try_get_context("site_certificate_arn") or ""
+        domain_kwargs = {}
+        if site_domain and cert_arn:
+            domain_kwargs = dict(
+                domain_names=[site_domain],
+                certificate=acm.Certificate.from_certificate_arn(
+                    self, "SiteCert", cert_arn
+                ),
+            )
         distribution = cloudfront.Distribution(
             self,
             "Cdn",
             comment="gtfs-semantic-diff results",
             default_root_object="index.html",
+            **domain_kwargs,
             default_behavior=cloudfront.BehaviorOptions(
                 origin=origins.S3BucketOrigin.with_origin_access_control(bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -262,14 +276,17 @@ class DeliveryStack(Stack):
             price_class=cloudfront.PriceClass.PRICE_CLASS_200,
         )
 
-        # Hosted UI からの戻り先 = CloudFront (distribution 作成後にクライアントを作る)
-        site_url = f"https://{distribution.distribution_domain_name}/"
+        # Hosted UI からの戻り先 = CloudFront (distribution 作成後にクライアントを作る)。
+        # 独自ドメインと CloudFront 既定ドメインの両方を許可 (旧 URL も生かす)
+        site_urls = [f"https://{distribution.distribution_domain_name}/"]
+        if site_domain:
+            site_urls.insert(0, f"https://{site_domain}/")
         client_kwargs = dict(
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),  # + PKCE
                 scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
-                callback_urls=[site_url],
-                logout_urls=[site_url],
+                callback_urls=site_urls,
+                logout_urls=site_urls,
             ),
             generate_secret=False,  # SPA (PKCE) なのでシークレットなし
             prevent_user_existence_errors=True,

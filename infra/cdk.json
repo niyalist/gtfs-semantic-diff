@@ -4,6 +4,8 @@
     "@aws-cdk/core:bootstrapQualifier": "hnb659fds",
     "google_client_id": "726788463489-17lau6jic1gsa1bu4dp4li8dg660iktj.apps.googleusercontent.com",
     "feedback_email": "niyalist@me.com",
-    "alert_email": "niyalist@me.com"
+    "alert_email": "niyalist@me.com",
+    "site_domain": "diff.gtfs.jp",
+    "site_certificate_arn": "arn:aws:acm:us-east-1:948645358251:certificate/d4b34c14-47c6-45a0-8c7b-6a32da61216c"
   }
 }

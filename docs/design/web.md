@@ -75,7 +75,7 @@ config_snapshot は events.json に既に含まれるため、バンドルだけ
 
 | 役割 | サービス | 備考 |
 |---|---|---|
-| ビューア + 結果配信 | S3 + CloudFront | 恒久 URL の実体は S3 オブジェクト |
+| ビューア + 結果配信 | S3 + CloudFront | 恒久 URL の実体は S3 オブジェクト。独自ドメイン diff.gtfs.jp (docs/ops/domain.md) |
 | ジョブ実行 | Lambda (コンテナイメージ, 2GB) | 1ジョブ数秒。API Gateway 経由の非同期 (投入→ポーリング) |
 | ジョブ状態 / フィードバック | DynamoDB オンデマンド | |
 | ログイン | Cognito + Google IdP | 自前パスワードは持たない |
