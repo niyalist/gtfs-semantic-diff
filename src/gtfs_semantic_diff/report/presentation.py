@@ -482,11 +482,18 @@ class _Builder:
         # trip → cluster (base_seq 経由)
         self.old_seq2cluster = self._seq_to_cluster(identity.old_pattern_clusters)
         self.new_seq2cluster = self._seq_to_cluster(identity.new_pattern_clusters)
-        # 停留所基底名 → 座標 (新優先)
+        # 停留所座標。「学校前」「教会前」のような一般名は同一フィード内の
+        # 離れた場所に複数クラスタが立つ (茅ヶ崎えぼし号の実例: 教会前が
+        # 東部循環と北部循環で約3km 離れて2箇所)。基底名1本の表だと先勝ちの
+        # 座標が別路線の地図に混入するため、(family, base_name) を第1キーに
+        # して路線側のクラスタを引き、基底名のみはフォールバック (新世代優先)
         self.coords: dict[str, tuple[float, float]] = {}
-        for clusters in (identity.old_stop_clusters, identity.new_stop_clusters):
+        self.coords_family: dict[tuple[str, str], tuple[float, float]] = {}
+        for clusters in (identity.new_stop_clusters, identity.old_stop_clusters):
             for c in clusters.values():
                 self.coords.setdefault(c.base_name, (c.lat, c.lon))
+                for fam in c.route_families:
+                    self.coords_family.setdefault((fam, c.base_name), (c.lat, c.lon))
         # 停留所の世代別存在 (時刻表の軸ステータス用)
         self.old_stop_names = {c.base_name for c in identity.old_stop_clusters.values()}
         self.new_stop_names = {c.base_name for c in identity.new_stop_clusters.values()}
@@ -501,6 +508,14 @@ class _Builder:
                 for pattern in c.patterns:
                     for stop in pattern.base_names:
                         self.stop_groups[stop].add(g)
+
+    def _coord(self, families, base: str) -> tuple[float, float] | None:
+        """停留所座標の引き当て。当該路線 (family) を通るクラスタを優先する。"""
+        for fam in families:
+            xy = self.coords_family.get((fam, base))
+            if xy:
+                return xy
+        return self.coords.get(base)
 
     @staticmethod
     def _seq_to_cluster(clusters) -> dict:
@@ -808,7 +823,8 @@ class _Builder:
                 "old_system_id": old_ids[0] if old_ids else None,  # 代表 (互換)
                 "old_system_ids": old_ids,
                 "earliest_departure": earliest(set(old_ids), new_id),
-                "polyline": [self.coords[s] for s in rep.base_names if s in self.coords],
+                "polyline": [xy for s in rep.base_names
+                             if (xy := self._coord((c.family,), s))],
             })
         for old_id, c in sorted(old_clusters.items()):
             if old_id in link:
@@ -827,7 +843,8 @@ class _Builder:
                 "old_system_id": old_id,
                 "old_system_ids": [old_id],
                 "earliest_departure": earliest({old_id}, None),
-                "polyline": [self.coords[s] for s in rep.base_names if s in self.coords],
+                "polyline": [xy for s in rep.base_names
+                             if (xy := self._coord((c.family,), s))],
             })
         return systems
 
@@ -958,10 +975,11 @@ class _Builder:
                     if not any(q != p and _is_subsequence(p, q) for q in ordered)
                 ]
                 statuses = {s["status"] for s in members}
+                leg_families = sorted({s["family"] for s in members})
                 lines = []
                 for p in maximal:
-                    pts = [(stop, *self.coords[stop]) for stop in p
-                           if stop in self.coords]
+                    pts = [(stop, *xy) for stop in p
+                           if (xy := self._coord(leg_families, stop))]
                     if len(pts) < 2:
                         continue
                     lines.append({

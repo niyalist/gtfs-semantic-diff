@@ -1163,3 +1163,60 @@ def test_presentation_does_not_mutate_events(tmp_path, config):
     after = json.dumps(event_set.to_dict(), ensure_ascii=False, sort_keys=True)
     assert before == after  # ビューモデル生成はイベント/台帳を変更しない
     json.dumps(model, ensure_ascii=False)  # JSON 直列化可能
+
+
+def test_same_named_stops_use_own_route_coordinates(tmp_path, config):
+    """一般名バス停 (「学校前」等) が離れた場所に複数ある場合、各路線の地図
+    polyline は自路線を通るクラスタの座標を使う (茅ヶ崎えぼし号「教会前」・
+    永井「学校前」の実例: 基底名1本の座標表だと先勝ちの座標が他路線に混入した)。"""
+    from .conftest import make_gtfs_zip
+    from gtfs_semantic_diff.load import load_snapshot
+    from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+    from gtfs_semantic_diff.report.bundle import build_bundle
+
+    files = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\n"
+            "X1,学校前,36.0050,139.0000\n"   # R1 側の学校前
+            "S2,市役所前,36.0100,139.0000\n"
+            "S3,海岸,36.2000,139.2000\n"
+            "X2,学校前,36.2050,139.2000\n"   # R2 側の学校前 (約25km 離れた同名)
+            "S4,港,36.2100,139.2000\n"
+        ),
+        "routes.txt": (
+            "route_id,agency_id,route_short_name,route_long_name,route_type\n"
+            "R1,A1,1,駅前線,3\n"
+            "R2,A1,2,海岸線,3\n"
+        ),
+        "trips.txt": (
+            "route_id,service_id,trip_id\nR1,WD,T1\nR2,WD,T2\n"
+        ),
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "T1,08:00:00,08:00:00,S1,1\n"
+            "T1,08:05:00,08:05:00,X1,2\n"
+            "T1,08:10:00,08:10:00,S2,3\n"
+            "T2,09:00:00,09:00:00,S3,1\n"
+            "T2,09:05:00,09:05:00,X2,2\n"
+            "T2,09:10:00,09:10:00,S4,3\n"
+        ),
+    }
+    zip_path = make_gtfs_zip(tmp_path, files=files, name="gen.zip")
+    old = load_snapshot(zip_path, config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="gen2.zip"),
+                        config=config)
+    es, rd, ident, td = compare_snapshots_with_artifacts(old, new, config)
+    bundle = build_bundle(old, new, config, es, rd, ident, td)
+
+    coords = {}  # route_group → 学校前の polyline 座標
+    for p in bundle["presentation"]["route_pages"]:
+        for dg in p["overview"]["direction_groups"]:
+            for leg in dg.get("legs", []):
+                for line in leg.get("lines", []):
+                    if "学校前" in line["stops"]:
+                        i = line["stops"].index("学校前")
+                        coords[p["route_group"]] = tuple(line["polyline"][i])
+    # route_group はこの合成データでは route_short_name ("1"/"2")
+    assert coords["1"] == (36.0050, 139.0000)  # 駅前線: 自路線の学校前 (X1)
+    assert coords["2"] == (36.2050, 139.2000)  # 海岸線: 自路線の学校前 (X2)
