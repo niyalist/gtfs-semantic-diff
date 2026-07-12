@@ -31,6 +31,13 @@ def user_id_from_email(email: str) -> str:
     return "u" + hashlib.sha256(f"email:{norm}".encode()).hexdigest()[:23]
 
 
+def is_admin(email: str, allowlist_csv: str) -> bool:
+    """admin 許可リスト (カンマ区切り email、CDK context 由来) との照合。"""
+    norm = normalize_email(email)
+    allowed = {normalize_email(a) for a in allowlist_csv.split(",") if a.strip()}
+    return bool(norm) and norm in allowed
+
+
 def history_sk(created_at_iso: str, job_id: str) -> str:
     return f"run#{created_at_iso}#{job_id}"
 

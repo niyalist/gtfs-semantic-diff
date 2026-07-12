@@ -50,3 +50,11 @@ def test_zip_display_name_fallbacks():
     name = webusers.zip_display_name("", "", "2026-07-11", fallback="old.zip")
     assert name == "old.zip (アップロード 2026-07-11)"
     assert webusers.zip_display_name("", "", "") == "GTFS"
+
+
+def test_is_admin_allowlist():
+    assert webusers.is_admin("Niya2828@Gmail.com ", "niya2828@gmail.com")
+    assert webusers.is_admin("a@x.jp", "b@y.jp, a@x.jp")
+    assert not webusers.is_admin("other@x.jp", "a@x.jp")
+    assert not webusers.is_admin("", "a@x.jp")
+    assert not webusers.is_admin("a@x.jp", "")

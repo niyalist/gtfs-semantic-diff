@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>運用管理 — GTFS ダイヤ改正 意味的差分レポート</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="robots" content="noindex">
+<style>
+  body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0 auto;
+         max-width: 72rem; padding: 1.2rem; line-height: 1.6; color: #1c1e21; }
+  h1 { font-size: 1.2rem; }
+  h2 { font-size: 1.0rem; margin-top: 1.6rem; border-bottom: 1px solid #ccc; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.82em; }
+  th, td { border: 1px solid #ccc; padding: 0.2rem 0.45rem; text-align: left;
+           vertical-align: top; }
+  th { background: #f4f5f6; position: sticky; top: 0; }
+  .cards { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.8rem 0; }
+  .card { border: 2px solid #1a4f8b; border-radius: 8px; padding: 0.5rem 1rem;
+          min-width: 9rem; }
+  .card b { font-size: 1.5em; display: block; }
+  .warn { font-weight: 700; }
+  .note { color: #555; font-size: 0.85em; }
+  .scroll { max-height: 26rem; overflow: auto; }
+  button { font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<p><a href="/">← トップ</a></p>
+<h1>運用管理</h1>
+<div id="gate"><p class="note">確認中…</p></div>
+<div id="main" style="display:none">
+  <div class="cards" id="cards"></div>
+  <h2>ジョブ (直近300件・Jobs テーブルは30日保持)</h2>
+  <div class="scroll" id="jobs"></div>
+  <h2>生成済みの比較ペア (恒久)</h2>
+  <div class="scroll" id="pairs"></div>
+  <h2>アカウント</h2>
+  <div class="scroll" id="users"></div>
+  <h2>保存 zip (メタ情報のみ)</h2>
+  <div class="scroll" id="zips"></div>
+  <h2>フィードバック</h2>
+  <div class="scroll" id="feedback"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const jdt = (v) => {
+  if (!v) return "";
+  const d = typeof v === "number" ? new Date(v * 1000) : new Date(v);
+  return d.toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" });
+};
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+let CFG = null;
+function token() {
+  const tok = localStorage.getItem("id_token");
+  const exp = Number(localStorage.getItem("id_token_exp") || 0);
+  return tok && Date.now() < exp - 60000 ? tok : null;
+}
+
+async function login() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  sessionStorage.setItem("pkce_verifier", verifier);
+  const challenge = b64url(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const u = new URL(`https://${CFG.cognito_domain}/oauth2/authorize`);
+  u.search = new URLSearchParams({
+    client_id: CFG.client_id, response_type: "code", scope: "openid email",
+    redirect_uri: location.origin + "/admin.html", identity_provider: "Google",
+    code_challenge_method: "S256", code_challenge: challenge,
+  });
+  location.href = u;
+}
+
+async function exchange(code) {
+  const r = await fetch(`https://${CFG.cognito_domain}/oauth2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code", client_id: CFG.client_id, code,
+      redirect_uri: location.origin + "/admin.html",
+      code_verifier: sessionStorage.getItem("pkce_verifier") || "",
+    }),
+  });
+  sessionStorage.removeItem("pkce_verifier");
+  const d = await r.json();
+  if (d.id_token) {
+    localStorage.setItem("id_token", d.id_token);
+    localStorage.setItem("id_token_exp",
+      String(Date.now() + (d.expires_in || 3600) * 1000));
+  }
+}
+
+function table(headers, rows) {
+  return `<table><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>` +
+    rows.join("") + `</table>`;
+}
+
+function render(sum, pairs) {
+  const week = Date.now() / 1000 - 7 * 86400;
+  const newUsers = sum.users.filter((u) => (u.created_at || 0) > week).length;
+  const failed = sum.jobs.filter((j) => j.status === "failed").length;
+  $("cards").innerHTML = [
+    ["アカウント", sum.users.length, `直近7日 +${newUsers}`],
+    ["ジョブ (30日)", sum.jobs.length, `失敗 ${failed}`],
+    ["生成済みペア", pairs.pairs.length, pairs.truncated ? "(先頭300)" : "全件"],
+    ["保存 zip", sum.zips.length, ""],
+    ["フィードバック", sum.feedback.length, ""],
+  ].map(([t, n, s]) =>
+    `<div class="card">${esc(t)}<b>${esc(n)}</b><span class="note">${esc(s)}</span></div>`
+  ).join("");
+
+  $("jobs").innerHTML = table(
+    ["投入", "job_id", "状態", "所要", "エラー"],
+    sum.jobs.map((j) => {
+      const warn = j.status === "failed" || (j.duration_s || 0) > 600;
+      return `<tr${warn ? ' class="warn"' : ""}><td>${esc(jdt(j.created_at))}</td>` +
+        `<td>${j.result_url ? `<a href="${esc(j.result_url)}">${esc(j.job_id)}</a>` : esc(j.job_id)}</td>` +
+        `<td>${warn ? "▲ " : ""}${esc(j.status)}</td>` +
+        `<td>${j.duration_s != null ? esc(j.duration_s) + "s" : "—"}</td>` +
+        `<td>${esc(j.error || "")}</td></tr>`;
+    }));
+
+  $("pairs").innerHTML = table(
+    ["最終生成", "ペア", "世代", "版数"],
+    pairs.pairs.map((p) => {
+      const f = p.feed || {};
+      const gens = (f.old_from_date || f.new_from_date)
+        ? `${f.old_from_date || "?"} → ${f.new_from_date || "?"}` : "";
+      return `<tr><td>${esc(jdt(p.generated_at))}</td>` +
+        `<td><a href="/r/${esc(p.pair)}.html">${esc(p.pair)}</a></td>` +
+        `<td>${esc(gens)}</td><td>${esc(p.version_count ?? "?")}</td></tr>`;
+    }));
+
+  $("users").innerHTML = table(
+    ["登録", "email", "最終利用"],
+    sum.users.map((u) =>
+      `<tr><td>${esc(jdt(u.created_at))}</td><td>${esc(u.email)}</td>` +
+      `<td>${esc(jdt(u.last_seen_at))}</td></tr>`));
+
+  $("zips").innerHTML = table(
+    ["保存", "表示名", "元ファイル名", "サイズ", "所有者"],
+    sum.zips.map((z) =>
+      `<tr><td>${esc(jdt(z.created_at))}</td><td>${esc(z.display_name)}</td>` +
+      `<td>${esc(z.source_name || "")}</td>` +
+      `<td>${(Number(z.size || 0) / 1048576).toFixed(1)} MB</td>` +
+      `<td><code>${esc((z.user_id || "").slice(0, 8))}…</code></td></tr>`));
+
+  $("feedback").innerHTML = table(
+    ["受付", "対象", "event_id", "内容"],
+    sum.feedback.map((f) =>
+      `<tr><td>${esc(jdt(f.created_at))}</td>` +
+      `<td>${f.result_url ? `<a href="${esc(f.result_url)}">結果</a>` : ""}</td>` +
+      `<td>${esc(f.event_id || "")}</td><td>${esc(f.message)}</td></tr>`));
+}
+
+async function main() {
+  CFG = await (await fetch("/api/config")).json();
+  const params = new URLSearchParams(location.search);
+  if (params.get("code") && sessionStorage.getItem("pkce_verifier")) {
+    await exchange(params.get("code"));
+    history.replaceState(null, "", location.pathname);
+  }
+  const tok = token();
+  if (!tok) {
+    $("gate").innerHTML = `<button id="login">Google でログイン (管理者)</button>`;
+    $("login").onclick = login;
+    return;
+  }
+  const h = { authorization: `Bearer ${tok}` };
+  const [rs, rp] = await Promise.all([
+    fetch("/api/admin/summary", { headers: h }),
+    fetch("/api/admin/pairs", { headers: h }),
+  ]);
+  if (rs.status === 403) {
+    $("gate").innerHTML = "<p>このアカウントには管理権限がありません。</p>";
+    return;
+  }
+  if (!rs.ok || !rp.ok) {
+    $("gate").innerHTML = `<p>読み込みに失敗しました (HTTP ${rs.status}/${rp.status})。
+      <button id="relogin">ログインし直す</button></p>`;
+    $("relogin").onclick = login;
+    return;
+  }
+  $("gate").style.display = "none";
+  $("main").style.display = "";
+  render(await rs.json(), await rp.json());
+}
+main();
+</script>
+</body>
+</html>

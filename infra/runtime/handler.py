@@ -40,6 +40,7 @@ RESULTS_BUCKET = os.environ.get("RESULTS_BUCKET", "")
 JOBS_TABLE = os.environ.get("JOBS_TABLE", "")
 USERDATA_TABLE = os.environ.get("USERDATA_TABLE", "")
 FEEDBACK_TABLE = os.environ.get("FEEDBACK_TABLE", "")
+ADMIN_EMAILS = os.environ.get("ADMIN_EMAILS", "")
 FEEDBACK_EMAIL = os.environ.get("FEEDBACK_EMAIL", "")
 COGNITO_DOMAIN = os.environ.get("COGNITO_DOMAIN", "")
 COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
@@ -132,6 +133,8 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
             return _api_config()
         if path == "/api/me" or path.startswith("/api/me/"):
             return _api_me(event, method, path, qs)
+        if path.startswith("/api/admin"):
+            return _api_admin(event, method, path)
         if method == "GET" and path == "/api/gtfs/feeds":
             return _api_feeds(qs)
         if method == "GET" and path == "/api/gtfs/files":
@@ -189,6 +192,90 @@ def _api_files(qs: dict) -> dict:
             for f in files
         ]
     })
+
+
+# --- admin (W3 追補: docs/design/admin.md S2) ---
+# 認証は /api/me と同じ JWT オーソライザ (API Gateway) + ここでの許可リスト照合。
+# 読み取り専用。アップロード zip の中身は出さない (メタのみ — 規約 §3/§4 と整合)
+
+
+def _api_admin(event, method: str, path: str) -> dict:
+    email = _claims(event).get("email", "")
+    if not webusers.is_admin(email, ADMIN_EMAILS):
+        logger.warning("admin 拒否: %s", email or "(no email)")
+        return _resp(403, {"error": "forbidden"})
+    if method == "GET" and path == "/api/admin/summary":
+        return _api_admin_summary()
+    if method == "GET" and path == "/api/admin/pairs":
+        return _api_admin_pairs()
+    return _resp(404, {"error": "not found"})
+
+
+def _scan_all(table, **kwargs) -> list:
+    items, resp = [], table.scan(**kwargs)
+    items += resp.get("Items", [])
+    while "LastEvaluatedKey" in resp and len(items) < 5000:
+        resp = table.scan(ExclusiveStartKey=resp["LastEvaluatedKey"], **kwargs)
+        items += resp.get("Items", [])
+    return items
+
+
+def _api_admin_summary() -> dict:
+    """アカウント・ジョブ・保存 zip・フィードバックの一覧 (規模が小さい前提の Scan)。"""
+    users, zips = [], []
+    for it in _scan_all(_userdata_table()):
+        if it.get("sk") == "profile":
+            users.append({"user_id": it.get("user_id"), "email": it.get("email"),
+                          "created_at": it.get("created_at"),
+                          "last_seen_at": it.get("last_seen_at")})
+        elif str(it.get("sk", "")).startswith("zip#"):
+            zips.append({"user_id": it.get("user_id"),
+                         "display_name": it.get("display_name"),
+                         "size": it.get("size"), "created_at": it.get("created_at"),
+                         "source_name": it.get("source_name")})
+    jobs = sorted(
+        _scan_all(_jobs_table()),
+        key=lambda it: int(it.get("created_at", 0)), reverse=True)[:300]
+    feedback = sorted(
+        _scan_all(ddb.Table(FEEDBACK_TABLE)),
+        key=lambda it: str(it.get("created_at", "")), reverse=True)[:200]
+    users.sort(key=lambda u: u.get("created_at") or 0, reverse=True)
+    zips.sort(key=lambda z: str(z.get("created_at", "")), reverse=True)
+    return _resp(200, {"users": users, "jobs": jobs, "zips": zips,
+                       "feedback": feedback})
+
+
+def _api_admin_pairs() -> dict:
+    """生成済みの正準ペア一覧 (S3 の r/{pair}/index.json を歩く)。
+    「どの差分が求められているか」のビュー。"""
+    pairs = []
+    paginator = s3.get_paginator("list_objects_v2")
+    prefixes = []
+    for page in paginator.paginate(Bucket=RESULTS_BUCKET, Prefix="r/",
+                                   Delimiter="/"):
+        for p in page.get("CommonPrefixes", []):
+            name = p["Prefix"]  # "r/{pair}/"
+            if name in ("r/anon/", "r/u/"):
+                continue
+            prefixes.append(name)
+    for prefix in prefixes[:300]:
+        try:
+            obj = s3.get_object(Bucket=RESULTS_BUCKET, Key=f"{prefix}index.json")
+            idx = json.loads(obj["Body"].read())
+        except Exception:  # index なし (旧形式) は pair 名だけ
+            pairs.append({"pair": prefix[2:-1]})
+            continue
+        latest = next((v for v in idx.get("versions", [])
+                       if v.get("version") == idx.get("latest")), {})
+        pairs.append({
+            "pair": idx.get("pair", prefix[2:-1]),
+            "feed": idx.get("feed", {}),
+            "version_count": len(idx.get("versions", [])),
+            "latest": idx.get("latest"),
+            "generated_at": latest.get("generated_at"),
+        })
+    pairs.sort(key=lambda p: str(p.get("generated_at") or ""), reverse=True)
+    return _resp(200, {"pairs": pairs, "truncated": len(prefixes) > 300})
 
 
 def _api_config() -> dict:
@@ -531,14 +618,19 @@ def _update(job_id: str, **attrs) -> None:
 def worker(event, context):  # noqa: ARG001 - Lambda signature
     job_id = event["job_id"]
     job_input = event["input"]
-    _update(job_id, status="running", running_since=int(time.time()))
+    t0 = int(time.time())
+    _update(job_id, status="running", running_since=t0)
     try:
         result_key = _run_compare(job_id, job_input)
-        _update(job_id, status="succeeded", result_url=f"/{result_key}")
-        logger.info("job %s succeeded: %s", job_id, result_key)
+        now = int(time.time())
+        _update(job_id, status="succeeded", result_url=f"/{result_key}",
+                finished_at=now, duration_s=now - t0)
+        logger.info("job %s succeeded: %s (%ds)", job_id, result_key, now - t0)
     except Exception as e:
         logger.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
-        _update(job_id, status="failed", error=str(e)[:500])
+        now = int(time.time())
+        _update(job_id, status="failed", error=str(e)[:500],
+                finished_at=now, duration_s=now - t0)
 
 
 def _run_compare(job_id: str, job_input: dict) -> str:

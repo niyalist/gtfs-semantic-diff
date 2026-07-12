@@ -27,6 +27,8 @@ from aws_cdk import (
     aws_budgets as budgets,
     aws_certificatemanager as acm,
     aws_cloudfront as cloudfront,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cw_actions,
     aws_cloudfront_origins as origins,
     aws_cognito as cognito,
     aws_dynamodb as dynamodb,
@@ -35,6 +37,8 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_ses as ses,
     aws_s3_deployment as s3deploy,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subs,
 )
 from constructs import Construct
 
@@ -281,9 +285,11 @@ class DeliveryStack(Stack):
 
         # Hosted UI からの戻り先 = CloudFront (distribution 作成後にクライアントを作る)。
         # 独自ドメインと CloudFront 既定ドメインの両方を許可 (旧 URL も生かす)
-        site_urls = [f"https://{distribution.distribution_domain_name}/"]
+        site_urls = [f"https://{distribution.distribution_domain_name}/",
+                     f"https://{distribution.distribution_domain_name}/admin.html"]
         if site_domain:
-            site_urls.insert(0, f"https://{site_domain}/")
+            site_urls = [f"https://{site_domain}/",
+                         f"https://{site_domain}/admin.html"] + site_urls
         client_kwargs = dict(
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),  # + PKCE
@@ -310,13 +316,18 @@ class DeliveryStack(Stack):
         me_integration = apigw_integrations.HttpLambdaIntegration(
             "MeIntegration", api_fn
         )
-        for path in ("/api/me", "/api/me/{proxy+}"):
+        # /api/admin/* も同じオーソライザ。許可リスト照合は Lambda 側
+        # (webusers.is_admin。読み取り専用 — docs/design/admin.md)
+        for path in ("/api/me", "/api/me/{proxy+}",
+                     "/api/admin", "/api/admin/{proxy+}"):
             http_api.add_routes(
                 path=path,
                 methods=[apigwv2.HttpMethod.ANY],
                 integration=me_integration,
                 authorizer=jwt_authorizer,
             )
+        api_fn.add_environment(
+            "ADMIN_EMAILS", self.node.try_get_context("admin_emails") or "")
         cognito_domain = (
             f"{pool_domain.domain_name}.auth.{self.region}.amazoncognito.com"
         )
@@ -333,13 +344,71 @@ class DeliveryStack(Stack):
             destination_bucket=bucket,
             prune=False,
             distribution=distribution,
-            distribution_paths=["/index.html", "/", "/terms.html",
+            distribution_paths=["/index.html", "/", "/terms.html", "/admin.html",
                                 "/favicon.svg", "/favicon.ico",
                                 "/apple-touch-icon.png", "/ogp.png"],
         )
 
+        # --- 運用ダッシュボード (S1: docs/design/admin.md)。暴走・障害はここで見る ---
+        dashboard = cloudwatch.Dashboard(
+            self, "Ops", dashboard_name="gtfs-semdiff-ops")
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="worker 実行時間 (ms)",
+                left=[
+                    worker_fn.metric_duration(statistic="p50"),
+                    worker_fn.metric_duration(statistic="p95"),
+                    worker_fn.metric_duration(statistic="Maximum"),
+                ],
+                width=12,
+            ),
+            cloudwatch.GraphWidget(
+                title="worker 実行数 / エラー",
+                left=[worker_fn.metric_invocations(), worker_fn.metric_errors()],
+                width=12,
+            ),
+        )
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="API 実行数 / エラー",
+                left=[api_fn.metric_invocations(), api_fn.metric_errors()],
+                width=12,
+            ),
+            cloudwatch.GraphWidget(
+                title="CloudFront リクエスト数",
+                left=[cloudwatch.Metric(
+                    namespace="AWS/CloudFront",
+                    metric_name="Requests",
+                    dimensions_map={
+                        "DistributionId": distribution.distribution_id,
+                        "Region": "Global",
+                    },
+                    statistic="Sum",
+                    region="us-east-1",
+                )],
+                width=12,
+            ),
+        )
+
         alert_email = self.node.try_get_context("alert_email")
         if alert_email:
+            ops_topic = sns.Topic(self, "OpsAlerts")
+            ops_topic.add_subscription(sns_subs.EmailSubscription(alert_email))
+            # worker の失敗 (OOM 死は Lambda Errors に乗る) と、タイムアウト間際の
+            # 長時間実行 (>13分) をメール通知。リトライは止めてあるので1回で鳴る
+            worker_fn.metric_errors(period=Duration.minutes(5)).create_alarm(
+                self, "WorkerErrorAlarm", threshold=1, evaluation_periods=1,
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+                alarm_description="gtfs-semdiff worker 失敗 (OOM/例外)",
+            ).add_alarm_action(cw_actions.SnsAction(ops_topic))
+            worker_fn.metric_duration(
+                statistic="Maximum", period=Duration.minutes(5)
+            ).create_alarm(
+                self, "WorkerSlowAlarm", threshold=13 * 60 * 1000,
+                evaluation_periods=1,
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+                alarm_description="gtfs-semdiff worker 長時間実行 (>13分)",
+            ).add_alarm_action(cw_actions.SnsAction(ops_topic))
             budgets.CfnBudget(
                 self,
                 "MonthlyBudget",
