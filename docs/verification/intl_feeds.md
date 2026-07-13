@@ -73,5 +73,11 @@ P1 (便対応付け LCS メモ化、コミット 33ec2d1) 適用後。( ) 内は
 | IN-6 | 方針 | 国家規模アグリゲート (swiss/NL) は当面 Web 対象外と明文化。per-agency 分割前処理は将来構想 |
 | IN-7 | I4 (G5) | 地図タイルの国際化 (既知・最重要 UI 課題) |
 
-HTML レポート: 各ペアの report.html を data/intl/{id}/ にローカル生成
-(scripts 参照。TriMet 級は rawdiffs.json 埋め込みでファイルが巨大になる — IN-3)。
+## HTML レポートの目視用生成 (2026-07-13)
+
+- 完全版 (rawdiffs 全件埋め込み) は **rome で 2.9GB** となり閲覧不能 — IN-3 の
+  実証。単一 HTML 方式は RawDiff 1000万件級で成立しない (hosted bundle 化 +
+  遅延読み込み、または bulk の適用拡大が必要)
+- 目視確認には **プレビュー版** (rawdiffs と各イベントの evidence 生値を抜いた
+  もの。検証モードのドリルダウン以外は全機能) を data/intl/{id}/preview.html に
+  生成した。台帳の数値 (explained_ratio 等) は完全版と同一
