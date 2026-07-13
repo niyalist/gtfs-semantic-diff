@@ -137,3 +137,15 @@ detection.md (§ trip 照合・C群・B群) と presentation.md (表示ペアリ
   検証ログで before/after を明示する)
 - day_type 跨ぎの振替は v1 で扱わない (明記)。実データで問題になれば
   ブロッキングの緩和を別途検討
+
+## 改訂 (2026-07-13, P1): LCS のメモ化と決定性
+
+- **メモ化**: ブロック内の便ペア総当たりで停車列 LCS を素計算していたが、国際
+  フィードでは1ブロック数百便 (MBTA Red Line 547便・ローマ 824便) に対し停車
+  パターンは高々 2〜30 種類しかない (docs/perf/tripdelta_memo.md)。
+  (パターンA, パターンB) 単位で1回だけ計算するキャッシュに変更。**出力は完全に
+  同一** (純粋関数のメモ化)。TriMet 実測: tripdelta 1700秒 → 数秒台。
+- **決定性の修正**: set 交差の反復順 (PYTHONHASHSEED 依存) が
+  (1) 段1 exact_pairs の並び、(2) TRAVEL_TIME 系 quantification の segments の
+  並びと top_n 選抜、に漏れており同一入力でも実行ごとに JSON が揺れていた。
+  sorted 化 + タイブレーク付与で全シード同一ハッシュを確認 (回帰テストあり)。

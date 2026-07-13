@@ -210,7 +210,9 @@ def build_trip_delta(
 
     paired_old: set[str] = set()
     paired_new: set[str] = set()
-    for sig in by_sig_old.keys() & by_sig_new.keys():
+    # sorted: set 交差の反復順は PYTHONHASHSEED 依存で、exact_pairs の並びが
+    # 実行ごとに揺れる (イベントの evidence 順に漏れる)。決定的に列挙する
+    for sig in sorted(by_sig_old.keys() & by_sig_new.keys()):
         olds = sorted(by_sig_old[sig], key=lambda t: t.trip_id)
         news = sorted(by_sig_new[sig], key=lambda t: t.trip_id)
         new_by_id = {t.trip_id: t for t in news}
@@ -244,12 +246,26 @@ def build_trip_delta(
         if t.trip_id not in paired_new:
             blocks[block_key(t, "new")][1].append(t)
 
+    # LCS のメモ化 (P1): 便数は多くても停車パターンの種類は少ない
+    # (実測: MBTA Red Line 547便で4種類、ローマ 824便で4種類 —
+    #  docs/perf/tripdelta_memo.md)。ペアごとに O(L²) の LCS を素で計算すると
+    # 大ブロックで二乗爆発するため、(パターンA, パターンB) 単位で1回だけ計算する。
+    # 出力は完全に同一 (純粋関数のキャッシュ)
+    lcs_cache: dict[tuple[tuple[str, ...], tuple[str, ...]], float] = {}
+
+    def cached_lcs(a: tuple[str, ...], b: tuple[str, ...]) -> float:
+        key = (a, b)
+        v = lcs_cache.get(key)
+        if v is None:
+            v = lcs_cache[key] = lcs_ratio(a, b)
+        return v
+
     for key in sorted(blocks):
         olds, news = blocks[key]
         candidates = []
         for o in olds:
             for n in news:
-                sim = lcs_ratio(o.base_seq, n.base_seq)
+                sim = cached_lcs(o.base_seq, n.base_seq)
                 if sim < params.min_route_sim:
                     continue
                 dt = dt_shared_minutes(o, n)

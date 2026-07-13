@@ -261,7 +261,9 @@ def _segment_stats(members: list, top_n: int = 5) -> list[dict]:
         return ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))]
 
     stats = []
-    for segment in old_runs.keys() & new_runs.keys():
+    # sorted: set 交差の反復順は PYTHONHASHSEED 依存 — 同差分値の並びと
+    # top_n の選抜が実行ごとに揺れる (再現性の破れ)。決定的に列挙する
+    for segment in sorted(old_runs.keys() & new_runs.keys()):
         old_med = int(statistics.median(old_runs[segment]))
         new_med = int(statistics.median(new_runs[segment]))
         if old_med == new_med:
@@ -275,7 +277,8 @@ def _segment_stats(members: list, top_n: int = 5) -> list[dict]:
                 "new_p90": p90(new_runs[segment]),
             }
         )
-    stats.sort(key=lambda s: -abs(s["new_median_sec"] - s["old_median_sec"]))
+    stats.sort(key=lambda s: (-abs(s["new_median_sec"] - s["old_median_sec"]),
+                              s["segment"]))  # タイブレークも決定的に
     return stats[:top_n]
 
 
