@@ -313,16 +313,30 @@
     再比較 → 版追記の一連を実測 ✓。フィードバック一連の動作 ✓。規約ページ公開 ✓。
     月額コスト実績を docs/ops/ に記録 ✓ (costs.md、2026-07 実績 $0.013)。
 
+## P: 性能 (国際規模対応の前提) 【2026-07-13 開始】
+
+I1 の実測から派生。方針: 出力不変の最適化のみ (近似は導入しない。導入する場合は
+config ゲート + 別途議論)。
+
+- **P1: 便対応付けの LCS メモ化 + 決定性修正** 【完了 2026-07-13
+  (docs/perf/tripdelta_memo.md)】 — TriMet 1789s→273s、MBTA タイムアウト→1677s。
+  出力同一性をテストで保証。あわせて set 順序が出力に漏れる非決定性2箇所を修正
+- **P2: ルール段 (L2) の非線形の特定と修正** — MBTA 1291s / rome 996s の支配項。
+  ほか: 便対応の残コスト、RawDiff 1000万件級のメモリ (Lambda 制約)。
+  課題台帳: docs/verification/intl_feeds.md IN-1〜3
+- **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
+  の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)
+
 ## I: 国際化 (英語対応 + 国際 GTFS 検証) 【計画 2026-07-12、設計: docs/design/i18n.md】
 
 対応言語は日本語+英語。コア JSON は言語中立・ビューアは ja/en 辞書 (141キー・
 ずれゼロ) 済みが土台。詳細・監査結果 (G1〜G9)・DoD は i18n.md。
 
-- **I1: 国際検証データセット** — Mobility Database の過去版 API 等で世代ペアを
-  6〜8 フィード選定 (特徴マトリクス: calendar_dates 主体 / frequencies /
-  非 ASCII / 多モード / 国家規模 / Fares v2)。取得スクリプト + 台帳
-  (docs/verification/intl_feeds.md) + 全ペアの CLI 実行記録。修正はしない
-  (問題は I3/I4 の入力)
+- **I1: 国際検証データセット** 【完了 2026-07-13 (docs/verification/intl_feeds.md)】
+  — 6フィード (歴史枠 TriMet/MBTA/STM + rome=frequencies + swiss/NL=国家規模)、
+  公式アーカイブ/日付版/Wayback で世代ペアを恒久固定 (scripts/fetch_intl_feeds.py)。
+  全ペア実行記録: 都市規模4件完走 (explained 0.98〜1.0)・国家規模2件タイムアウト。
+  課題 IN-1〜7 を採番し P2/I3/I4 へ
 - **I2: Web/UI の英語対応** — 入力 UI・規約の ja/en 化 (初期言語は
   navigator.language)、API エラーのコード化。DoD: 英語ブラウザで
   アップロード比較〜マイページまで英語で完結

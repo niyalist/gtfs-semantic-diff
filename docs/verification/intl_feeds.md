@@ -34,10 +34,44 @@ frequencies は rome が担う。
 **公開レポート化・観測所掲載など二次利用を広げる場合は、この表の要確認を
 解消してから** (i18n.md I5 の前提)。
 
-## 実行記録 (probe_intl_feeds.py、ローカル Mac)
+## 実行記録 (probe_intl_feeds.py、ローカル Mac、2026-07-13)
 
-> 記入待ち: data/intl/results.json から転記
+P1 (便対応付け LCS メモ化、コミット 33ec2d1) 適用後。( ) 内は P1 前の値。
+タイムアウトは 1800 秒/ペア。
 
-## 課題一覧 (I3/I4 への入力)
+| feed | 結果 | 合計 | diff0 / identity / 便対応 / ルール段 | RawDiff | イベント | explained | ピークRSS |
+|---|---|---|---|---|---|---|---|
+| trimet | ✓ | **273s** (旧 1789s) | 35 / 7 / 185 (旧1700) / 47 | 660万 | 4,535 | 0.9999 | 5.8GB |
+| mbta | ✓ | **1677s** (旧 >1800 TO) | 71 / 15 / 294 (旧1356) / **1291** | 1172万 | 26,788 | 0.9958 | 7.7GB |
+| stm | ✓ | 994s | 81 / 20 / 499 / 387 | 1449万 | 20,685 | **1.0000** | 9.8GB |
+| rome | ✓ | 1523s | 114 / 20 / 386 / 996 | 1520万 | 11,015 | 0.9834 | 8.6GB |
+| swiss | ▲ TO | >1800s | 475 / 115 / 727 完了 → ルール段で打ち切り | — | — | — | — |
+| ovapi_nl | ▲ TO | >1800s | 410 / 70 完了 → 便対応の途中で打ち切り | — | — | — | — |
 
-> 記入待ち
+残差の内訳 (完走4件):
+
+- trimet: stop_features.txt 321 (独自ファイル)、transfers 96、stops 29
+- mbta: transfers 22,838、multi_route_trips 15,566、trips_properties 4,790、
+  route_patterns 1,852、pathways 840 (独自+駅構内系)
+- stm: stops 356、routes 218 — ほぼ完全
+- rome: **stop_times 238,527・trips 13,748** (要精査 — frequencies 系?)
+
+**所見**: (1) 都市規模4件は全て完走し、台帳 (explained_ratio) は 0.98〜1.0 —
+検出の骨格は国際フィードでそのまま機能する。(2) P1 で便対応は 4.6〜9 倍改善したが、
+**ルール段 (L2) が新たな支配項** (MBTA 1291s、rome 996s — RawDiff 1000万件超で
+非線形の疑い)。(3) 国家規模2件は現状対象外の実測根拠が得られた。
+
+## 課題一覧 (P2 / I3 / I4 への入力)
+
+| # | 行き先 | 内容 |
+|---|---|---|
+| IN-1 | **P2 最優先** | ルール段 (L2) が RawDiff 大量時に非線形 (MBTA 1291s / rome 996s / trimet 47s)。プロファイルで特定して修正 |
+| IN-2 | P2 | 便対応の残コスト (Δt 計算×候補対、タプルハッシュ)。swiss 727s / stm 499s。ブロック内前絞り等 |
+| IN-3 | P2/I4 | shapes・stop_times 由来の巨大 RawDiff (660万〜1520万) — メモリ (RSS 10GB 級 = Lambda 不可) と HTML サイズに直結。bulk の適用拡大は evidence 設計と要調整。hosted bundle 化とも関連 |
+| IN-4 | I4 | rome の残差 25万件 (stop_times/trips) の精査 — frequencies 運行の便の扱いを確認 |
+| IN-5 | I4 | 未知ファイルの claiming ルール (MBTA multi_route_trips 等・TriMet stop_features) — 山交 pass_rules と同じバックログの国際版。transfers.txt (標準) のルールも未実装 |
+| IN-6 | 方針 | 国家規模アグリゲート (swiss/NL) は当面 Web 対象外と明文化。per-agency 分割前処理は将来構想 |
+| IN-7 | I4 (G5) | 地図タイルの国際化 (既知・最重要 UI 課題) |
+
+HTML レポート: 各ペアの report.html を data/intl/{id}/ にローカル生成
+(scripts 参照。TriMet 級は rawdiffs.json 埋め込みでファイルが巨大になる — IN-3)。
