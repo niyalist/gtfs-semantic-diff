@@ -81,3 +81,7 @@ P1 (便対応付け LCS メモ化、コミット 33ec2d1) 適用後。( ) 内は
 - 目視確認には **プレビュー版** (rawdiffs と各イベントの evidence 生値を抜いた
   もの。検証モードのドリルダウン以外は全機能) を data/intl/{id}/preview.html に
   生成した。台帳の数値 (explained_ratio 等) は完全版と同一
+- プレビューの実測: trimet 97MB / rome 205MB / mbta 240MB / stm 276MB —
+  **rawdiffs を抜いても時刻表・座標素材だけでこの規模** (国際フィードは
+  イベント 4千〜2.7万件)。ブラウザで実用的なのは 100MB 級まで。IN-3 の
+  正式対応 (hosted bundle + 遅延読み込み) の要件データとする
