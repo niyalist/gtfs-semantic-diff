@@ -178,5 +178,42 @@ def test_special_day_services(tmp_path, config):
     assert by_id["NY"]["dates"] == 3
     assert (by_id["NY"]["first_date"], by_id["NY"]["last_date"]) == ("20261230", "20270102")
     assert by_id["NY"]["replaces_regular"] is True  # WD が同日を運休 → 置き換え型
+    # SD3: 実効運行日の具体日付リスト
+    assert by_id["NY"]["date_list"] == ["20261230", "20261231", "20270102"]
+    assert by_id["NY"]["truncated"] is False
     assert by_id["DORMANT"]["day_type"] == "inactive"
     assert by_id["DORMANT"]["replaces_regular"] is False
+
+
+def test_bundle_special_days_flag_based_holiday_service(tmp_path, config):
+    """SD3: フラグ+大量削除型の特定日 (PRT 型) は実効日集合で日付が出る。"""
+    files = {}
+    files["calendar.txt"] = MINIMAL_FEED["calendar.txt"] + (
+        "HOL,0,0,0,0,0,1,0,20260628,20261024\n"
+    )
+    # 通常土曜16回を削除し 7/4 だけ運行 (独立記念日型)
+    sats = ["20260711", "20260718", "20260725", "20260801", "20260808",
+            "20260815", "20260822", "20260829", "20260905", "20260912",
+            "20260919", "20260926", "20261003", "20261010", "20261017", "20261024"]
+    files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\n"
+        + "".join(f"HOL,{d},2\n" for d in sats)
+        + "HOL,20260704,1\n"
+    )
+    files["trips.txt"] = MINIMAL_FEED["trips.txt"] + "R1,HOL,T7\n"
+    files["stop_times.txt"] = MINIMAL_FEED["stop_times.txt"] + (
+        "T7,12:00:00,12:00:00,S1,1\nT7,12:05:00,12:05:00,S2,2\nT7,12:10:00,12:10:00,S3,3\n"
+    )
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="o.zip"), config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="n.zip"), config=config)
+    event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
+        old, new, config
+    )
+    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    specials = bundle["presentation"]["feed_overview"]["special_days"]["new"]
+    by_id = {s["service_id"]: s for s in specials}
+    assert by_id["HOL"]["day_type"] == "irregular"  # SD1 の密度判定
+    assert by_id["HOL"]["date_list"] == ["20260704"]  # SD3: 具体日付
+    assert by_id["HOL"]["dates"] == 1
+    # 単一世代比較なので比較スコープは付かない
+    assert bundle["presentation"]["feed_overview"]["comparison_scope"] is None

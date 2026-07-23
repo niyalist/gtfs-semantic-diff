@@ -1,5 +1,5 @@
 <script>
-  import { lang, t, dayName } from "../lib/i18n.js";
+  import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
 
   export let overview; // presentation.feed_overview
   export let feed = {}; // meta.feed (期間)
@@ -24,17 +24,25 @@
   function dayLabel(d) {
     return dayName(d, $lang);
   }
-  // M10: 特定日・運行日なし service の内訳の1行 (置き換え/追加の別を明示)
+  // M10 → SD3: 特定日・運行日なし service の内訳の1行。
+  // 実効運行日の具体日付 (date_list) があれば「運行日: 7/21、8/11〜8/16」と
+  // 連続日を範囲に畳んで表示する。無い旧バンドルは日数+期間表示に退避
   function specialLine(s) {
     const parts = [dayLabel(s.day_type)];
-    if (s.dates)
+    if (s.date_list?.length) {
+      const runs = formatDateRuns(s.date_list, $lang);
+      const extra = (runs.more || 0) + (s.truncated ? s.dates - s.date_list.length : 0);
+      parts.push(tt("fo_special_rundates", runs.text, s.dates, extra));
+    } else if (s.dates) {
       parts.push(tt("fo_special_dates", s.dates, isoDate(s.first_date), isoDate(s.last_date)));
+    }
     parts.push(`${s.trips}${tt("trips_count")}`);
     if (s.day_type === "inactive") parts.push(tt("fo_special_inactive"));
     else if (s.replaces_regular) parts.push(tt("fo_special_replaces"));
     else if (s.dates) parts.push(tt("fo_special_extra"));
     return parts.join("・");
   }
+  $: scope = overview.comparison_scope;
   $: specials = [
     ...(overview.special_days?.new ?? []).map((s) => ({ ...s, gen: "new" })),
     ...(overview.special_days?.old ?? [])
@@ -114,6 +122,29 @@
     {feed.old_period?.[0] ?? "?"} 〜 {feed.old_period?.[1] ?? "?"}
     → {feed.new_period?.[0] ?? "?"} 〜 {feed.new_period?.[1] ?? "?"}
   </p>
+{/if}
+
+{#if scope}
+  <!-- SD2: 同梱世代フィード (改正前後を1ファイルに同梱) の比較範囲の明示。
+       記号▮を第1チャネルに (色弱原則)。単一世代の比較では出ない -->
+  <div class="scope-note">
+    <p><strong>▮ {tt("fo_scope_title")}</strong></p>
+    <ul>
+      <li>{tt("fo_scope_window", isoDate(scope.comparison_window?.[0]), isoDate(scope.comparison_window?.[1]))}</li>
+      {#if scope.primary_periods?.length}
+        <li>{tt("fo_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}〜${isoDate(p[1])}`).join(", "))}</li>
+      {/if}
+      {#if scope.identical_periods?.length}
+        <li>{tt("fo_scope_identical", scope.identical_periods.map((p) => `${isoDate(p[0])}〜${isoDate(p[1])}`).join(", "))}</li>
+      {/if}
+      {#if scope.excluded?.old_services?.length}
+        <li>{tt("fo_scope_excluded_old", scope.excluded.old_services.length, scope.excluded.old_trips)}</li>
+      {/if}
+      {#if scope.excluded?.new_services?.length}
+        <li>{tt("fo_scope_excluded_new", scope.excluded.new_services.length, scope.excluded.new_trips)}</li>
+      {/if}
+    </ul>
+  </div>
 {/if}
 
 <h3>{tt("fo_files")}</h3>
@@ -198,4 +229,10 @@
   .special-list { margin: 0.2rem 0 0.8rem 1.2rem; padding: 0; }
   .special-list li { margin: 0.15rem 0; }
   .special-list li.quiet { color: var(--fg-soft); }
+  .scope-note {
+    border-left: 4px solid var(--fg-soft);
+    padding: 0.3rem 0.8rem; margin: 0.5rem 0 0.8rem;
+  }
+  .scope-note p { margin: 0 0 0.2rem; }
+  .scope-note ul { margin: 0 0 0.2rem 1.2rem; padding: 0; }
 </style>

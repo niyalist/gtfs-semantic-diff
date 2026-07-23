@@ -150,21 +150,21 @@ def _exception_dates(
     return added, removed
 
 
-def _effective_day_stats(
+def effective_date_list(
     flags: tuple[bool, ...],
     start_text: str,
     end_text: str,
     added: set[str],
     removed: set[str],
     feed_window: tuple[str, str] | None,
-) -> tuple[int, int] | None:
-    """(実効運行日数, フラグ該当日数) を返す。どちらもフィード有効期間で
-    クリップした期間内で数える。期間が解析できない場合は None (→ フラグ分類)。
+) -> tuple[list[str], int] | None:
+    """(実効運行日リスト (YYYYMMDD 昇順), フラグ該当日数) を返す。
 
+    どちらもフィード有効期間でクリップした期間内で数える。期間が解析
+    できない場合は None (→ フラグ分類)。
     - フラグ該当日数 = 期間×曜日フラグの日数 (削除を引く前)
-    - 実効運行日数 = フラグ該当日 − calendar_dates 削除 + 追加
-    密度 (実効/フラグ該当) が判定軸: 祝日専用 service (PRT 型) は 1/17≒0.06、
-    期間分割の正規ダイヤ (STM 四半期・桑名同居の残存窓) は 0.9〜1.0。"""
+    - 実効運行日 = フラグ該当日 − calendar_dates 削除 + 追加
+    SD1 の分類 (密度判定) と SD3 の表示 (特定日の具体日付) が共用する。"""
     start = _parse_date(start_text)
     end = _parse_date(end_text)
     if start is None or end is None:
@@ -178,14 +178,15 @@ def _effective_day_stats(
         if whi is not None:
             hi = min(hi, whi)
     flag_days = 0
-    effective = 0
+    dates: list[str] = []
     d = lo
     one = datetime.timedelta(days=1)
     while d <= hi:
         if flags[d.weekday()]:
             flag_days += 1
-            if d.strftime("%Y%m%d") not in removed:
-                effective += 1
+            text = d.strftime("%Y%m%d")
+            if text not in removed:
+                dates.append(text)
         d += one
     for text in added:
         ad = _parse_date(text)
@@ -196,8 +197,26 @@ def _effective_day_stats(
         # 期間×フラグで数えた日と重複させない
         if lo <= ad <= hi and flags[ad.weekday()]:
             continue
-        effective += 1
-    return effective, flag_days
+        dates.append(text)
+    return sorted(dates), flag_days
+
+
+def _effective_day_stats(
+    flags: tuple[bool, ...],
+    start_text: str,
+    end_text: str,
+    added: set[str],
+    removed: set[str],
+    feed_window: tuple[str, str] | None,
+) -> tuple[int, int] | None:
+    """(実効運行日数, フラグ該当日数)。密度 (実効/フラグ該当) が SD1 の判定軸:
+    祝日専用 service (PRT 型) は 1/17≒0.06、期間分割の正規ダイヤ
+    (STM 四半期・桑名同居の残存窓) は 0.9〜1.0。"""
+    result = effective_date_list(flags, start_text, end_text, added, removed, feed_window)
+    if result is None:
+        return None
+    dates, flag_days = result
+    return len(dates), flag_days
 
 
 def normalize_day_types(

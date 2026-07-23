@@ -13,6 +13,11 @@ short_service_max_days = 10
 # 正規ダイヤ (STM 四半期等、実測 0.9〜1.0) は落とさない (service_days.md §2.1)
 min_flag_day_ratio = 0.5
 
+[report]
+# SD3: 第1部「特定日・運行日なしの内訳」に載せる実効運行日リストの上限件数
+# (超過分は truncated=true で件数のみ)
+special_dates_list_max = 30
+
 [events.windows]
 # SD2 (窓内区間対比較): 期限切れ/持ち越し世代の service を比較対象外にする
 # 条件のひとつ「路線 (family ブロック) の後継カバー率」の下限。1.0 = 全路線に

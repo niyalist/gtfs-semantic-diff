@@ -42,7 +42,7 @@ def build_bundle(
     # 第1部 (フィード全体) と第4部 (その他) はスナップショット・RawDiff を
     # 素材にするためここで付与する (presentation.py は events/identity/delta のみ)
     presentation["feed_overview"] = _feed_overview(
-        old, new, event_set, rawdiffs, trip_delta
+        old, new, event_set, rawdiffs, trip_delta, config
     )
     # V5: 全イベントの表示先 (レポートのどの部に現れるか) とレポート被覆率
     presentation["coverage"] = _coverage(event_set)
@@ -89,7 +89,7 @@ def build_bundle(
 _PART1_EVENT_TYPES = frozenset({
     "DAYTYPE_RESTRUCTURED", "HOLIDAY_EXCEPTION_CHANGED", "SEASONAL_SERVICE_CHANGED",
     "FEED_VALIDITY_CHANGED", "AGENCY_INFO_CHANGED", "TRANSLATION_CHANGED",
-    "FARE_CHANGED", "DEMAND_RESPONSIVE_CHANGE",
+    "FARE_CHANGED", "DEMAND_RESPONSIVE_CHANGE", "GENERATION_SCOPE",
 })
 
 
@@ -136,7 +136,7 @@ def _coverage(event_set) -> dict:
     }
 
 
-def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
+def _feed_overview(old, new, event_set, rawdiffs, trip_delta, config: Config) -> dict:
     """4部構成レポートの第1部・第4部ビュー。
 
     - files: txt ファイルごとの新旧対応表 (有無・行数・RawDiff 内訳)
@@ -196,8 +196,8 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
     # 「その全日付を他 service が exception_type=2 で運休しているか」で
     # 置き換え型 (年末年始ダイヤ等) と追加型 (臨時便) を見分ける
     special_days = {
-        "old": _special_day_services(old),
-        "new": _special_day_services(new),
+        "old": _special_day_services(old, config),
+        "new": _special_day_services(new, config),
     }
 
     # フィード級イベント (第1部) — 表示はビューアが catalog の表示名で行う
@@ -227,24 +227,34 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta) -> dict:
         "day_types": day_types,
         "special_days": special_days,
         "meta_events": meta_events,
+        # SD2: 同梱世代の比較範囲 (単一世代比較では None)。第1部に注記を出す
+        "comparison_scope": event_set.context.get("comparison_scope"),
         "others": [
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
     }
 
 
-def _special_day_services(snapshot) -> list[dict]:
-    """特定日 (irregular) / 運行日なし (inactive) service の内訳 (M10)。
+def _special_day_services(snapshot, config: Config) -> list[dict]:
+    """特定日 (irregular) / 運行日なし (inactive) service の内訳 (M10 → SD3)。
 
+    SD3: 表示の基礎を「calendar_dates の追加日」から**実効運行日集合**
+    (期間×フラグ − 削除 + 追加、フィード有効期間でクリップ) に置き換える —
+    SD1 で「フラグ+大量削除」型の特定日 (PRT の祝日専用 service) が
+    増えたため。具体日付リスト date_list を `[report]
+    special_dates_list_max` 件まで持ち、viewer が「運行日: 7/4」等と表示する。
     replaces_regular: この service の全運行日を、他の service が
     exception_type=2 で運休している (= 通常ダイヤの置き換え。年末年始等)。
     """
+    from ..load.day_types import _CALENDAR_DAY_COLUMNS, effective_date_list
+
     specials = [
         (sid, dt) for sid, dt in sorted(snapshot.day_types.items())
         if dt in ("irregular", "inactive")
     ]
     if not specials:
         return []
+    list_max = config.get("report", "special_dates_list_max", default=30)
     trips = snapshot.table("trips")
     trip_counts: dict[str, int] = {}
     if trips is not None:
@@ -263,11 +273,44 @@ def _special_day_services(snapshot) -> list[dict]:
             elif et == "2":
                 removed_dates.setdefault(sid, set()).add(date)
 
+    # フラグ+期間を持つ service の実効日 (SD1 と同じ定義。窓は feed_info 等)
+    from ..events.windows import snapshot_window
+
+    window = snapshot_window(snapshot)
+    window_text = window.as_text() if window is not None else None
+    flag_rows: dict[str, tuple[tuple[bool, ...], str, str]] = {}
+    cal = snapshot.table("calendar")
+    if cal is not None and not cal.empty and (
+        set(_CALENDAR_DAY_COLUMNS) | {"start_date", "end_date"} <= set(cal.columns)
+    ):
+        for _, row in cal.iterrows():
+            flags = tuple(
+                str(row[c]).strip() == "1" for c in _CALENDAR_DAY_COLUMNS
+            )
+            if any(flags):
+                flag_rows[str(row.get("service_id", ""))] = (
+                    flags, str(row["start_date"]), str(row["end_date"])
+                )
+
     result = []
     for sid, dt in specials:
         if not trip_counts.get(sid):
             continue  # 便が無い定義だけの service は出さない
-        dates = sorted(added_dates.get(sid, []))
+        if sid in flag_rows:
+            flags, start, end = flag_rows[sid]
+            computed = effective_date_list(
+                flags, start, end,
+                set(added_dates.get(sid, [])), removed_dates.get(sid, set()),
+                window_text,
+            )
+            dates = computed[0] if computed is not None else sorted(
+                added_dates.get(sid, [])
+            )
+        else:
+            removed = removed_dates.get(sid, set())
+            dates = sorted(
+                d for d in set(added_dates.get(sid, [])) if d not in removed
+            )
         removed_by_others = set().union(
             *(v for k, v in removed_dates.items() if k != sid)
         ) if removed_dates else set()
@@ -278,6 +321,8 @@ def _special_day_services(snapshot) -> list[dict]:
             "dates": len(dates),
             "first_date": dates[0] if dates else None,
             "last_date": dates[-1] if dates else None,
+            "date_list": dates[:list_max],
+            "truncated": len(dates) > list_max,
             "replaces_regular": bool(dates) and all(
                 d in removed_by_others for d in dates
             ),

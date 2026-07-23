@@ -22,9 +22,19 @@ const DICT = {
     day_added_to: (base) => ` (${base}に追加)`,
     fo_special_title: "特定日・運行日なしの内訳",
     fo_special_dates: (n, a, b) => `${n}日間 (${a}〜${b})`,
+    fo_special_rundates: (list, n, extra) =>
+      `運行日: ${list}${extra ? ` ほか${extra}` : ""}${n > 1 ? ` (計${n}日)` : ""}`,
     fo_special_replaces: "期間中は通常ダイヤ運休 (置き換え)",
     fo_special_extra: "通常ダイヤに追加",
     fo_special_inactive: "運行日の定義なし (休止中の枠)",
+    fo_scope_title: "同梱世代と比較範囲",
+    fo_scope_window: (a, b) => `比較対象期間: ${a}〜${b} (両世代の共通有効期間)`,
+    fo_scope_primary: (p) => `比較したダイヤ期間: ${p}`,
+    fo_scope_identical: (p) => `運行内容が同一の期間 (変化なし): ${p}`,
+    fo_scope_excluded_old: (s, t) =>
+      `旧側の比較対象外: ${s} service・${t}便 (期限切れ・持ち越し世代)`,
+    fo_scope_excluded_new: (s, t) =>
+      `新側の比較対象外: ${s} service・${t}便 (期限切れ・持ち越し世代)`,
     evidence: "根拠データ (RawDiff)", quantification: "数値詳細",
     timetable: "発車時刻表 (始発停留所基準)", map: "地図",
     pattern_change: "停車パターン変化", old: "旧", new: "新",
@@ -175,9 +185,19 @@ const DICT = {
     day_added_to: (base) => ` (extra on ${base})`,
     fo_special_title: "Irregular / inactive services",
     fo_special_dates: (n, a, b) => `${n} day(s) (${a}–${b})`,
+    fo_special_rundates: (list, n, extra) =>
+      `runs on ${list}${extra ? ` +${extra} more` : ""}${n > 1 ? ` (${n} days)` : ""}`,
     fo_special_replaces: "replaces regular timetable on those dates",
     fo_special_extra: "in addition to the regular timetable",
     fo_special_inactive: "no service days defined (dormant)",
+    fo_scope_title: "Bundled generations and comparison scope",
+    fo_scope_window: (a, b) => `Compared period: ${a}–${b} (overlap of both feeds)`,
+    fo_scope_primary: (p) => `Compared schedule period: ${p}`,
+    fo_scope_identical: (p) => `Periods with identical service (no change): ${p}`,
+    fo_scope_excluded_old: (s, t) =>
+      `Out of scope on the old side: ${s} service(s), ${t} trip(s) (expired / carried-over generation)`,
+    fo_scope_excluded_new: (s, t) =>
+      `Out of scope on the new side: ${s} service(s), ${t} trip(s) (expired / carried-over generation)`,
     evidence: "Evidence (raw diffs)", quantification: "Quantification",
     timetable: "Departures (at first stop)", map: "Map",
     pattern_change: "Stop pattern change", old: "old", new: "new",
@@ -340,4 +360,31 @@ export function eventName(catalog, type, language) {
   const entry = catalog?.[type];
   if (!entry) return type;
   return language === "en" ? entry.en : entry.ja;
+}
+
+// SD3: YYYYMMDD 昇順リストを連続日のラン (7/21、8/11〜8/16) に畳んで表示する。
+// maxRuns を超えた分は more (件数) で返し、呼び出し側が「ほか N」を付ける
+export function formatDateRuns(dates, language, maxRuns = 8) {
+  const toTime = (s) =>
+    new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)).getTime();
+  const runs = [];
+  let start = null;
+  let prev = null;
+  for (const s of dates ?? []) {
+    if (prev !== null && toTime(s) - toTime(prev) === 86400000) {
+      prev = s;
+      continue;
+    }
+    if (start !== null) runs.push([start, prev]);
+    start = prev = s;
+  }
+  if (start !== null) runs.push([start, prev]);
+  const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
+  const dash = language === "en" ? "–" : "〜";
+  const sep = language === "en" ? ", " : "、";
+  const text = runs
+    .slice(0, maxRuns)
+    .map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`))
+    .join(sep);
+  return { text, more: Math.max(0, runs.length - maxRuns) };
 }
