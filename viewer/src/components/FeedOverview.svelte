@@ -1,5 +1,6 @@
 <script>
   import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
+  import CalendarView from "./CalendarView.svelte";
 
   export let overview; // presentation.feed_overview
   export let feed = {}; // meta.feed (期間)
@@ -206,6 +207,14 @@
       {/each}
     </ul>
   {/if}
+{/if}
+
+{#if overview.calendar_view?.old || overview.calendar_view?.new}
+  <!-- SD4: 運行日カレンダー (新旧並置)。記号第1チャネル (色弱原則) -->
+  <h3>{tt("cal_title")}</h3>
+  <p class="meta">{tt("cal_legend")}</p>
+  <CalendarView view={overview.calendar_view.old} title={tt("old_gen")} />
+  <CalendarView view={overview.calendar_view.new} title={tt("new_gen")} />
 {/if}
 
 <h3>{tt("fo_meta_events")}</h3>

@@ -47,7 +47,12 @@ HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・
 ビューアは viewer/ (Svelte 4 + Vite)、ビルド成果物を
 src/gtfs_semantic_diff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
 **現在の作業トラック: 国際化 (roadmap I トラック、設計: docs/design/i18n.md)。
-I1 (国際検証データセット構築) から。Web 公開 (W3) は全フェーズ完了・運用中。**
+I1 (国際検証データセット構築) 完了。Web 公開 (W3) は全フェーズ完了・運用中。**
+SD トラック (運行日モデル精緻化 SD1〜SD4) は 2026-07-23 完了 —
+設計: docs/design/service_days.md (実効運行日集合・窓内区間対比較・
+GENERATION_SCOPE・特定日の具体日付・運行日カレンダー)。世代同梱フィード
+(bus-vision 系は改正のたび約1週間流通) の「全便半減/倍増」誤説明を解消。
+ラベル語彙と便対応 v1 規則は不変、単一世代比較は現行挙動に退化。
 V トラック (認知単位のレポート再構築 V1〜V5) は 2026-07-07 に完了:
 レポートは4部構成 (①フィード全体 ②停留所 ③路線毎 ④その他) + 曜日タブ +
 検証モード=網羅性ビュー (レポート被覆率・ファイル別生差分)。要件は

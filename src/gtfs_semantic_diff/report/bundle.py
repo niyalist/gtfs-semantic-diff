@@ -229,6 +229,11 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta, config: Config) ->
         "meta_events": meta_events,
         # SD2: 同梱世代の比較範囲 (単一世代比較では None)。第1部に注記を出す
         "comparison_scope": event_set.context.get("comparison_scope"),
+        # SD4: 運行日カレンダービュー (新旧並置)。長期窓は None
+        "calendar_view": {
+            "old": _calendar_view(old, config),
+            "new": _calendar_view(new, config),
+        },
         "others": [
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
@@ -328,6 +333,122 @@ def _special_day_services(snapshot, config: Config) -> list[dict]:
             ),
         })
     return result
+
+
+def _calendar_view(snapshot, config: Config) -> dict | None:
+    """SD4: 運行日カレンダービューの素材 (1スナップショット分)。
+
+    日付ごとに「その日実際に走る世界」を実効運行日集合から引く:
+    - sym: 走っている週次レギュラー型のラベル (曜日集合がその日を含むもの優先)。
+      走るものがなければ none
+    - swap: 週次型は走っているが、その日の曜日を含まない (= 振替。桑名の
+      祝日「平日 service 削除+日曜 service 追加」がここに出る)
+    - special: 特定日 (irregular) service がその日運行
+    - period: 期間 (calendar 端点で区切った区間) の通し番号 — 世代・季節の
+      切れ目を背景とし、記号を第1チャネルに保つ (色弱原則)
+    計算はすべて SD1/SD2 と同じ実効日定義 (決定的)。
+    """
+    from ..events.windows import single_snapshot_intervals
+    from ..load.day_types import (
+        _CALENDAR_DAY_COLUMNS,
+        _exception_dates,
+        day_set_of,
+        effective_date_list,
+    )
+
+    window, intervals = single_snapshot_intervals(snapshot)
+    if window is None:
+        return None
+    max_days = config.get("report", "calendar_view_max_days", default=550)
+    if window.days() > max_days:
+        return None  # 国家規模の長期窓等は対象外 (表示が成立しない)
+
+    trips = snapshot.table("trips")
+    services_with_trips: set[str] = set()
+    if trips is not None and not trips.empty:
+        services_with_trips = {str(s) for s in trips["service_id"]}
+
+    added_map, removed_map = _exception_dates(snapshot.table("calendar_dates"))
+    window_text = window.as_text()
+
+    # service ごとの実効日 → 日付ごとの「アクティブな day_type 集合」
+    by_date: dict[str, set[str]] = {}
+
+    def add_dates(sid: str, dates: list[str]) -> None:
+        dt = snapshot.day_types.get(sid, "irregular")
+        for d in dates:
+            by_date.setdefault(d, set()).add(dt)
+
+    cal = snapshot.table("calendar")
+    flag_services: set[str] = set()
+    if cal is not None and not cal.empty and (
+        set(_CALENDAR_DAY_COLUMNS) | {"start_date", "end_date"} <= set(cal.columns)
+    ):
+        for _, row in cal.iterrows():
+            sid = str(row.get("service_id", ""))
+            if sid not in services_with_trips:
+                continue
+            flags = tuple(
+                str(row[c]).strip() == "1" for c in _CALENDAR_DAY_COLUMNS
+            )
+            if not any(flags):
+                continue
+            flag_services.add(sid)
+            computed = effective_date_list(
+                flags, str(row["start_date"]), str(row["end_date"]),
+                added_map.get(sid, set()), removed_map.get(sid, set()),
+                window_text,
+            )
+            if computed is not None:
+                add_dates(sid, computed[0])
+    for sid, dates in added_map.items():
+        if sid in flag_services or sid not in services_with_trips:
+            continue
+        removed = removed_map.get(sid, set())
+        lo, hi = window_text
+        add_dates(sid, sorted(
+            d for d in dates if d not in removed and lo <= d <= hi
+        ))
+
+    # 日付セルの決定
+    days = []
+    d = window.start
+    one = datetime.timedelta(days=1)
+    period_starts = {iv.start: i for i, iv in enumerate(intervals)}
+    period = 0
+    while d <= window.end:
+        text = d.strftime("%Y%m%d")
+        period = period_starts.get(d, period)
+        active = by_date.get(text, set())
+        regular = [t for t in active if t not in ("irregular", "inactive")]
+        matching = [
+            t for t in regular
+            if (day_set_of(t) or set()) and d.weekday() in day_set_of(t)
+        ]
+        if matching:
+            # 広い区分 (曜日集合が大きいもの) を代表にする (平日 > dow_*)
+            sym = max(matching, key=lambda t: len(day_set_of(t) or ()))
+            swap = False
+        elif regular:
+            sym = max(regular, key=lambda t: len(day_set_of(t) or ()))
+            swap = True  # 曜日と異なるダイヤで運行 (振替)
+        else:
+            sym = None
+            swap = False
+        days.append({
+            "date": text,
+            "sym": sym,
+            "swap": swap,
+            "special": "irregular" in active,
+            "period": period,
+        })
+        d += one
+
+    return {
+        "window": list(window_text),
+        "periods": [list(iv.as_text()) for iv in intervals],
+        "days": days,
+    }
 
 
 def _agency_names(snapshot) -> list[str]:
