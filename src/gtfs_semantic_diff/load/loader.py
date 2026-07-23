@@ -70,6 +70,26 @@ def _collect_txt_from_dir(path: Path) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(path.glob("*.txt"))}
 
 
+def _feed_window(feed_info: pd.DataFrame | None, meta: SnapshotMeta) -> tuple[str, str] | None:
+    """フィード有効期間 (YYYYMMDD, YYYYMMDD)。day_type の実効日クリップに使う (SD1)。
+
+    feed_info.txt の feed_start_date/feed_end_date を第1候補、リポジトリ世代
+    メタ (from_date/to_date) を第2候補とする。どちらも無ければ None (クリップなし)。
+    """
+    if feed_info is not None and not feed_info.empty and (
+        {"feed_start_date", "feed_end_date"} <= set(feed_info.columns)
+    ):
+        start = str(feed_info.iloc[0]["feed_start_date"]).strip()
+        end = str(feed_info.iloc[0]["feed_end_date"]).strip()
+        if len(start) == 8 and len(end) == 8 and start.isdigit() and end.isdigit():
+            return start, end
+    start = (meta.from_date or "").replace("-", "")
+    end = (meta.to_date or "").replace("-", "")
+    if len(start) == 8 and len(end) == 8 and start.isdigit() and end.isdigit():
+        return start, end
+    return None
+
+
 def load_snapshot(
     path: str | Path,
     config: Config | None = None,
@@ -110,6 +130,10 @@ def load_snapshot(
         ),
         short_service_max_days=config.get(
             "load", "day_types", "short_service_max_days", default=10
+        ),
+        feed_window=_feed_window(tables.get("feed_info"), meta),
+        min_flag_day_ratio=config.get(
+            "load", "day_types", "min_flag_day_ratio", default=0.5
         ),
     )
 

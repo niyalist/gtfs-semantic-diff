@@ -7,6 +7,11 @@ calendar_dates_majority = 0.8
 # 運行日数がこれ以下の calendar_dates サービスは曜日分布に関わらず「特定日」
 # (年末年始・お盆等の短期間専用ダイヤが平日等に混ざるのを防ぐ)
 short_service_max_days = 10
+# SD1: 曜日フラグを持つ service の実効密度 (実効運行日 / 期間×フラグ該当日)
+# がこれ未満なら「特定日」に落とす。米国流の祝日専用 service (フラグ日の大半を
+# calendar_dates で削除し祝日だけ残す型、実測 0.06) を検出する。期間分割された
+# 正規ダイヤ (STM 四半期等、実測 0.9〜1.0) は落とさない (service_days.md §2.1)
+min_flag_day_ratio = 0.5
 
 [identity.stop_clustering]
 intra_generation_radius_m = 100   # 世代内クラスタリングの近接半径

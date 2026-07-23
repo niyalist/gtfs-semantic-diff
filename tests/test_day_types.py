@@ -109,6 +109,82 @@ def test_zero_flag_service_without_dates_is_inactive():
     assert normalize_day_types(cal, None, 0.8) == {"Z2": "inactive"}
 
 
+# ---- SD1: 実効運行日ベースの分類 (docs/design/service_days.md §2.1) ----
+
+
+def calendar_df_period(rows: dict[str, tuple[str, str, str]]) -> pd.DataFrame:
+    """service_id → (フラグ7桁, start_date, end_date) の calendar DataFrame。"""
+    records = []
+    for service_id, (flags, start, end) in rows.items():
+        rec = {"service_id": service_id, "start_date": start, "end_date": end}
+        rec.update({col: flag for col, flag in zip(DAY_COLS, flags)})
+        records.append(rec)
+    return pd.DataFrame(records, dtype=str)
+
+
+def test_sd1_holiday_only_service_is_irregular():
+    # T1 (PRT 型): 土曜フラグ + 通常土曜を全削除 + 祝日1日だけ運行 → irregular。
+    # 通常土曜 service は影響を受けず saturday のまま
+    cal = calendar_df_period({
+        "HOL": ("0000010", "20260628", "20261024"),
+        "SAT": ("0000010", "20260628", "20261024"),
+    })
+    sats = ["20260704", "20260711", "20260718", "20260725", "20260801", "20260808",
+            "20260815", "20260822", "20260829", "20260905", "20260912", "20260919",
+            "20260926", "20261003", "20261010", "20261017", "20261024"]
+    rows = [("HOL", d, "2") for d in sats if d != "20260704"]
+    rows += [("HOL", "20260704", "1"), ("SAT", "20260704", "2")]
+    result = normalize_day_types(cal, dates_df(rows), 0.8)
+    assert result == {"HOL": "irregular", "SAT": "saturday"}
+
+
+def test_sd1_expired_service_is_inactive():
+    # T6 (PRT 型): 期間がフィード有効期間の丸ごと外 → inactive
+    cal = calendar_df_period({
+        "OLD": ("1111100", "20251019", "20260221"),
+        "CUR": ("1111100", "20260628", "20261014"),
+    })
+    result = normalize_day_types(
+        cal, None, 0.8, feed_window=("20260628", "20261014"))
+    assert result == {"OLD": "inactive", "CUR": "weekday"}
+
+
+def test_sd1_all_days_removed_is_inactive():
+    # 期間×フラグの全日が calendar_dates で削除 → inactive
+    cal = calendar_df_period({"X": ("0000010", "20260704", "20260718")})
+    rows = [("X", d, "2") for d in ["20260704", "20260711", "20260718"]]
+    assert normalize_day_types(cal, dates_df(rows), 0.8) == {"X": "inactive"}
+
+
+def test_sd1_normal_service_unchanged():
+    # 回帰: 実効日が十分ある通常 service は従来どおり (削除が少しあっても)
+    cal = calendar_df_period({
+        "WD": ("1111100", "20260401", "20261231"),
+        "MWF": ("1010100", "20260401", "20261231"),
+    })
+    rows = [("WD", "20260720", "2"), ("WD", "20260811", "2")]
+    result = normalize_day_types(cal, dates_df(rows), 0.8)
+    assert result == {"WD": "weekday", "MWF": "dow_1010100"}
+
+
+def test_sd1_short_period_regular_service_keeps_type():
+    # 期間分割された正規ダイヤ (STM 四半期・同居世代の残存窓): 日数は少なくても
+    # 密度 1.0 → 型を維持する (日数閾値でなく密度判定である理由)
+    cal = calendar_df_period({
+        "SAT6": ("0000010", "20260601", "20260710"),   # 土曜6回・削除なし
+        "SAT10": ("0000010", "20260110", "20260321"),  # 土曜11回・祝日1回削除
+    })
+    rows = [("SAT10", "20260321", "2")]
+    result = normalize_day_types(cal, dates_df(rows), 0.8)
+    assert result == {"SAT6": "saturday", "SAT10": "saturday"}
+
+
+def test_sd1_no_period_columns_falls_back_to_flags():
+    # calendar に start/end が無ければ実効日判定はスキップ (従来挙動)
+    cal = calendar_df({"WD": "1111100"})
+    assert normalize_day_types(cal, None, 0.8) == {"WD": "weekday"}
+
+
 def test_day_set_of():
     from gtfs_semantic_diff.load.day_types import day_set_of
 

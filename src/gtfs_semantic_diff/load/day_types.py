@@ -13,7 +13,13 @@ service_id ごとに運行曜日の型を分類し、世代間で service_id が
                  コミュバスの通学日・診療日運行等 — 完全に規則的な週次運行であり
                  「特定日」ではない (43フィード実測で旧 irregular の便数の83%)
 - irregular      特定日運行 (calendar_dates のみで日数が少ない、または
-                 曜日多数決に届かない)。年末年始ダイヤ・連休臨時等
+                 曜日多数決に届かない)。年末年始ダイヤ・連休臨時等。
+                 SD1 (2026-07-23) から、曜日フラグを持つ service でも
+                 実効運行日 (期間×フラグ − 削除 + 追加、フィード有効期間で
+                 クリップ) が short_service_max_days 以下ならここに落ちる —
+                 米国流の祝日専用 service (土曜フラグ+通常土曜を全削除で
+                 「祝日1日だけ」を表す) が通常ダイヤに合算されるのを防ぐ
+                 (docs/design/service_days.md T1、intl_feeds.md IN-8)
 - inactive       運行日なし (全フラグ0・追加運行日なし = 休止中の定義枠)
 
 制約 (M0 時点): 日本の国民の祝日カレンダーは参照しない。祝日が平日に
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections import defaultdict
 
 import pandas as pd
 
@@ -119,32 +126,137 @@ def _classify_dates(dates: list[str], majority: float, short_max_days: int) -> s
     return DAY_TYPE_IRREGULAR
 
 
+def _parse_date(text: str) -> datetime.date | None:
+    try:
+        return datetime.datetime.strptime(text.strip(), "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def _exception_dates(
+    calendar_dates: pd.DataFrame | None,
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """service_id → 追加日集合 / 削除日集合 (YYYYMMDD 文字列)。"""
+    added: dict[str, set[str]] = defaultdict(set)
+    removed: dict[str, set[str]] = defaultdict(set)
+    if calendar_dates is not None and not calendar_dates.empty and (
+        {"service_id", "date", "exception_type"} <= set(calendar_dates.columns)
+    ):
+        for _, row in calendar_dates.iterrows():
+            etype = str(row["exception_type"]).strip()
+            target = added if etype == "1" else removed if etype == "2" else None
+            if target is not None:
+                target[str(row["service_id"])].add(str(row["date"]).strip())
+    return added, removed
+
+
+def _effective_day_stats(
+    flags: tuple[bool, ...],
+    start_text: str,
+    end_text: str,
+    added: set[str],
+    removed: set[str],
+    feed_window: tuple[str, str] | None,
+) -> tuple[int, int] | None:
+    """(実効運行日数, フラグ該当日数) を返す。どちらもフィード有効期間で
+    クリップした期間内で数える。期間が解析できない場合は None (→ フラグ分類)。
+
+    - フラグ該当日数 = 期間×曜日フラグの日数 (削除を引く前)
+    - 実効運行日数 = フラグ該当日 − calendar_dates 削除 + 追加
+    密度 (実効/フラグ該当) が判定軸: 祝日専用 service (PRT 型) は 1/17≒0.06、
+    期間分割の正規ダイヤ (STM 四半期・桑名同居の残存窓) は 0.9〜1.0。"""
+    start = _parse_date(start_text)
+    end = _parse_date(end_text)
+    if start is None or end is None:
+        return None
+    lo, hi = start, end
+    wlo = whi = None
+    if feed_window is not None:
+        wlo, whi = _parse_date(feed_window[0]), _parse_date(feed_window[1])
+        if wlo is not None:
+            lo = max(lo, wlo)
+        if whi is not None:
+            hi = min(hi, whi)
+    flag_days = 0
+    effective = 0
+    d = lo
+    one = datetime.timedelta(days=1)
+    while d <= hi:
+        if flags[d.weekday()]:
+            flag_days += 1
+            if d.strftime("%Y%m%d") not in removed:
+                effective += 1
+        d += one
+    for text in added:
+        ad = _parse_date(text)
+        if ad is None or text in removed:
+            continue
+        if (wlo is not None and ad < wlo) or (whi is not None and ad > whi):
+            continue
+        # 期間×フラグで数えた日と重複させない
+        if lo <= ad <= hi and flags[ad.weekday()]:
+            continue
+        effective += 1
+    return effective, flag_days
+
+
 def normalize_day_types(
     calendar: pd.DataFrame | None,
     calendar_dates: pd.DataFrame | None,
     calendar_dates_majority: float,
     short_service_max_days: int = 10,
+    feed_window: tuple[str, str] | None = None,
+    min_flag_day_ratio: float = 0.5,
 ) -> dict[str, str]:
     """service_id → day_type の辞書を返す。
 
-    - calendar.txt に曜日フラグを持つ service はフラグで判定。
+    - calendar.txt に曜日フラグを持つ service はフラグで判定。ただし SD1:
+      start_date/end_date があれば実効運行日 (期間×フラグ − calendar_dates
+      削除 + 追加、feed_window でクリップ) を数え、
+      (a) 実効日ゼロ → inactive (期限切れ service 等)、
+      (b) 密度 (実効日/フラグ該当日) が min_flag_day_ratio 未満 → irregular
+          (米国流の祝日専用 service: フラグ日の大半を削除して特定日だけ残す型)。
+      日数でなく密度で判定するのは、期間分割された正規ダイヤ (STM の四半期
+      period、同居世代の残存窓) を誤って特定日に落とさないため — それらは
+      日数が少なくても密度 0.9〜1.0。
     - 全フラグ 0 または calendar.txt に現れない service は、
       calendar_dates.txt の追加運行日 (exception_type=1) の曜日分布で判定。
+    - feed_window は (YYYYMMDD, YYYYMMDD)。feed_info またはリポジトリ世代
+      メタから。None ならクリップしない。
     """
     result: dict[str, str] = {}
     zero_flag_services: set[str] = set()
+    added_map, removed_map = _exception_dates(calendar_dates)
 
     if calendar is not None and not calendar.empty:
         missing = [c for c in _CALENDAR_DAY_COLUMNS if c not in calendar.columns]
         if missing:
             logger.warning("calendar.txt に曜日カラムがありません: %s", missing)
         else:
+            has_period = {"start_date", "end_date"} <= set(calendar.columns)
             for _, row in calendar.iterrows():
                 service_id = row.get("service_id", "")
                 flags = tuple(str(row[c]).strip() == "1" for c in _CALENDAR_DAY_COLUMNS)
                 if not any(flags):
                     zero_flag_services.add(service_id)
                     continue
+                if has_period:
+                    stats = _effective_day_stats(
+                        flags,
+                        str(row["start_date"]),
+                        str(row["end_date"]),
+                        added_map.get(service_id, set()),
+                        removed_map.get(service_id, set()),
+                        feed_window,
+                    )
+                    if stats is not None:
+                        effective, flag_days = stats
+                        if effective == 0:
+                            result[service_id] = DAY_TYPE_INACTIVE
+                            continue
+                        if flag_days > 0 and effective / flag_days < min_flag_day_ratio:
+                            result[service_id] = DAY_TYPE_IRREGULAR
+                            continue
                 result[service_id] = _classify_day_flags(flags)
 
     if calendar_dates is not None and not calendar_dates.empty:
