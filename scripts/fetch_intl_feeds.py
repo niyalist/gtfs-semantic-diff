@@ -46,6 +46,13 @@ REGISTRY: dict[str, dict] = {
         "new": wb("20251014102853",
                   "https://romamobilita.it/sites/default/files/rome_static_gtfs.zip"),
     },
+    "prt": {  # 米中規模都市 (ピッツバーグ)。バス+LRT+インクライン統合。固定 URL 上書き型の代表
+        # old: 2602-BusRailCombined-Clever (2026-02-22〜06-20)
+        # new: Merged_Clever_2606_2 (2026-06-28〜10-14)。配布 URL は上書き更新のため
+        #      2026-07-23 に SPN で保存して固定 (sha256 は台帳 intl_feeds.md に記録)
+        "old": wb("20260225125730", "https://www.rideprt.org/developerresources/GTFS.zip"),
+        "new": wb("20260723082859", "https://www.rideprt.org/developerresources/GTFS.zip"),
+    },
     "swiss": {  # 国家規模 (中) + 多モード鉄道 (公式の日付付き版)
         "old": "https://data.opentransportdata.swiss/dataset/3d2c18f9-9ef1-463f-a249-5c67604efd74/resource/0d67ae64-0364-49ae-8c24-b58d331fe969/download/gtfs_fp2026_20251220.zip",
         "new": "https://data.opentransportdata.swiss/dataset/3d2c18f9-9ef1-463f-a249-5c67604efd74/resource/0e706449-d94f-4f38-9f81-b97ca2d9f04c/download/gtfs_fp2026_20260606.zip",
