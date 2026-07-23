@@ -86,7 +86,7 @@ stop_times 100万行規模なら 2.2GB / 134s — この規模までは Lambda 3
 | IN-5 | I4 | 未知ファイルの claiming ルール (MBTA multi_route_trips 等・TriMet stop_features) — 山交 pass_rules と同じバックログの国際版。transfers.txt (標準) のルールも未実装 |
 | IN-6 | 方針 | 国家規模アグリゲート (swiss/NL) は当面 Web 対象外と明文化。per-agency 分割前処理は将来構想 |
 | IN-7 | I4 (G5) | 地図タイルの国際化 (既知・最重要 UI 課題) |
-| IN-8 | I4 | **祝日専用 service の day_type 誤分類** (prt で発見、2026-07-23)。米国流の祝日表現 (曜日フラグは土曜のまま + calendar_dates で通常土曜を全削除し祝日1日だけ残す) が、フラグ優先の分類 (load/day_types.py `normalize_day_types` — フラグあり service は calendar_dates を見ない) で「土曜」になり、通常土曜 service と便数が合算される。実例: prt 新側 service 1 = 7/4 独立記念日のみ (16土曜削除)、service 3 = 通常土曜 — route 1/21 の土曜が 38→76 便の見かけ倍増 (時刻は完全一致・日付は互いに素 = 実際はどの日も 38 便)。月曜 38便も同型 (旧 = メモリアルデー 5/25 のみ、新 = レイバーデー 9/7 のみ)。方向性: 実効運行日 (フラグ×期間 − 削除 + 追加) を数え、`short_service_max_days` (config 済み・現行 10) 以下なら irregular (特定日) に落とす — 既存の特定日置き換え表示に自然に乗る |
+| IN-8 | I4 | **祝日専用 service の day_type 誤分類** (prt で発見、2026-07-23)。米国流の祝日表現 (曜日フラグは土曜のまま + calendar_dates で通常土曜を全削除し祝日1日だけ残す) が、フラグ優先の分類 (load/day_types.py `normalize_day_types` — フラグあり service は calendar_dates を見ない) で「土曜」になり、通常土曜 service と便数が合算される。実例: prt 新側 service 1 = 7/4 独立記念日のみ (16土曜削除)、service 3 = 通常土曜 — route 1/21 の土曜が 38→76 便の見かけ倍増 (時刻は完全一致・日付は互いに素 = 実際はどの日も 38 便)。月曜 38便も同型 (旧 = メモリアルデー 5/25 のみ、新 = レイバーデー 9/7 のみ)。方向性: 実効運行日 (フラグ×期間 − 削除 + 追加) を数え、`short_service_max_days` (config 済み・現行 10) 以下なら irregular (特定日) に落とす — 既存の特定日置き換え表示に自然に乗る。**日本にも同型あり — 類型整理と設計検討は docs/design/service_days.md** |
 
 ## HTML レポートの目視用生成 (2026-07-13)
 
