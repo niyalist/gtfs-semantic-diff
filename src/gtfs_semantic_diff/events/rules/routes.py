@@ -130,7 +130,8 @@ def extract(ctx: RuleContext) -> None:
         evidence = [
             d.rawdiff_id
             for rid in removed_rids + added_rids
-            for d in ctx.index.for_key("routes.txt", rid)
+            for fname in ("routes.txt", "routes_jp.txt")  # JP 付随行も同乗 (網羅性)
+            for d in ctx.index.for_key(fname, rid)
         ]
         # family 所属 trip の route_id 付け替え
         evidence += [

@@ -5,8 +5,21 @@ stop 同定 → route family (RENAMED を ADDED/DISCONTINUED より先に) →
 パターン照合 → 時刻集合比較 → メタデータ → ID churn。残差は pipeline が集計。
 """
 
-from . import calendars, frequency, metadata, patterns, routes, shapes, stops, technical
+from . import (
+    calendars,
+    frequency,
+    generations,
+    metadata,
+    patterns,
+    routes,
+    shapes,
+    stops,
+    technical,
+)
 
-CASCADE = [stops, routes, patterns, frequency, calendars, shapes, metadata, technical]
+CASCADE = [
+    stops, routes, patterns, frequency, calendars, shapes, metadata, technical,
+    generations,  # SD2: 同梱世代の受け皿 (最後尾 — 他ルールの残りだけを拾う)
+]
 
 __all__ = ["CASCADE"]

@@ -1,4 +1,4 @@
-# ChangeEvent オントロジー v0.2.2
+# ChangeEvent オントロジー v0.2.3
 
 ## イベントの構造
 
@@ -76,6 +76,7 @@ trip_id の連続性は一切仮定しない。時間帯ビン既定値: 5–7 /
 
 | type | 検出ルール概要 | severity |
 |---|---|---|
+| `GENERATION_SCOPE` | **同梱世代と比較範囲** (v0.2.3 = SD2)。世代同梱フィード (改正前後を1ファイルに同梱 — 桑名は改正のたび約1週間流通) の比較で、共通窓・窓内区間から比較対象 (primary 世代) を決め、期限切れ/持ち越し世代の行差分をここで説明する。比較窓・primary 期間・内容同一期間・除外 service/便数を quantification に持つ。桑名実測: これが無いと「全便半減/倍増」の誤説明が各279件出る (docs/verification/SD2_window_scope.md) | info |
 | `DAYTYPE_RESTRUCTURED` | 曜日区分の再編(例: 土曜ダイヤ廃止→休日へ統合)。calendar の正規化後に day_type 集合を比較 | major |
 | `HOLIDAY_EXCEPTION_CHANGED` | calendar_dates の例外差分(有効期間の重なりで正規化して比較) | info |
 | `SEASONAL_SERVICE_CHANGED` | 期間限定サービスの出現・消滅 | minor |

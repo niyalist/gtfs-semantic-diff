@@ -62,6 +62,7 @@ _DEFS = [
     ("PLATFORM_ADDED", "乗り場新設", "Platform added", "D", SEVERITY_INFO),
     ("PLATFORM_REMOVED", "乗り場廃止", "Platform removed", "D", SEVERITY_INFO),
     # E. 運行日・カレンダー
+    ("GENERATION_SCOPE", "同梱世代と比較範囲", "Bundled generations and comparison scope", "E", SEVERITY_INFO),
     ("DAYTYPE_RESTRUCTURED", "曜日ダイヤ区分再編", "Day-type structure changed", "E", SEVERITY_MAJOR),
     ("HOLIDAY_EXCEPTION_CHANGED", "祝日・特日運行の変更", "Holiday exceptions changed", "E", SEVERITY_INFO),
     ("SEASONAL_SERVICE_CHANGED", "期間限定運行の変更", "Seasonal service changed", "E", SEVERITY_MINOR),

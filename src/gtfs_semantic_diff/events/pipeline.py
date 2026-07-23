@@ -18,9 +18,199 @@ from .evidence import EvidenceIndex
 from .rules import CASCADE
 from .rules.base import RuleContext
 from .timebands import TimeBands
-from .tripdelta import build_trip_delta, collect_trips
+from .tripdelta import TripInfo, build_trip_delta, collect_trips
+from .windows import (
+    WindowScope,
+    comparison_units,
+    known_services,
+    superset_unit,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _regular_day_type(day_type: str | None) -> bool:
+    """週次レギュラー型 (平日/土曜/日祝/週末/毎日/dow_*) か。
+
+    特定日 (irregular)・運行日なし (inactive) は「特定日世界同士の比較」が
+    従来から成立しているため、窓の外にあっても比較対象から外さない
+    (名古屋の年次アーカイブペアで検証 — service_days.md §2.2)。"""
+    return day_type is not None and day_type not in ("irregular", "inactive")
+
+
+def _covered_enough(families: set[str], covered: set[str], coverage_min: float) -> bool:
+    """service の路線ブロックが後継側にどれだけカバーされているか (≥ 閾値)。
+
+    厳密包含 (1.0) を要求すると、改正時に family 名の対応が切れる再編
+    (伊勢市おかげバス「環状線 → 右回り/左回り」で M9 対応が名前一致の持ち越し
+    世代側に付く) で後継を見逃す。閾値は config `[events.windows]
+    carryover_coverage_min`。"""
+    if not families:
+        return False
+    return len(families & covered) / len(families) >= coverage_min
+
+
+def _resolve_window_scope(
+    old: GtfsSnapshot,
+    new: GtfsSnapshot,
+    old_trips: dict[str, TripInfo],
+    new_trips: dict[str, TripInfo],
+    old_family_block: dict[str, str],
+    new_family_block: dict[str, str],
+    coverage_min: float = 0.8,
+) -> WindowScope | None:
+    """SD2 (窓内区間対比較): 比較スコープを解決する。None = 全便比較 (退化)。
+
+    docs/design/service_days.md §2.2。比較対象から外すのは次の2種だけ:
+    (a) 共通窓内に実効運行日を持たない週次レギュラー型 service (期限切れ・
+        将来世代。特定日型は除外しない — 特定日世界同士の比較は従来どおり)
+    (b) 内容同一ユニットの「持ち越しコピー」(同居世代のうち、変化のある
+        ユニットに現れない側の service — 桑名 実測2 の新側旧世代コピー)
+    単一世代フィード同士・期間端がずれているだけの通常フィードでは None を
+    返し、現行挙動に完全一致する。"""
+    from collections import Counter
+
+    window, intervals, units = comparison_units(old, new)
+    if window is None or not units:
+        return None
+
+    old_known = known_services(old)
+    new_known = known_services(new)
+    old_active_any = frozenset().union(*(u.old_services for u in units))
+    new_active_any = frozenset().union(*(u.new_services for u in units))
+
+    def families_by_service(snapshot, trip_infos, family_block):
+        """service_id → 便が属する路線ブロック集合 (family の世代間対応成分)。
+
+        route_id は世代サフィックスで張り替わる (桑名 `3_101_20260601` →
+        `3_101_20260711`) ため後継判定は内容主導の family で行い、さらに
+        改称・分割・統合を跨いで束ねるため対応成分 (route_group ブロック、M9)
+        の粒度に落とす — 伊勢市おかげバスの「環状線 → 右回り/左回り」分割を
+        後継として認識するため (ID は弱い事前 — M8/M9 と同じ原則)。"""
+        trips = snapshot.table("trips")
+        if trips is None or trips.empty:
+            return {}
+        result: dict[str, set[str]] = {}
+        for tid, rid, sid in zip(
+            trips["trip_id"], trips["route_id"], trips["service_id"]
+        ):
+            info = trip_infos.get(str(tid))
+            family = info.family if info and info.family else str(rid)
+            result.setdefault(str(sid), set()).add(family_block.get(family, family))
+        return result
+
+    def window_excluded(snapshot, trip_infos, family_block, known, active_any):
+        """(a) 期限切れ・将来世代の service。次の両方を満たすものだけ:
+        - 週次レギュラー型 (特定日世界は従来どおり比較する — 名古屋の年次ペア)
+        - その service の全路線 (family) が、同じ側の窓内 active service でも
+          運行されている (= 後継世代が存在する。後継がない路線 — 集約フィードで
+          路線ごとに時刻表の掲載期限が違う佐賀の三瀬神埼線 — は従来どおり比較する)"""
+        by_service = families_by_service(snapshot, trip_infos, family_block)
+        covered: set[str] = set()
+        for s in active_any:
+            covered |= by_service.get(s, set())
+        return frozenset(
+            s for s in known - active_any
+            if _regular_day_type(snapshot.day_types.get(s))
+            and _covered_enough(by_service.get(s, set()), covered, coverage_min)
+        )
+
+    a_old = window_excluded(old, old_trips, old_family_block, old_known, old_active_any)
+    a_new = window_excluded(new, new_trips, new_family_block, new_known, new_active_any)
+
+    # ユニットの変化判定 (内容シグネチャの多重集合比較) と primary の決定
+    identical: tuple = ()
+    b_old: frozenset[str] = frozenset()
+    b_new: frozenset[str] = frozenset()
+    primary = superset_unit(units)
+    if primary is None and len(units) > 1:
+
+        def service_of(snapshot):
+            trips = snapshot.table("trips")
+            return dict(zip(trips["trip_id"], trips["service_id"]))
+
+        old_service_of = service_of(old)
+        new_service_of = service_of(new)
+
+        def sig_counter(trips, service_of, services):
+            return Counter(
+                t.signature for tid, t in trips.items()
+                if str(service_of.get(tid, "")) in services
+            )
+
+        changed = [
+            u for u in units
+            if sig_counter(old_trips, old_service_of, u.old_services)
+            != sig_counter(new_trips, new_service_of, u.new_services)
+        ]
+        identical = tuple(
+            iv for u in units if u not in changed for iv in u.intervals
+        )
+        pool = changed or units
+        primary = max(pool, key=lambda u: (u.days(), u.start().toordinal()))
+        if changed:
+            # (b) 世代同梱の「持ち越し世代」: primary の便世界に現れない
+            #     レギュラー型 service のうち、同じ側の primary 世代に family
+            #     後継があるもの ((a) と同じ後継原則)。厳密な内容同一は要求
+            #     しない — 実データでは持ち越し世代にも乗り場 ID 張り替え等の
+            #     編集が入る (伊勢市おかげバス prev_2 で実証)。
+            #     後継のない service (補完期間の内容 — 佐賀の年末年始等) と
+            #     特定日型は残し、従来どおり比較する
+            def carryover(snapshot, trip_infos, family_block, active_any, primary_side):
+                by_service = families_by_service(snapshot, trip_infos, family_block)
+                covered: set[str] = set()
+                for s in primary_side:
+                    covered |= by_service.get(s, set())
+                return frozenset(
+                    s for s in active_any - primary_side
+                    if _regular_day_type(snapshot.day_types.get(s))
+                    and _covered_enough(by_service.get(s, set()), covered, coverage_min)
+                )
+
+            b_old = carryover(
+                old, old_trips, old_family_block, old_active_any, primary.old_services
+            )
+            b_new = carryover(
+                new, new_trips, new_family_block, new_active_any, primary.new_services
+            )
+    elif primary is None:
+        primary = units[0]
+
+    if not (a_old or a_new or b_old or b_new):
+        return None  # 除外なし = 現行挙動
+
+    def excluded_trips(snapshot, excluded):
+        trips = snapshot.table("trips")
+        if trips is None or trips.empty:
+            return frozenset()
+        return frozenset(
+            str(tid) for tid, sid in zip(trips["trip_id"], trips["service_id"])
+            if str(sid) in excluded
+        )
+
+    old_excluded = a_old | b_old
+    new_excluded = a_new | b_new
+    return WindowScope(
+        window=window,
+        intervals=tuple(intervals),
+        primary_intervals=primary.intervals,
+        identical_intervals=identical,
+        old_universe=old_active_any - b_old,
+        new_universe=new_active_any - b_new,
+        old_excluded_services=old_excluded,
+        new_excluded_services=new_excluded,
+        old_excluded_trips=excluded_trips(old, old_excluded),
+        new_excluded_trips=excluded_trips(new, new_excluded),
+        multi_generation=len(units) > 1,
+    )
+
+
+def _filter_trips(
+    trips: dict[str, TripInfo], excluded_trip_ids: frozenset[str]
+) -> dict[str, TripInfo]:
+    if not excluded_trip_ids:
+        return trips
+    return {tid: t for tid, t in trips.items() if tid not in excluded_trip_ids}
 
 
 def compare_snapshots(
@@ -59,9 +249,33 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
     from ..identity.builder import blocking_family_maps
 
     old_family_block, new_family_block = blocking_family_maps(identity)
+    old_trips_all = collect_trips(
+        old, route_to_family_map(identity.old_families), old_stop_to_base
+    )
+    new_trips_all = collect_trips(
+        new, route_to_family_map(identity.new_families), new_stop_to_base
+    )
+    # SD2 (窓内区間対比較): 同梱世代があるフィードでは比較の便世界を
+    # primary 区間の世代に絞る。通常フィードでは scope=None (現行挙動)
+    scope = _resolve_window_scope(
+        old, new, old_trips_all, new_trips_all, old_family_block, new_family_block,
+        coverage_min=config.get(
+            "events", "windows", "carryover_coverage_min", default=0.8
+        ),
+    )
+    if scope is not None:
+        logger.info(
+            "window scope: 窓 %s, primary %s, 除外 old %d / new %d service",
+            scope.window.as_text(),
+            [iv.as_text() for iv in scope.primary_intervals],
+            len(scope.old_excluded_services),
+            len(scope.new_excluded_services),
+        )
+        old_trips_all = _filter_trips(old_trips_all, scope.old_excluded_trips)
+        new_trips_all = _filter_trips(new_trips_all, scope.new_excluded_trips)
     trip_delta = build_trip_delta(
-        collect_trips(old, route_to_family_map(identity.old_families), old_stop_to_base),
-        collect_trips(new, route_to_family_map(identity.new_families), new_stop_to_base),
+        old_trips_all,
+        new_trips_all,
         config=config,
         old_family_block=old_family_block,
         new_family_block=new_family_block,
@@ -79,6 +293,7 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
         time_bands=TimeBands(
             config.get("events", "frequency", "time_bands", default=[])
         ),
+        window_scope=scope,
     )
     for rule in CASCADE:
         before = len(ctx.events)
@@ -128,9 +343,28 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
             "band_profiles": _band_profiles(ctx, family_to_group),
             "route_groups": _route_groups_context(identity),
             "family_structure": _family_structure(identity, config),
+            "comparison_scope": _scope_context(scope),
         },
     )
     return event_set, rawdiffs, identity, trip_delta
+
+
+def _scope_context(scope: WindowScope | None) -> dict | None:
+    """比較スコープの context 表現 (SD2)。None = 全便比較 (従来どおり)。"""
+    if scope is None:
+        return None
+    return {
+        "comparison_window": list(scope.window.as_text()),
+        "intervals": [list(iv.as_text()) for iv in scope.intervals],
+        "primary_periods": [list(iv.as_text()) for iv in scope.primary_intervals],
+        "identical_periods": [list(iv.as_text()) for iv in scope.identical_intervals],
+        "excluded": {
+            "old_services": sorted(scope.old_excluded_services),
+            "new_services": sorted(scope.new_excluded_services),
+            "old_trips": len(scope.old_excluded_trips),
+            "new_trips": len(scope.new_excluded_trips),
+        },
+    }
 
 
 def _band_profiles(ctx: RuleContext, family_to_group: dict[str, str]) -> list[dict]:

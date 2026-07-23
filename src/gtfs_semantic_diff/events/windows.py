@@ -9,8 +9,13 @@
    区切った日付区間の列 (calendar_dates の断続は境界にしない — 断片化防止、
    T3 は据え置き)
 4. 各区間で実効運行日を1日以上持つ service の集合 (= その区間の便世界)
-
-パイプライン統合 (区間ごとの比較・claim イベント) は SD2 第2段。
+5. 区間を (旧側 active 集合, 新側 active 集合) で束ねた比較ユニット。
+   パイプラインはユニットの中から主比較 (primary) を選び、便世界を絞る:
+   - ある unit が他の全 unit を両側とも包含する (上位集合) 場合はそれを採用
+     — 通常フィードで service の期間端が揃っていないだけのケースは
+     全便比較 = 現行挙動に退化する (誤縮小の防止)
+   - そうでない場合 (真の世代同梱) は「内容が変化している unit のうち
+     日数最大 (同数なら開始日が遅い方)」を採用し、他は claim イベントで説明
 """
 
 from __future__ import annotations
@@ -185,3 +190,90 @@ def active_services(snapshot: GtfsSnapshot, interval: DateInterval) -> set[str]:
                 result.add(sid)
                 break
     return result
+
+
+def known_services(snapshot: GtfsSnapshot) -> set[str]:
+    """calendar / calendar_dates に現れる service_id の全集合。
+
+    どちらにも現れない service (trips.txt からの参照だけがあるデータ不備) は
+    比較スコープの判定対象にしない (保守的に全便世界へ残す)。
+    """
+    result: set[str] = set()
+    cal = snapshot.table("calendar")
+    if cal is not None and not cal.empty and "service_id" in cal.columns:
+        result |= {str(s) for s in cal["service_id"]}
+    cd = snapshot.table("calendar_dates")
+    if cd is not None and not cd.empty and "service_id" in cd.columns:
+        result |= {str(s) for s in cd["service_id"]}
+    return result
+
+
+@dataclass(frozen=True)
+class ComparisonUnit:
+    """(旧側 active service 集合, 新側 active service 集合) が等しい区間の束。"""
+
+    old_services: frozenset[str]
+    new_services: frozenset[str]
+    intervals: tuple[DateInterval, ...]
+
+    def days(self) -> int:
+        return sum(iv.days() for iv in self.intervals)
+
+    def start(self) -> datetime.date:
+        return min(iv.start for iv in self.intervals)
+
+
+def comparison_units(
+    old: GtfsSnapshot, new: GtfsSnapshot
+) -> tuple[DateInterval | None, list[DateInterval], list[ComparisonUnit]]:
+    """(共通窓, 区間列, 比較ユニット列)。窓が求まらなければ (None, [], [])。"""
+    window, intervals = window_intervals(old, new)
+    if window is None:
+        return None, [], []
+    grouped: dict[tuple[frozenset[str], frozenset[str]], list[DateInterval]] = {}
+    for iv in intervals:
+        key = (
+            frozenset(active_services(old, iv)),
+            frozenset(active_services(new, iv)),
+        )
+        grouped.setdefault(key, []).append(iv)
+    units = [
+        ComparisonUnit(old_services=k[0], new_services=k[1], intervals=tuple(ivs))
+        for k, ivs in grouped.items()
+    ]
+    units.sort(key=lambda u: u.start())
+    return window, intervals, units
+
+
+def superset_unit(units: list[ComparisonUnit]) -> ComparisonUnit | None:
+    """他の全ユニットを両側とも包含するユニット (あれば)。
+
+    通常フィードで service の期間端が揃っていないだけの場合はこれが存在し、
+    全便比較 = 現行挙動への退化が保証される。"""
+    for u in units:
+        if all(
+            u.old_services >= v.old_services and u.new_services >= v.new_services
+            for v in units
+        ):
+            return u
+    return None
+
+
+@dataclass(frozen=True)
+class WindowScope:
+    """パイプラインが解決した比較スコープ (rules/generations.py の入力)。
+
+    universe が None の側は「全便を比較」(退化)。excluded_* は比較対象外に
+    した service / trip (窓外世代・非 primary 世代)。"""
+
+    window: DateInterval
+    intervals: tuple[DateInterval, ...]
+    primary_intervals: tuple[DateInterval, ...]
+    identical_intervals: tuple[DateInterval, ...]
+    old_universe: frozenset[str] | None
+    new_universe: frozenset[str] | None
+    old_excluded_services: frozenset[str]
+    new_excluded_services: frozenset[str]
+    old_excluded_trips: frozenset[str]
+    new_excluded_trips: frozenset[str]
+    multi_generation: bool

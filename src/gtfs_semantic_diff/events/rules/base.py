@@ -19,6 +19,7 @@ from ..accounting import EvidenceLedger
 from ..evidence import EvidenceIndex
 from ..timebands import TimeBands
 from ..tripdelta import TripDelta
+from ..windows import WindowScope
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ class RuleContext:
     time_bands: TimeBands
     events: list[ChangeEvent] = field(default_factory=list)
     _next_id: int = 1
+    # SD2: 窓内区間対比較の解決結果 (None = 全便比較 = 従来挙動)
+    window_scope: WindowScope | None = None
 
     def emit(
         self,

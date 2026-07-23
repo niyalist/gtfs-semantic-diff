@@ -13,6 +13,13 @@ short_service_max_days = 10
 # 正規ダイヤ (STM 四半期等、実測 0.9〜1.0) は落とさない (service_days.md §2.1)
 min_flag_day_ratio = 0.5
 
+[events.windows]
+# SD2 (窓内区間対比較): 期限切れ/持ち越し世代の service を比較対象外にする
+# 条件のひとつ「路線 (family ブロック) の後継カバー率」の下限。1.0 = 全路線に
+# 後継が必要 (厳密)。伊勢市おかげバス prev_2 では 4/1 改正で環状線が
+# 右回り/左回りに分割され名前対応が切れるため 9/10=0.9 になる — 既定 0.8
+carryover_coverage_min = 0.8
+
 [identity.stop_clustering]
 intra_generation_radius_m = 100   # 世代内クラスタリングの近接半径
 inter_generation_radius_m = 300   # 世代間リンクの近接半径
