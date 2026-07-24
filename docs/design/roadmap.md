@@ -346,16 +346,18 @@ config ゲート + 別途議論)。
 行レベル全量を Web ビューアに持たせない。DL 導線は検証モードのみ。
 レポートモードの見た目は保つ。
 
-- **RD1a: core バンドル (軽量ビューアデータ)** — events の evidence を
-  件数+サンプル行に置換、検証モード用 (file, kind) 別サンプル+件数
-  (説明イベントを生成時焼き込み・クリックジャンプ化)、rawdiffs キー除去。
-  CLI `--html` (全量同梱) は不変、`--html-lite` を追加、Web (Lambda) は core に。
-  DoD: 検証フィードでサイズ実測 (名古屋 137→40MB 級)・表示情報の同等性・
-  pytest。閾値 (サンプル上限) は config。
-- **RD1b: 配信分割** 【実装 2026-07-24 (report_delivery.md §RD1b 実装)】 —
+- **RD1a: core バンドル (軽量ビューアデータ)** 【完了 2026-07-24、
+  リリース 2026.7.24.3】 — events の evidence を件数+サンプル行に置換、
+  検証モード用 (file, kind) 別サンプル+件数 (説明イベントを生成時焼き込み・
+  クリックジャンプ化)、rawdiffs キー除去。CLI `--html` (全量同梱) は不変、
+  `--html-lite` を追加、Web (Lambda) は core に。実測: 臨港 65→12MB /
+  名古屋 137→40MB / prt 478→45MB。サンプル上限は config
+  (evidence_sample_max=20 / file_diff_sample_max=100)。test_core_bundle。
+- **RD1b: 配信分割** 【完了 2026-07-24、リリース 2026.7.24.4】 —
   HTML (アプリ+$data_url) と データ JSON (gzip、Content-Encoding) の分離。
   URL 体系は不変、版データは r/{pair}/v/{版}.json。CLI --html-dir 追加。
-  残 DoD: デプロイ後の本番転送量実測・lazy 再生成・版不変性の回帰確認。
+  本番検証済み: 永井で入口 1.07MB + データ gzip 87KB = 初期転送 1.2MB
+  (旧 4.6MB)、lazy 再生成・版不変性・旧版 (埋め込み型) の後方互換を確認。
 - **RD2: 生データ DL 導線** — events.json / rawdiffs.json.gz を版と並置。
   DL ボタンは検証モードのみ。国際級の Web 開放 (サイズガード撤廃)。
 - **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。

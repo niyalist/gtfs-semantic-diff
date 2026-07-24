@@ -66,6 +66,10 @@ gtfs-semantic-diff compare --org chitetsu --feed chitetsubus \
 # ローカル zip 同士の比較 (古い方が先)
 gtfs-semantic-diff compare old.zip new.zip --html report.html
 
+# 軽量 HTML (Web 配信と同じ core バンドル — 生差分は件数+サンプル) /
+# アプリ+データ分割出力 (http サーバー経由で閲覧)
+gtfs-semantic-diff compare old.zip new.zip --html-lite lite.html --html-dir out/
+
 # L1 同定だけを実行し、対応率と confidence 分布を確認
 gtfs-semantic-diff identity --org chitetsu --feed chitetsubus
 ```

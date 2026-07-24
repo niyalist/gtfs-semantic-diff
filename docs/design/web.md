@@ -121,6 +121,9 @@ DynamoDB 〜10円 / Cognito 0円 / ドメイン 〜150円 → **合計 数百円
   (「結果が恒久保存されているため報告は常に検証可能」の原則を守る)。
   このためツールのバージョンを CalVer `YYYY.M.D.N` (同日通番付き) に拡張。
   旧版は原則保持し、整理は計測後に検討 (設計原則5)。
+  2026-07-24 (RD1b) から版の実体は HTML (アプリ) + データ JSON (gzip) の
+  2ファイル (`v/{版}.html` + `v/{版}.json`) — docs/design/report_delivery.md。
+  旧版の単一ファイル HTML はそのまま有効 (ビューアは両形式対応)。
 - **アップロード zip**: ログインユーザー分は結果と同寿命で保存し、**次回以降の
   入力として再利用できる**。表示名は feed_info/agency から自動生成
   (agency_name + feed_start_date。欠損時は feed_publisher_name / ファイル名へ

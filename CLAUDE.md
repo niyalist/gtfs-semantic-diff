@@ -28,7 +28,7 @@ input (zip x N generations | gtfs-data.jp API)
 - docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.2)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 現在の状態 (2026-07-11)
+## 現在の状態 (2026-07-24)
 
 roadmap M0–M9 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 167件、
 性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
@@ -43,11 +43,25 @@ M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特
 を第1部に表示 — docs/design/day_types.md。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
-HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・単一ファイル、W1)。
+HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・全量同梱) /
+`--html-lite` (Web と同じ軽量 core バンドル) / `--html-dir` (アプリ+データ分割)。
 ビューアは viewer/ (Svelte 4 + Vite)、ビルド成果物を
 src/gtfs_semantic_diff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
-**現在の作業トラック: 国際化 (roadmap I トラック、設計: docs/design/i18n.md)。
-I1 (国際検証データセット構築) 完了。Web 公開 (W3) は全フェーズ完了・運用中。**
+**P トラック (性能) 2026-07-24: P1 (LCS メモ化) に続き P2 完了 — IN-1 (ルール段
+O(n²) 2件: frequency グループ毎全走査・MatchGraph 照会毎全走査) と IN-2 (便対応
+Δt の trip 毎前計算) と IN-3 前半 (HTML バンドル遅延直列化) を修正。すべて出力
+バイト同一。mbta 1010→314s / rome 1523→320s、swiss・ovapi_nl (国家規模) 初完走、
+prt が Lambda 3008MB で完走 (旧 OOM)。docs/perf/P2_*.md。残: P3 (規模上限の
+明文化)。**
+**RD トラック (レポート配信再設計、設計: docs/design/report_delivery.md)
+2026-07-24: RD1a (core バンドル — rawdiffs 行レベル全量を Web に持たせない。
+evidence/生差分は件数+サンプル、網羅性は accounting の数値が保証) と
+RD1b (アプリ HTML + データ JSON gzip の分離配信、URL 体系不変・後方互換) 完了。
+名古屋 137MB→初期転送 ~4MB、永井 1.2MB。残: RD2 (検証モードに生データ DL)、
+RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)。**
+国際化 (I トラック): I1 (国際検証データセット) 完了、I2〜I5 (入力 UI 英語化、
+JSON 言語中立化、地図タイル、README.en) は未着手。Web 公開 (W3) は全フェーズ
+完了・運用中。
 SD トラック (運行日モデル精緻化 SD1〜SD4) は 2026-07-23 完了 —
 設計: docs/design/service_days.md (実効運行日集合・窓内区間対比較・
 GENERATION_SCOPE・特定日の具体日付・運行日カレンダー)。世代同梱フィード
@@ -66,7 +80,7 @@ docs/design/w3_2_directions.md (観測所構想などの将来案も §4〜5 に
 **https://diff.gtfs.jp/** (旧 d22mbbm5uatfcc.cloudfront.net も有効。
 DNS はさくら、docs/ops/domain.md)。(CDK は infra/、デプロイは
 AWS_PROFILE=AdministratorAccess-948645358251 で npx cdk deploy)。
-V6 本体 (運賃深掘り)・X1 (bundle スキーマ文書化) は並行可能な残タスク。**
+V6 本体 (運賃深掘り) は並行可能な残タスク (X1 は RD4 に併合予定)。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 
