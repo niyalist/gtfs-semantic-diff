@@ -22,6 +22,7 @@ from .tripdelta import TripInfo, build_trip_delta, collect_trips
 from .windows import (
     WindowScope,
     comparison_units,
+    feed_info_brief,
     known_services,
     superset_unit,
 )
@@ -349,28 +350,6 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
     return event_set, rawdiffs, identity, trip_delta
 
 
-def _feed_info_brief(snapshot: GtfsSnapshot) -> dict | None:
-    """feed_info.txt の要約 (feed_version と期間)。任意ファイルのため無ければ None。
-
-    列欠損・空値も None で表す (viewer が「記載なし」を出す)。"""
-    fi = snapshot.table("feed_info")
-    if fi is None or fi.empty:
-        return None
-    row = fi.iloc[0]
-
-    def get(col: str) -> str | None:
-        if col not in fi.columns:
-            return None
-        v = str(row[col]).strip()
-        return v or None
-
-    return {
-        "feed_version": get("feed_version"),
-        "feed_start_date": get("feed_start_date"),
-        "feed_end_date": get("feed_end_date"),
-    }
-
-
 def _scope_context(
     scope: WindowScope | None, old: GtfsSnapshot, new: GtfsSnapshot
 ) -> dict | None:
@@ -391,8 +370,8 @@ def _scope_context(
             "old_trips": len(scope.old_excluded_trips),
             "new_trips": len(scope.new_excluded_trips),
         },
-        "old_feed_info": _feed_info_brief(old),
-        "new_feed_info": _feed_info_brief(new),
+        "old_feed_info": feed_info_brief(old),
+        "new_feed_info": feed_info_brief(new),
     }
 
 

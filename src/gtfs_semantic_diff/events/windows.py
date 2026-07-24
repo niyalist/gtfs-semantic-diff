@@ -192,6 +192,28 @@ def active_services(snapshot: GtfsSnapshot, interval: DateInterval) -> set[str]:
     return result
 
 
+def feed_info_brief(snapshot: GtfsSnapshot) -> dict | None:
+    """feed_info.txt の要約 (feed_version と期間)。任意ファイルのため無ければ None。
+
+    列欠損・空値も None で表す (viewer が「記載なし」を出す)。"""
+    fi = snapshot.table("feed_info")
+    if fi is None or fi.empty:
+        return None
+    row = fi.iloc[0]
+
+    def get(col: str) -> str | None:
+        if col not in fi.columns:
+            return None
+        v = str(row[col]).strip()
+        return v or None
+
+    return {
+        "feed_version": get("feed_version"),
+        "feed_start_date": get("feed_start_date"),
+        "feed_end_date": get("feed_end_date"),
+    }
+
+
 def known_services(snapshot: GtfsSnapshot) -> set[str]:
     """calendar / calendar_dates に現れる service_id の全集合。
 

@@ -37,16 +37,45 @@
     return parts.join("・");
   }
   $: scope = overview.comparison_scope;
-  // 同梱世代ブロック: どのデータ (feed_version) をどの期間条件で比べたか。
-  // feed_info は任意ファイルなので「なし」「記載なし」を明示する
-  function feedInfoText(fi) {
-    if (!fi) return tt("fo_scope_no_feedinfo");
+  $: briefs = overview.data_briefs;
+  $: dash = $lang === "en" ? "–" : "〜";
+  // ①データ段: feed_version と期間。feed_info (任意ファイル) が無い/列欠損は
+  // 「なし」「記載なし」を明示。feed_info の期間と実データの窓が食い違う場合は
+  // 実データ側を括弧で補足する
+  function briefText(b) {
+    if (!b) return "";
     const parts = [];
-    parts.push(fi.feed_version
-      ? tt("fo_scope_version", fi.feed_version) : tt("fo_scope_no_version"));
-    if (fi.feed_start_date && fi.feed_end_date)
-      parts.push(`${isoDate(fi.feed_start_date)}${$lang === "en" ? "–" : "〜"}${isoDate(fi.feed_end_date)}`);
+    parts.push(b.feed_version
+      ? tt("fo_scope_version", b.feed_version)
+      : b.has_feed_info ? tt("fo_scope_no_version") : tt("fo_scope_no_feedinfo"));
+    const fiPeriod = b.feed_start_date && b.feed_end_date
+      ? `${isoDate(b.feed_start_date)}${dash}${isoDate(b.feed_end_date)}` : null;
+    const winPeriod = b.window
+      ? `${isoDate(b.window[0])}${dash}${isoDate(b.window[1])}` : null;
+    if (fiPeriod) {
+      parts.push(fiPeriod);
+      if (winPeriod && winPeriod !== fiPeriod) parts.push(tt("cmp_actual", winPeriod));
+    } else if (winPeriod) {
+      parts.push(winPeriod);
+    }
     return parts.join($lang === "en" ? ", " : "・");
+  }
+  // ③結果段: 変わる日の言い方 (C0〜C4)。データ終端まで変わり続けるランは
+  // 「運行の切替日」として日付を主役に、有界のランは期間として言う
+  function changedLines(note) {
+    if (!note.overlap || !note.changed) return [];
+    const [olo, ohi] = note.overlap;
+    const c = note.changed;
+    if (!c.count) return [tt("cmp_no_change")];
+    const lines = [];
+    for (const [a, b] of c.runs) {
+      if (a === olo && b === ohi) lines.push(tt("cmp_all_changed", isoDate(a), isoDate(b)));
+      else if (b === ohi) lines.push(tt("cmp_switch", isoDate(a)));
+      else lines.push(tt("cmp_span", isoDate(a), isoDate(b)));
+    }
+    if (c.more_runs) lines.push(tt("cmp_more_runs", c.more_runs));
+    if (c.runs.length > 1 || c.more_runs) lines.push(tt("cmp_total", c.count));
+    return lines;
   }
   // SD4 (改): 運行日の要点 (文字要約)。runs = [[start,end],...] を M/D 表記に
   $: note = overview.service_days_note;
@@ -147,28 +176,50 @@
   </p>
 {/if}
 
-{#if scope}
-  <!-- SD2: 同梱世代フィード (改正前後を1ファイルに同梱) の比較範囲の明示。
-       記号▮を第1チャネルに (色弱原則)。単一世代の比較では出ない -->
+{#if briefs || note || scope}
+  <!-- 比較の概要 (2026-07-24 統合): ①どういうデータ ②どういう条件で比較
+       ③結果どうだったか の3段。表示項目は窓の位相 (重なる/重ならない/不明) と
+       同梱世代の有無で変わる。記号▮を第1チャネルに (色弱原則) -->
   <div class="scope-note">
-    <p><strong>▮ {tt("fo_scope_title")}</strong></p>
+    <p><strong>▮ {tt("cmp_title")}</strong></p>
+    <p class="cmp-label">{tt("cmp_data")}</p>
     <ul>
-      <li>{tt("fo_scope_feed", tt("old_gen"), feedInfoText(scope.old_feed_info))}</li>
-      <li>{tt("fo_scope_feed", tt("new_gen"), feedInfoText(scope.new_feed_info))}</li>
-      <li>{tt("fo_scope_window", isoDate(scope.comparison_window?.[0]), isoDate(scope.comparison_window?.[1]))}</li>
-      {#if scope.primary_periods?.length}
-        <li>{tt("fo_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}〜${isoDate(p[1])}`).join(", "))}</li>
-      {/if}
-      {#if scope.identical_periods?.length}
-        <li>{tt("fo_scope_identical", scope.identical_periods.map((p) => `${isoDate(p[0])}〜${isoDate(p[1])}`).join(", "))}</li>
-      {/if}
-      {#if scope.excluded?.old_services?.length}
-        <li>{tt("fo_scope_excluded_old", scope.excluded.old_services.length, scope.excluded.old_trips)}</li>
-      {/if}
-      {#if scope.excluded?.new_services?.length}
-        <li>{tt("fo_scope_excluded_new", scope.excluded.new_services.length, scope.excluded.new_trips)}</li>
+      <li>{tt("fo_scope_feed", tt("old_gen"), briefText(briefs?.old))}</li>
+      <li>{tt("fo_scope_feed", tt("new_gen"), briefText(briefs?.new))}</li>
+    </ul>
+    <p class="cmp-label">{tt("cmp_cond")}</p>
+    <ul>
+      {#if !note}
+        <li>{tt("cmp_no_window")}</li>
+      {:else if !note.overlap}
+        <li>{tt("sdn_no_overlap")}</li>
+      {:else}
+        <li>{tt("sdn_overlap", isoDate(note.overlap[0]), isoDate(note.overlap[1]))}</li>
+        {#if scope?.primary_periods?.length}
+          <li>{tt("cmp_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}${dash}${isoDate(p[1])}`).join(", "))}</li>
+        {/if}
+        {#if scope?.excluded?.old_services?.length}
+          <li>{tt("fo_scope_excluded_old", scope.excluded.old_services.length, scope.excluded.old_trips)}</li>
+        {/if}
+        {#if scope?.excluded?.new_services?.length}
+          <li>{tt("fo_scope_excluded_new", scope.excluded.new_services.length, scope.excluded.new_trips)}</li>
+        {/if}
       {/if}
     </ul>
+    {#if note}
+      <p class="cmp-label">{tt("cmp_result")}</p>
+      <ul>
+        {#each changedLines(note) as line}
+          <li>{line}</li>
+        {/each}
+        {#if note.swap.old.count || note.swap.new.count}
+          <li>{tt("sdn_swap")}: {sideRuns(note.swap)}</li>
+        {/if}
+        {#if note.no_service.old.count || note.no_service.new.count}
+          <li>{tt("sdn_no_service")}: {sideRuns(note.no_service)}</li>
+        {/if}
+      </ul>
+    {/if}
   </div>
 {/if}
 
@@ -233,32 +284,6 @@
   {/if}
 {/if}
 
-{#if note}
-  <!-- SD4 (改): 運行日の要点 — カレンダー描画は行わず文字で要約する
-       (2026-07-24 決定。改正日・例外日・運休日・掲載範囲が本質で、
-        言葉の方が認知単位に合う) -->
-  <h3>{tt("sdn_title")}</h3>
-  <ul class="sdn">
-    <li>
-      {tt("sdn_windows", isoDate(note.old_window[0]), isoDate(note.old_window[1]),
-          isoDate(note.new_window[0]), isoDate(note.new_window[1]))}
-    </li>
-    {#if note.overlap}
-      <li>{tt("sdn_overlap", isoDate(note.overlap[0]), isoDate(note.overlap[1]))}</li>
-      {#if note.changed}
-        <li>{tt("sdn_changed")}: {runsText(note.changed)}</li>
-      {/if}
-    {:else}
-      <li><strong>{tt("sdn_no_overlap")}</strong></li>
-    {/if}
-    {#if note.swap.old.count || note.swap.new.count}
-      <li>{tt("sdn_swap")}: {sideRuns(note.swap)}</li>
-    {/if}
-    {#if note.no_service.old.count || note.no_service.new.count}
-      <li>{tt("sdn_no_service")}: {sideRuns(note.no_service)}</li>
-    {/if}
-  </ul>
-{/if}
 
 <h3>{tt("fo_meta_events")}</h3>
 {#if overview.meta_events.length}
@@ -287,6 +312,6 @@
   }
   .scope-note p { margin: 0 0 0.2rem; }
   .scope-note ul { margin: 0 0 0.2rem 1.2rem; padding: 0; }
-  .sdn { margin: 0.2rem 0 0.8rem 1.2rem; padding: 0; }
-  .sdn li { margin: 0.15rem 0; }
+  .cmp-label { margin: 0.35rem 0 0.1rem; font-weight: 600; font-size: 0.85rem; }
+  .scope-note ul { margin-bottom: 0.1rem; }
 </style>

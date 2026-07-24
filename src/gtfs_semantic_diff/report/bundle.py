@@ -248,6 +248,12 @@ def _feed_overview(
         "day_types": day_types,
         "special_days": special_days,
         "meta_events": meta_events,
+        # 「比較の概要」①データ段: feed_version / feed_info 期間 / 実データ窓。
+        # scope の有無に依らず常時 (feed_info は任意ファイルなので None 許容)
+        "data_briefs": {
+            "old": _data_brief(old),
+            "new": _data_brief(new),
+        },
         # SD2: 同梱世代の比較範囲 (単一世代比較では None)。第1部に注記を出す
         "comparison_scope": event_set.context.get("comparison_scope"),
         # SD4 (改): 運行日の要点 (文字要約。カレンダー表示は 2026-07-24 に廃止)
@@ -428,6 +434,26 @@ def _special_day_services(snapshot, config: Config) -> list[dict]:
             ),
         })
     return result
+
+
+def _data_brief(snapshot) -> dict:
+    """「比較の概要」①データ段: feed_info の要約 + 実データの窓。
+
+    feed_info (任意ファイル) が無い/列欠損は None のまま viewer が
+    「なし」「記載なし」を出す。window は feed_info → 世代メタ → calendar
+    全期間の順で解決した実効窓 (feed_info の期間と食い違うことがある —
+    三重交通中勢は feed_info 12/31 まで・calendar は 10/23 で切れる)。"""
+    from ..events.windows import feed_info_brief, snapshot_window
+
+    brief = feed_info_brief(snapshot) or {}
+    window = snapshot_window(snapshot)
+    return {
+        "feed_version": brief.get("feed_version"),
+        "feed_start_date": brief.get("feed_start_date"),
+        "feed_end_date": brief.get("feed_end_date"),
+        "has_feed_info": bool(brief),
+        "window": list(window.as_text()) if window is not None else None,
+    }
 
 
 def _per_date_worlds(snapshot, config: Config) -> dict | None:
