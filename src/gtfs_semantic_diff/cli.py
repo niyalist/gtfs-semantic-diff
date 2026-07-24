@@ -218,7 +218,7 @@ def compare(
         )
         console.print(f"Markdown レポート: [cyan]{report_out}[/cyan]")
     if html_out:
-        from .report.bundle import build_bundle, render_html
+        from .report.bundle import build_bundle, write_html
 
         template_path = Path(__file__).parent / "report" / "viewer_template.html"
         if not template_path.exists():
@@ -228,10 +228,7 @@ def compare(
         bundle = build_bundle(
             old_snap, new_snap, config, event_set, rawdiffs, identity, trip_delta
         )
-        Path(html_out).write_text(
-            render_html(bundle, template_path.read_text(encoding="utf-8")),
-            encoding="utf-8",
-        )
+        write_html(bundle, template_path.read_text(encoding="utf-8"), html_out)
         console.print(f"HTML レポート: [cyan]{html_out}[/cyan]")
 
 

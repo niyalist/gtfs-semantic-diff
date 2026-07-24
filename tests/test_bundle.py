@@ -7,7 +7,7 @@ from click.testing import CliRunner
 from gtfs_semantic_diff.cli import main
 from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
 from gtfs_semantic_diff.load import load_snapshot
-from gtfs_semantic_diff.report.bundle import build_bundle, render_html
+from gtfs_semantic_diff.report.bundle import build_bundle, render_html, write_html
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
 from .test_diff0 import NEW_FILES
@@ -27,15 +27,24 @@ def test_bundle_structure(tmp_path, config):
     assert set(bundle) == {
         "events", "rawdiffs", "presentation", "geometry", "timetables", "catalog", "meta",
     }
-    # JSON 直列化可能
-    payload = json.dumps(bundle, ensure_ascii=False)
+    # 埋め込みペイロードは「rawdiffs を dict リスト化した bundle の JSON」と等価
+    # (rawdiffs は RawDiffSet のまま遅延直列化する — IN-3。render_html が正)
+    html = render_html(bundle, "<x>__GTFS_SEMDIFF_DATA__</x>")
+    payload = html[len("<x>"):-len("</x>")]
     assert "表町一丁目" in payload
+    data = json.loads(payload.replace("<\\/", "</"))
+    assert data["rawdiffs"] == [d.to_dict() for d in bundle["rawdiffs"].diffs]
 
     # 全イベントの evidence が rawdiffs で解決できる (クリック→生値の構造保証)
-    ids = {d["rawdiff_id"] for d in bundle["rawdiffs"]}
+    ids = {d["rawdiff_id"] for d in data["rawdiffs"]}
     for e in bundle["events"]["events"]:
         assert set(e["evidence"]) <= ids
         assert e["display_name_ja"] and e["display_name_en"]
+
+    # write_html (ファイル逐次書き出し) は render_html と byte 同一
+    out = tmp_path / "bundle.html"
+    write_html(bundle, "<x>__GTFS_SEMDIFF_DATA__</x>", out)
+    assert out.read_text(encoding="utf-8") == html
 
     # カタログは全43タイプ ja/en (v0.2.3: GENERATION_SCOPE 追加)
     assert len(bundle["catalog"]) == 43

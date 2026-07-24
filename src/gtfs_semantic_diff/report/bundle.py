@@ -80,7 +80,10 @@ def build_bundle(
 
     return {
         "events": event_set.to_dict(),
-        "rawdiffs": [d.to_dict() for d in rawdiffs.diffs],
+        # RawDiffSet のまま持つ (遅延直列化)。数百万件を dict リストに実体化すると
+        # それだけで GB 級になり Lambda を落とす (IN-3)。直列化は
+        # _payload_chunks が1件ずつ行い、埋め込み後の JSON は従来と同一
+        "rawdiffs": rawdiffs,
         "presentation": presentation,
         "geometry": _geometry(event_set, identity, old, new, config),
         "timetables": _timetables(event_set, trip_delta),
@@ -827,19 +830,77 @@ def _timetables(event_set: ChangeEventSet, trip_delta) -> list[dict]:
     return result
 
 
+_RAWDIFF_CHUNK = 10_000  # 直列化のまとめ単位 (yield 回数と中間文字列の釣り合い)
+
+
+def _payload_chunks(bundle: dict[str, Any]):
+    """バンドル JSON (エスケープ済み) を文字列チャンクで逐次生成する。
+
+    連結結果は「RawDiffSet 値を dict リスト化した bundle の json.dumps +
+    "</"→"<\\/" エスケープ」と byte 同一。rawdiffs (数百万件) の dict リスト・
+    一枚岩のペイロード文字列・replace の全量コピーを作らないための分割 (IN-3)。
+    チャンク境界は構造文字 (',' '[' ']' '{' '}' '"') に接するため、"</" が
+    境界を跨ぐことはなくエスケープは分割安全。
+    """
+    def esc(s: str) -> str:
+        return s.replace("</", "<\\/")
+
+    def dumps(obj) -> str:
+        return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+    yield "{"
+    for i, (key, value) in enumerate(bundle.items()):
+        prefix = ("," if i else "") + dumps(key) + ":"
+        if isinstance(value, RawDiffSet):
+            yield esc(prefix) + "["
+            buf: list[str] = []
+            for j, d in enumerate(value.diffs):
+                buf.append("," if j else "")
+                buf.append(esc(dumps(d.to_dict())))
+                if len(buf) >= _RAWDIFF_CHUNK * 2:
+                    yield "".join(buf)
+                    buf.clear()
+            if buf:
+                yield "".join(buf)
+            yield "]"
+        else:
+            yield esc(prefix + dumps(value))
+    yield "}"
+
+
+def _split_template(bundle: dict[str, Any], template_html: str) -> tuple[str, str]:
+    """タイトル・説明を注入したテンプレートをデータ挿入点で二分する。
+
+    タイトル・説明 (OGP) は静的に焼き込む — SNS のクローラは JS を実行しない
+    ため、共有時のプレビューはここで焼き込んだ値が使われる。"""
+    title, desc = _page_meta(bundle)
+    prepared = (template_html
+                .replace("__GTFS_SEMDIFF_TITLE__", html_lib.escape(title, quote=True))
+                .replace("__GTFS_SEMDIFF_DESC__", html_lib.escape(desc, quote=True)))
+    head, _, tail = prepared.partition("__GTFS_SEMDIFF_DATA__")
+    return head, tail
+
+
 def render_html(bundle: dict[str, Any], template_html: str) -> str:
     """ビルド済みビューアテンプレートにバンドル JSON を埋め込む。
 
-    タイトル・説明 (OGP) も静的に注入する — SNS のクローラは JS を実行しない
-    ため、共有時のプレビューはここで焼き込んだ値が使われる。"""
-    payload = json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
-    # </script> でパースが壊れないようエスケープ
-    payload = payload.replace("</", "<\\/")
-    title, desc = _page_meta(bundle)
-    return (template_html
-            .replace("__GTFS_SEMDIFF_DATA__", payload)
-            .replace("__GTFS_SEMDIFF_TITLE__", html_lib.escape(title, quote=True))
-            .replace("__GTFS_SEMDIFF_DESC__", html_lib.escape(desc, quote=True)))
+    大規模フィードでは write_html (ファイル直書き) を使う —
+    こちらは全体を1つの str に持つため RawDiff 数百万件級ではメモリを食う。"""
+    head, tail = _split_template(bundle, template_html)
+    return "".join([head, *_payload_chunks(bundle), tail])
+
+
+def write_html(bundle: dict[str, Any], template_html: str, path) -> None:
+    """render_html と同一内容の HTML をファイルへ逐次書き出す (IN-3)。
+
+    ペイロード全体の文字列を一度も組み立てない — ピークメモリは
+    イベント生成時点 + チャンク分に抑えられる。"""
+    with open(path, "w", encoding="utf-8") as f:
+        head, tail = _split_template(bundle, template_html)
+        f.write(head)
+        for chunk in _payload_chunks(bundle):
+            f.write(chunk)
+        f.write(tail)
 
 
 def _page_meta(bundle: dict[str, Any]) -> tuple[str, str]:

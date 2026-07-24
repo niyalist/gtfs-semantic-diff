@@ -637,7 +637,7 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     from gtfs_semantic_diff.config import Config
     from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
     from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
-    from gtfs_semantic_diff.report.bundle import build_bundle, render_html
+    from gtfs_semantic_diff.report.bundle import build_bundle, write_html
 
     config = Config.load()
     pair_feed_info = None
@@ -681,21 +681,26 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         old, new, config
     )
     bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    # バンドル構築後はスナップショット等を解放する。HTML 書き出し中に pandas
+    # テーブル (GB 級) を抱えたままにすると 3008MB の Lambda を圧迫する (IN-3)
+    del old, new, event_set, identity, trip_delta
     import gtfs_semantic_diff.report as report_pkg
 
     template = (Path(report_pkg.__file__).parent / "viewer_template.html").read_text(
         "utf-8"
     )
-    html = render_html(bundle, template)
+    # ペイロード全体を文字列に持たずファイルへ逐次書き出し → upload_file (IN-3)
+    html_path = "/tmp/result.html"
+    write_html(bundle, template, html_path)
 
     if pair_feed_info is None:
         # アップロード由来: ランダム URL。匿名 = r/anon/ (30日削除)、
         # ログイン = r/u/ (恒久、削除ライフサイクルなし)
         prefix = "r/u" if job_input.get("user_id") else "r/anon"
         result_key = f"{prefix}/{job_id}.html"
-        _put_html(result_key, html, cache="public, max-age=300")
+        _put_html_file(result_key, html_path, cache="public, max-age=300")
         return result_key
-    return _write_versioned(job_id, html, pair_feed_info)
+    return _write_versioned(job_id, html_path, pair_feed_info)
 
 
 def _snapshot_label_parts(snapshot) -> tuple[str, str]:
@@ -775,7 +780,18 @@ def _put_html(key: str, html: str, cache: str) -> None:
     )
 
 
-def _write_versioned(pair: str, html: str, feed_info: dict) -> str:
+def _put_html_file(key: str, path: str, cache: str) -> None:
+    """ファイルからのストリーミングアップロード (encode 済み全量を持たない。IN-3)。"""
+    s3.upload_file(
+        path, RESULTS_BUCKET, key,
+        ExtraArgs={
+            "ContentType": "text/html; charset=utf-8",
+            "CacheControl": cache,
+        },
+    )
+
+
+def _write_versioned(pair: str, html_path: str, feed_info: dict) -> str:
     """版として不変保存 + 入口 (最新版コピー) + index.json 更新。設計: web.md W3-2 詳細方針。
 
     index.json の read-modify-write に排他は掛けない (同版の同時生成は同一内容の
@@ -788,8 +804,8 @@ def _write_versioned(pair: str, html: str, feed_info: dict) -> str:
         timespec="seconds"
     )
     # 版は不変 (ブラウザ・CloudFront に長期キャッシュさせる)
-    _put_html(versioning.version_key(pair, version), html,
-              cache="public, max-age=31536000, immutable")
+    _put_html_file(versioning.version_key(pair, version), html_path,
+                   cache="public, max-age=31536000, immutable")
     index = versioning.update_index(
         _get_index(pair), pair=pair, version=version,
         generated_at=generated_at, feed_info=feed_info,
@@ -797,7 +813,7 @@ def _write_versioned(pair: str, html: str, feed_info: dict) -> str:
     # 入口は最新版のコピー。自分が最新のときだけ上書きする
     # (ロールバック運用中に旧版が最新入口を巻き戻さないように)
     if index["latest"] == version:
-        _put_html(versioning.entry_key(pair), html, cache="public, max-age=300")
+        _put_html_file(versioning.entry_key(pair), html_path, cache="public, max-age=300")
     s3.put_object(
         Bucket=RESULTS_BUCKET,
         Key=versioning.index_key(pair),

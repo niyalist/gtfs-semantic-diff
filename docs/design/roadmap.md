@@ -330,7 +330,11 @@ config ゲート + 別途議論)。
   【IN-2 完了 2026-07-24 (docs/perf/P2_tripdelta_dt.md)】 — 便対応の
   dt_shared_minutes を trip 毎の時刻前計算に (約5倍)。両修正で
   mbta 1010s→314s / rome 1523s→320s、**swiss 初完走 (32分)**。
-  残: IN-3 (RawDiff 1000万件級のメモリ、Lambda 制約)。
+  【IN-3 前半完了 2026-07-24 (docs/perf/P2_html_memory.md)】 — HTML バンドルの
+  遅延直列化 + write_html (逐次書き出し) + Lambda worker の解放/upload_file 化で
+  prt フルパス 5.15GB→2.17GB (HTML byte 同一)。prt 級は Lambda 3008MB 圏内に。
+  残: HTML 自体のサイズ (prt 478MB — rawdiffs 全件埋め込み。hosted bundle /
+  件数上限 / サイズガードの製品判断)。
   課題台帳: docs/verification/intl_feeds.md IN-1〜3
 - **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
   の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)
