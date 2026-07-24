@@ -35,7 +35,12 @@ prt (ピッツバーグ) を Web 投入したところ **Runtime.OutOfMemory** (
 | pytest | — | 224件 (等価性テスト test_bundle_structure に追加) |
 
 prt 級 (stop_times 100万行・RawDiff 256万) は **Lambda 3008MB に収まる見込み**
-(2.17GB + ランタイムオーバーヘッド)。デプロイ後に本番で要確認。
+(2.17GB + ランタイムオーバーヘッド)。
+
+**本番実証 (2026.7.24.2 デプロイ後、2026-07-24)**: prt をアップロード投入 →
+**succeeded、126 秒、Max Memory 2164MB / 3008MB** (修正前は 374 秒で
+Runtime.OutOfMemory)。同デプロイで永井ペアは 69 秒 → **8 秒** (IN-1/IN-2 の効果)。
+メモリ quota 引き上げ申請は不要になった (保険としては残せる)。
 
 ## 残る課題 (IN-3 後半 = 製品判断)
 

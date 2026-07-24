@@ -41,7 +41,10 @@ collect+scope+tripdelta 段 (「前」は IN-1 修正後 = c8648b5):
 | feed | 結果 |
 |---|---|
 | swiss | **初完走**: 総計 1904s (32分) — load 269 / diff0 319 (RawDiff **5,250万**) / identity 101 / tripdelta 862 / rules 239 / 残差 77。events 87,035、explained **0.9942** |
-| ovapi_nl | (計測中) |
+| ovapi_nl | **初完走**: 総計 1686s (28分) — load 38 / diff0 401 (RawDiff **5,179万**) / identity 71 / tripdelta 870 / rules 196 / 残差 74。events 104,938、explained **0.9964**、**peak RSS 20.4GB**。GENERATION_SCOPE が1件発動 (世代同居はオランダにも) |
+
+国家規模2件とも完走可能になった (IN-6 の「Web 対象外」は RSS 20GB 級のため不変。
+CLI ローカル利用は可能圏内)。
 
 ## 出力の同一性
 
