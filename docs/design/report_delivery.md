@@ -58,17 +58,36 @@ report.html (自己完結・単一ファイル)
 
 ## 3. 設計案: 「アプリ + 階層化データ」分離 (単一ファイルモードは残す)
 
-### 3.1 データの3階層
+### 3.1 前提の発見: ビューアは rawdiffs を数百行しか表示していない
+
+- evidence 表 (EvidenceTable) は **表示上限 300 行** (`LIMIT = 300`、
+  超過は「残り N 件」表記のみ)
+- 検証モードのファイル別ブラウザ (FileDiffBrowser) も種類別に表示上限つき
+
+つまり現 UI が rawdiffs から実際に見せている情報は高々数百〜数千行で、
+数百万件の全量はブラウザ内で一度も描画されない dead weight。
+**「Web 上での行レベル表示」は少量サンプルで実質完全に代替できる。**
+
+### 3.2 データの3階層
 
 | 階層 | 内容 | 名古屋実測 (gzip) | 取得タイミング |
 |---|---|---|---|
-| T1 core | presentation + events (evidence 抜き) + timetables + geometry + catalog + meta | 約 3MB | 初期ロード |
-| T2 drill | evidence 索引 (event_id → rawdiff_id 列) + rawdiffs (ファイル別分割) | 約 4.5MB | evidence クリック / 検証モードを開いた時に該当分のみ fetch |
-| T3 raw | rawdiffs 全件 JSON / events JSON (安定 IF そのまま) | — | ダウンロードボタン (閲覧はしない) |
+| T1 core | presentation + events (evidence 抜き) + **evidence 要約** (イベント毎: ファイル別件数 + 表示用サンプル行) + **検証モード用サンプル** ((file, kind) 毎の先頭 N 行 + 件数) + timetables + geometry + catalog + meta | 約 3〜4MB | 初期ロード (これで完結) |
+| T3 raw | rawdiffs 全件 / events JSON (安定 IF そのまま) を .json.gz で並置 | 名古屋 4.2MB / prt 22MB | ダウンロードボタンのみ (Web では閲覧しない) |
 
-- **情報量は不変** (R-a): 画面にいま出せる情報は全て出せる。変わるのは
-  「いつ転送・パースするか」だけ。
-- evidence の分離は**ビューア用バンドルの中の話**であり、コアの
+- **rawdiffs の行レベル全量は Web ビューアに持たせない** (2026-07-24 方針)。
+  evidence 表示はサンプル行 (上限は現行の LIMIT と整合させる) + 「全 N 件中
+  M 件を表示 — 全データはダウンロード」導線に置き換える。台帳の信頼性は
+  数値 (explained_ratio・ファイル別残差件数 = accounting、これは T1 で不変)
+  が担い、行レベルの完全監査は T3 ダウンロード + ローカル (CLI 単一ファイル
+  HTML は従来どおり全量同梱) で行う。
+- 当初案にあった「T2: シャード分割の遅延取得」(クリック時に該当 ID 範囲の
+  シャードだけ fetch — rawdiff ID はファイル順の連番なので O(1) で
+  シャード特定でき、全量ダウンロードは不要) は**採らない**。ネットワーク
+  機構が増える割に、得られる体験がサンプル同梱と実質同じため。将来
+  「Web で全行ブラウズしたい」需要が出たら追加できる (ID 連続性により
+  後付けで設計が劣化しない)。
+- evidence の分離・要約は**ビューア用バンドルの中の話**であり、コアの
   ChangeEvent JSON (安定インタフェース、設計原則3) は一切変えない。
 - 配信: S3 に `.json.gz` を `Content-Encoding: gzip` 付きで置き、
   CloudFront の 10MB 制限を回避。版管理は現行の
@@ -77,12 +96,13 @@ report.html (自己完結・単一ファイル)
 - CLI は両対応: `--html` (従来どおり自己完結1ファイル、オフライン閲覧・
   メール添付用) / `--html-dir` (分割一式)。
 
-初期ロードの見込み (App 1MB + T1):
+初期ロードの見込み (App 1MB + T1)。rawdiffs 全量を Web から外すため
+S3 の版毎ストレージも激減する (prt 478MB → 十数 MB):
 
 | | 現状 (転送) | 分割後 初期転送 | 初期パース量 |
 |---|---|---|---|
-| 名古屋 | 137MB (非圧縮) | **約 4MB** | 42MB → evidence 抜きで約 30MB |
-| prt | 500MB | **約 6MB** | 96MB → 約 35MB |
+| 名古屋 | 137MB (非圧縮) | **約 4MB** | 約 30MB (旧 137MB) |
+| prt | 500MB | **約 6MB** | 約 35MB (旧 500MB) |
 
 ### 3.2 複数ページ分割 (R-d) の評価 → 採らない (deep link で代替)
 
@@ -132,11 +152,11 @@ gtfs-semantic-diff compare ... --digest digest.md   (or --digest-json)
 
 ## 5. 段階案 (未承認)
 
-- **RD1**: 配信分割 — app + T1 core.json.gz + T2 遅延取得 (evidence /
-  rawdiffs ファイル別)。CLI は --html (単一) / --html-dir (分割) 両対応。
-  Web の版管理をディレクトリ版に拡張。情報量不変。
-- **RD2**: 生データダウンロード導線 (T3: events.json / rawdiffs.json.gz)
-  + サイズガード撤廃 (国際級も Web で閲覧可能に)。
+- **RD1**: 配信分割 — app + T1 core.json.gz (evidence 要約・サンプル同梱)。
+  CLI は --html (単一・全量同梱、従来どおり) / --html-dir (分割) 両対応。
+  Web の版管理をディレクトリ版に拡張。
+- **RD2**: 生データダウンロード導線 (T3: events.json / rawdiffs.json.gz を
+  版と並置、ビューアに DL ボタン)。国際級も Web で閲覧可能に。
 - **RD3**: 地図リッチ化 (路線網モード、PMTiles 検討、deep link)。
 - **RD4**: AI digest (--digest md/json、X1 と併せてスキーマ文書化)。
 
