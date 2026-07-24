@@ -7,7 +7,12 @@ from click.testing import CliRunner
 from gtfs_semantic_diff.cli import main
 from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
 from gtfs_semantic_diff.load import load_snapshot
-from gtfs_semantic_diff.report.bundle import build_bundle, render_html, write_html
+from gtfs_semantic_diff.report.bundle import (
+    build_bundle,
+    render_html,
+    write_html,
+    write_html_split,
+)
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
 from .test_diff0 import NEW_FILES
@@ -98,6 +103,28 @@ def test_core_bundle(tmp_path, config):
 
     # accounting (網羅性の数値) は full と同一
     assert core["events"]["accounting"] == full["events"]["accounting"]
+
+
+def test_write_html_split(tmp_path, config):
+    """RD1b: アプリ HTML には {"$data_url"} のみ、データは別 JSON (gzip 可)。"""
+    import gzip
+
+    bundle = _bundle(tmp_path, config, core=True)
+    template = "<x>__GTFS_SEMDIFF_DATA__</x>"
+    html_p = tmp_path / "app.html"
+    data_p = tmp_path / "data.json"
+    write_html_split(bundle, template, html_p, data_p,
+                     "/r/pair/v/1.json", gzip_data=False)
+    marker = json.loads(html_p.read_text(encoding="utf-8")[len("<x>"):-len("</x>")])
+    assert marker == {"$data_url": "/r/pair/v/1.json"}
+    data = json.loads(data_p.read_text(encoding="utf-8"))
+    assert "file_diffs" in data and "rawdiffs" not in data
+    assert data["events"]["accounting"] == bundle["events"]["accounting"]
+
+    gz_p = tmp_path / "data.json.gz"
+    write_html_split(bundle, template, html_p, gz_p, "/r/pair/v/1.json")
+    with gzip.open(gz_p, "rt", encoding="utf-8") as f:
+        assert json.load(f) == data
 
 
 def test_feed_overview_structure(tmp_path, config):

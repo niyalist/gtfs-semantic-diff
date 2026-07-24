@@ -1,8 +1,22 @@
 # レポート配信の再設計 (RD トラック) — 技術検討 (2026-07-24 draft)
 
-状態: **RD1a 実装済み (2026-07-24)。RD1b 以降は未着手**。発端: IN-3 後半
+状態: **RD1a・RD1b 実装済み (2026-07-24)。RD2 以降は未着手**。発端: IN-3 後半
 (prt の HTML 478MB)、国内でも都バス級で単一 HTML が重い、地図リッチ化の構想、
 AI への出力経路。
+
+**RD1b 実装 (2026-07-24)**: アプリ HTML とデータ JSON の分離配信。
+- HTML の URL 体系は不変 (`r/{pair}.html` / `r/{pair}/v/{版}.html`)。HTML は
+  アプリ (~1MB) + `{"$data_url": "/r/{pair}/v/{版}.json"}` の埋め込みのみ。
+  ビューア (main.js) が起動時に fetch (読み込み中表示つき)。単一ファイル版・
+  旧版 HTML は埋め込み JSON をそのまま使う (後方互換)
+- data URL は**サイト相対の絶対パス** — 入口 (最新版コピー) と版ページの
+  両方から同じ HTML が参照されるため。入口は常に最新版のデータを指す
+- データ JSON は生成時 gzip + `Content-Encoding: gzip` で S3 格納
+  (CloudFront の 10MB 自動圧縮制限の回避)。版データは immutable キャッシュ
+- アップロード由来 (`r/anon|r/u/{job}.html`) も同様に `{job}.json` を並置。
+  履歴削除は .html と .json を対で削除
+- CLI `--html-dir DIR` (index.html + data.json、ローカル http 配信用) を追加。
+  テスト: test_write_html_split。本番の転送量実測はデプロイ後に記録
 
 **RD1a 実装結果 (2026-07-24)**: core バンドル (`build_bundle(core=True)`) +
 CLI `--html-lite` + Lambda worker の core 化 + ビューア両対応 (coreMode 検出)。

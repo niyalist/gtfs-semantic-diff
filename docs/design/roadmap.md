@@ -352,9 +352,10 @@ config ゲート + 別途議論)。
   CLI `--html` (全量同梱) は不変、`--html-lite` を追加、Web (Lambda) は core に。
   DoD: 検証フィードでサイズ実測 (名古屋 137→40MB 級)・表示情報の同等性・
   pytest。閾値 (サンプル上限) は config。
-- **RD1b: 配信分割** — app.html + core.json.gz (Content-Encoding: gzip、
-  CloudFront 10MB 自動圧縮制限の回避)。版管理を r/{pair}/v/{版}/ ディレクトリに
-  拡張。DoD: 転送量実測 (名古屋 ~4MB)・lazy 再生成・版不変性の回帰。
+- **RD1b: 配信分割** 【実装 2026-07-24 (report_delivery.md §RD1b 実装)】 —
+  HTML (アプリ+$data_url) と データ JSON (gzip、Content-Encoding) の分離。
+  URL 体系は不変、版データは r/{pair}/v/{版}.json。CLI --html-dir 追加。
+  残 DoD: デプロイ後の本番転送量実測・lazy 再生成・版不変性の回帰確認。
 - **RD2: 生データ DL 導線** — events.json / rawdiffs.json.gz を版と並置。
   DL ボタンは検証モードのみ。国際級の Web 開放 (サイズガード撤廃)。
 - **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。

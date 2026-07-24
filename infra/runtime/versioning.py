@@ -43,6 +43,11 @@ def version_key(pair: str, version: str) -> str:
     return f"r/{pair}/v/{version}.html"
 
 
+def data_key(pair: str, version: str) -> str:
+    """版データ JSON (RD1b)。版 HTML と同じく不変。"""
+    return f"r/{pair}/v/{version}.json"
+
+
 def index_key(pair: str) -> str:
     return f"r/{pair}/index.json"
 

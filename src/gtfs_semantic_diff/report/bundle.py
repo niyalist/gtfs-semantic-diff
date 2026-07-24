@@ -15,6 +15,7 @@ core は bundle を知らない (設計原則 3 の consumer)。
 from __future__ import annotations
 
 import datetime
+import gzip
 import html as html_lib
 import importlib.metadata
 import json
@@ -962,6 +963,37 @@ def write_html(bundle: dict[str, Any], template_html: str, path) -> None:
         for chunk in _payload_chunks(bundle):
             f.write(chunk)
         f.write(tail)
+
+
+def write_html_split(
+    bundle: dict[str, Any],
+    template_html: str,
+    html_path,
+    data_path,
+    data_url: str,
+    gzip_data: bool = True,
+) -> None:
+    """アプリ HTML とデータ JSON を分離して書き出す (RD1b)。
+
+    HTML には `{"$data_url": …}` だけを埋め込み、ビューアが起動時に fetch する
+    (viewer/src/main.js)。data_url はサイト相対の絶対パスにすること —
+    入口 (r/{pair}.html) と版 (r/{pair}/v/{版}.html) の両方から同じ HTML の
+    コピーが参照されるため、相対パスでは一方が壊れる。data は
+    _payload_chunks を逐次書き出し ("</" は "<\\/" にエスケープされるが
+    JSON としては等価。gzip_data=True で Content-Encoding: gzip 配信用)。
+    """
+    head, tail = _split_template(bundle, template_html)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(head)
+        f.write(json.dumps({"$data_url": data_url}))
+        f.write(tail)
+    if gzip_data:
+        out = gzip.open(data_path, "wt", encoding="utf-8", compresslevel=6)
+    else:
+        out = open(data_path, "w", encoding="utf-8")
+    with out as f:
+        for chunk in _payload_chunks(bundle):
+            f.write(chunk)
 
 
 def _page_meta(bundle: dict[str, Any]) -> tuple[str, str]:

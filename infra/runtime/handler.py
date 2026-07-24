@@ -369,6 +369,11 @@ def _api_me_history_delete(user_id: str, sk: str) -> dict:
     result_url = str(item.get("result_url", ""))
     if item.get("kind") == "upload" and result_url.startswith("/r/u/"):
         s3.delete_object(Bucket=RESULTS_BUCKET, Key=result_url[1:])
+        # RD1b: 分離データ JSON も対で削除 (旧レポートには存在しないが無害)
+        if result_url.endswith(".html"):
+            s3.delete_object(
+                Bucket=RESULTS_BUCKET, Key=result_url[1:-5] + ".json"
+            )
     table.delete_item(Key={"user_id": user_id, "sk": sk})
     return _resp(200, {"ok": True})
 
@@ -637,7 +642,7 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     from gtfs_semantic_diff.config import Config
     from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
     from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
-    from gtfs_semantic_diff.report.bundle import build_bundle, write_html
+    from gtfs_semantic_diff.report.bundle import build_bundle, write_html_split
 
     config = Config.load()
     pair_feed_info = None
@@ -692,18 +697,26 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     template = (Path(report_pkg.__file__).parent / "viewer_template.html").read_text(
         "utf-8"
     )
-    # ペイロード全体を文字列に持たずファイルへ逐次書き出し → upload_file (IN-3)
+    # RD1b: アプリ HTML とデータ JSON (gzip) を分離。data_url はサイト相対の
+    # 絶対パス (入口と版の両方から同じ HTML コピーが参照するため)。
+    # ペイロードはファイルへ逐次書き出し → upload_file (IN-3)
     html_path = "/tmp/result.html"
-    write_html(bundle, template, html_path)
-
+    data_path = "/tmp/result.json.gz"
     if pair_feed_info is None:
         # アップロード由来: ランダム URL。匿名 = r/anon/ (30日削除)、
         # ログイン = r/u/ (恒久、削除ライフサイクルなし)
         prefix = "r/u" if job_input.get("user_id") else "r/anon"
+        write_html_split(bundle, template, html_path, data_path,
+                         data_url=f"/{prefix}/{job_id}.json")
+        _put_json_file(f"{prefix}/{job_id}.json", data_path,
+                       cache="public, max-age=300")
         result_key = f"{prefix}/{job_id}.html"
         _put_html_file(result_key, html_path, cache="public, max-age=300")
         return result_key
-    return _write_versioned(job_id, html_path, pair_feed_info)
+    version = _tool_version()
+    write_html_split(bundle, template, html_path, data_path,
+                     data_url="/" + versioning.data_key(job_id, version))
+    return _write_versioned(job_id, html_path, data_path, version, pair_feed_info)
 
 
 def _snapshot_label_parts(snapshot) -> tuple[str, str]:
@@ -794,7 +807,23 @@ def _put_html_file(key: str, path: str, cache: str) -> None:
     )
 
 
-def _write_versioned(pair: str, html_path: str, feed_info: dict) -> str:
+def _put_json_file(key: str, path: str, cache: str) -> None:
+    """gzip 済みデータ JSON のアップロード (RD1b)。
+
+    Content-Encoding: gzip を付けて格納 — CloudFront の自動圧縮は 10MB 超に
+    効かないため、生成時に圧縮しておく。"""
+    s3.upload_file(
+        path, RESULTS_BUCKET, key,
+        ExtraArgs={
+            "ContentType": "application/json; charset=utf-8",
+            "ContentEncoding": "gzip",
+            "CacheControl": cache,
+        },
+    )
+
+
+def _write_versioned(pair: str, html_path: str, data_path: str, version: str,
+                     feed_info: dict) -> str:
     """版として不変保存 + 入口 (最新版コピー) + index.json 更新。設計: web.md W3-2 詳細方針。
 
     index.json の read-modify-write に排他は掛けない (同版の同時生成は同一内容の
@@ -802,11 +831,13 @@ def _write_versioned(pair: str, html_path: str, feed_info: dict) -> str:
     """
     import datetime
 
-    version = _tool_version()
     generated_at = datetime.datetime.now(datetime.timezone.utc).isoformat(
         timespec="seconds"
     )
-    # 版は不変 (ブラウザ・CloudFront に長期キャッシュさせる)
+    # 版は不変 (ブラウザ・CloudFront に長期キャッシュさせる)。データ JSON が先
+    # (HTML が参照するため、逆順だと一瞬 404 になりうる)
+    _put_json_file(versioning.data_key(pair, version), data_path,
+                   cache="public, max-age=31536000, immutable")
     _put_html_file(versioning.version_key(pair, version), html_path,
                    cache="public, max-age=31536000, immutable")
     index = versioning.update_index(
