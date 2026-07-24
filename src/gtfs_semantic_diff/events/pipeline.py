@@ -343,14 +343,41 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
             "band_profiles": _band_profiles(ctx, family_to_group),
             "route_groups": _route_groups_context(identity),
             "family_structure": _family_structure(identity, config),
-            "comparison_scope": _scope_context(scope),
+            "comparison_scope": _scope_context(scope, old, new),
         },
     )
     return event_set, rawdiffs, identity, trip_delta
 
 
-def _scope_context(scope: WindowScope | None) -> dict | None:
-    """比較スコープの context 表現 (SD2)。None = 全便比較 (従来どおり)。"""
+def _feed_info_brief(snapshot: GtfsSnapshot) -> dict | None:
+    """feed_info.txt の要約 (feed_version と期間)。任意ファイルのため無ければ None。
+
+    列欠損・空値も None で表す (viewer が「記載なし」を出す)。"""
+    fi = snapshot.table("feed_info")
+    if fi is None or fi.empty:
+        return None
+    row = fi.iloc[0]
+
+    def get(col: str) -> str | None:
+        if col not in fi.columns:
+            return None
+        v = str(row[col]).strip()
+        return v or None
+
+    return {
+        "feed_version": get("feed_version"),
+        "feed_start_date": get("feed_start_date"),
+        "feed_end_date": get("feed_end_date"),
+    }
+
+
+def _scope_context(
+    scope: WindowScope | None, old: GtfsSnapshot, new: GtfsSnapshot
+) -> dict | None:
+    """比較スコープの context 表現 (SD2)。None = 全便比較 (従来どおり)。
+
+    「どのデータ (feed_version) を、どの期間条件で比べたのか」がこの場で
+    完結するよう、新旧の feed_info 要約も同梱する (2026-07-24 追加)。"""
     if scope is None:
         return None
     return {
@@ -364,6 +391,8 @@ def _scope_context(scope: WindowScope | None) -> dict | None:
             "old_trips": len(scope.old_excluded_trips),
             "new_trips": len(scope.new_excluded_trips),
         },
+        "old_feed_info": _feed_info_brief(old),
+        "new_feed_info": _feed_info_brief(new),
     }
 
 

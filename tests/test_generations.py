@@ -88,6 +88,33 @@ def test_coexistence_as_new_side_no_false_increase(tmp_path, config):
     assert scope["primary_periods"] == [["20260711", "20261003"]]
     assert scope["identical_periods"] == [["20260601", "20260710"]]
     assert scope["excluded"]["new_services"] == ["WD_A"]
+    # feed_info は任意ファイル — 無いフィクスチャでは None (viewer が「なし」を表示)
+    assert scope["old_feed_info"] is None
+    assert scope["new_feed_info"] is None
+
+
+def test_scope_carries_feed_info_when_present(tmp_path, config):
+    """feed_info があれば feed_version と期間が scope に同梱される。"""
+    fi_old = (
+        "feed_publisher_name,feed_publisher_url,feed_lang,"
+        "feed_start_date,feed_end_date,feed_version\n"
+        "テストバス,https://example.com,ja,20260601,20261003,V-OLD\n"
+    )
+    fi_new = fi_old.replace("20261003", "20261012").replace("V-OLD", "V-NEW")
+    event_set, rawdiffs = _load_pair(
+        tmp_path, config,
+        {"calendar.txt": _CAL_PRE, "trips.txt": _TRIPS_A, "stop_times.txt": _ST_A,
+         "feed_info.txt": fi_old},
+        {"calendar.txt": _CAL_COEX, "trips.txt": _TRIPS_AB, "stop_times.txt": _ST_AB,
+         "feed_info.txt": fi_new},
+    )
+    scope = event_set.context["comparison_scope"]
+    assert scope is not None
+    assert scope["old_feed_info"] == {
+        "feed_version": "V-OLD",
+        "feed_start_date": "20260601", "feed_end_date": "20261003",
+    }
+    assert scope["new_feed_info"]["feed_version"] == "V-NEW"
 
 
 def test_coexistence_as_old_side_no_false_decrease(tmp_path, config):

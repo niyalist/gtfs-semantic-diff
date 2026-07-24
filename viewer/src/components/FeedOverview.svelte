@@ -37,6 +37,17 @@
     return parts.join("・");
   }
   $: scope = overview.comparison_scope;
+  // 同梱世代ブロック: どのデータ (feed_version) をどの期間条件で比べたか。
+  // feed_info は任意ファイルなので「なし」「記載なし」を明示する
+  function feedInfoText(fi) {
+    if (!fi) return tt("fo_scope_no_feedinfo");
+    const parts = [];
+    parts.push(fi.feed_version
+      ? tt("fo_scope_version", fi.feed_version) : tt("fo_scope_no_version"));
+    if (fi.feed_start_date && fi.feed_end_date)
+      parts.push(`${isoDate(fi.feed_start_date)}${$lang === "en" ? "–" : "〜"}${isoDate(fi.feed_end_date)}`);
+    return parts.join($lang === "en" ? ", " : "・");
+  }
   // SD4 (改): 運行日の要点 (文字要約)。runs = [[start,end],...] を M/D 表記に
   $: note = overview.service_days_note;
   function runsText(pack) {
@@ -142,6 +153,8 @@
   <div class="scope-note">
     <p><strong>▮ {tt("fo_scope_title")}</strong></p>
     <ul>
+      <li>{tt("fo_scope_feed", tt("old_gen"), feedInfoText(scope.old_feed_info))}</li>
+      <li>{tt("fo_scope_feed", tt("new_gen"), feedInfoText(scope.new_feed_info))}</li>
       <li>{tt("fo_scope_window", isoDate(scope.comparison_window?.[0]), isoDate(scope.comparison_window?.[1]))}</li>
       {#if scope.primary_periods?.length}
         <li>{tt("fo_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}〜${isoDate(p[1])}`).join(", "))}</li>
