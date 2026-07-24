@@ -16,7 +16,11 @@ AI への出力経路。
 - アップロード由来 (`r/anon|r/u/{job}.html`) も同様に `{job}.json` を並置。
   履歴削除は .html と .json を対で削除
 - CLI `--html-dir DIR` (index.html + data.json、ローカル http 配信用) を追加。
-  テスト: test_write_html_split。本番の転送量実測はデプロイ後に記録
+  テスト: test_write_html_split
+- **本番実測 (2026.7.24.4 デプロイ、2026-07-24)**: 永井ペアで
+  入口 HTML 1.07MB + データ JSON 転送 **87KB** (gzip、Content-Encoding 確認) =
+  初期転送 約1.2MB (単一ファイル時代の 4.6MB → RD1a 2.2MB → **1.2MB**)。
+  $data_url は版データを正しく指し、旧版 (埋め込み型) も後方互換で閲覧可
 
 **RD1a 実装結果 (2026-07-24)**: core バンドル (`build_bundle(core=True)`) +
 CLI `--html-lite` + Lambda worker の core 化 + ビューア両対応 (coreMode 検出)。
