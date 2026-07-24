@@ -42,7 +42,7 @@ def build_bundle(
     # 第1部 (フィード全体) と第4部 (その他) はスナップショット・RawDiff を
     # 素材にするためここで付与する (presentation.py は events/identity/delta のみ)
     presentation["feed_overview"] = _feed_overview(
-        old, new, event_set, rawdiffs, trip_delta, config
+        old, new, event_set, rawdiffs, trip_delta, config, identity
     )
     # SD3 改: 路線ページの「特定日」タブにその場で具体日付を出す
     from ..identity.route_family import route_to_family_map
@@ -155,7 +155,9 @@ def _coverage(event_set) -> dict:
     }
 
 
-def _feed_overview(old, new, event_set, rawdiffs, trip_delta, config: Config) -> dict:
+def _feed_overview(
+    old, new, event_set, rawdiffs, trip_delta, config: Config, identity=None
+) -> dict:
     """4部構成レポートの第1部・第4部ビュー。
 
     - files: txt ファイルごとの新旧対応表 (有無・行数・RawDiff 内訳)
@@ -248,11 +250,11 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta, config: Config) ->
         "meta_events": meta_events,
         # SD2: 同梱世代の比較範囲 (単一世代比較では None)。第1部に注記を出す
         "comparison_scope": event_set.context.get("comparison_scope"),
-        # SD4: 運行日カレンダービュー (新旧並置)。長期窓は None
-        "calendar_view": {
-            "old": _calendar_view(old, config),
-            "new": _calendar_view(new, config),
-        },
+        # SD4 (改): 運行日の要点 (文字要約。カレンダー表示は 2026-07-24 に廃止)
+        "service_days_note": _service_days_note(
+            old, new, config, identity, trip_delta,
+            scope_active=event_set.context.get("comparison_scope") is not None,
+        ),
         "others": [
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
@@ -337,11 +339,11 @@ def _route_special_dates(
 def _special_day_services(snapshot, config: Config) -> list[dict]:
     """特定日 (irregular) / 運行日なし (inactive) service の内訳 (M10 → SD3)。
 
-    SD3: 表示の基礎を「calendar_dates の追加日」から**実効運行日集合**
+    SD3: 集計の基礎を「calendar_dates の追加日」から**実効運行日集合**
     (期間×フラグ − 削除 + 追加、フィード有効期間でクリップ) に置き換える —
     SD1 で「フラグ+大量削除」型の特定日 (PRT の祝日専用 service) が
-    増えたため。具体日付リスト date_list を `[report]
-    special_dates_list_max` 件まで持ち、viewer が「運行日: 7/4」等と表示する。
+    増えたため。第1部は日数+期間のみ (日付列挙は 2026-07-24 に撤去。
+    具体日付は路線ページの special_dates が受け持つ)。
     replaces_regular: この service の全運行日を、他の service が
     exception_type=2 で運休している (= 通常ダイヤの置き換え。年末年始等)。
     """
@@ -353,7 +355,6 @@ def _special_day_services(snapshot, config: Config) -> list[dict]:
     ]
     if not specials:
         return []
-    list_max = config.get("report", "special_dates_list_max", default=30)
     trips = snapshot.table("trips")
     trip_counts: dict[str, int] = {}
     if trips is not None:
@@ -420,8 +421,8 @@ def _special_day_services(snapshot, config: Config) -> list[dict]:
             "dates": len(dates),
             "first_date": dates[0] if dates else None,
             "last_date": dates[-1] if dates else None,
-            "date_list": dates[:list_max],
-            "truncated": len(dates) > list_max,
+            # 日付列挙 (date_list) は第1部から撤去 (2026-07-24 決定 — 読み取れない)。
+            # 具体日付は路線ページの special_dates (その場解説) が受け持つ
             "replaces_regular": bool(dates) and all(
                 d in removed_by_others for d in dates
             ),
@@ -429,20 +430,16 @@ def _special_day_services(snapshot, config: Config) -> list[dict]:
     return result
 
 
-def _calendar_view(snapshot, config: Config) -> dict | None:
-    """SD4: 運行日カレンダービューの素材 (1スナップショット分)。
+def _per_date_worlds(snapshot, config: Config) -> dict | None:
+    """日付ごとの「その日実際に走る世界」(SD4 改: 文字要約の素材)。
 
-    日付ごとに「その日実際に走る世界」を実効運行日集合から引く:
-    - sym: 走っている週次レギュラー型のラベル (曜日集合がその日を含むもの優先)。
-      走るものがなければ none
-    - swap: 週次型は走っているが、その日の曜日を含まない (= 振替。桑名の
-      祝日「平日 service 削除+日曜 service 追加」がここに出る)
-    - special: 特定日 (irregular) service がその日運行
-    - period: 期間 (calendar 端点で区切った区間) の通し番号 — 世代・季節の
-      切れ目を背景とし、記号を第1チャネルに保つ (色弱原則)
-    計算はすべて SD1/SD2 と同じ実効日定義 (決定的)。
+    {date: {"svcs": frozenset, "swap": bool, "special": bool}} と窓を返す。
+    swap = 週次型は走るがその日の曜日を含まない (祝日等)、special = 特定日
+    service が運行、日付が無い = その日は運行なし。定義は SD1/SD2 と同一。
+    窓が config `[report] calendar_view_max_days` (550) を超える場合は None
+    (国家規模の長期窓は文字要約も省略)。
     """
-    from ..events.windows import single_snapshot_intervals
+    from ..events.windows import snapshot_window
     from ..load.day_types import (
         _CALENDAR_DAY_COLUMNS,
         _exception_dates,
@@ -450,12 +447,12 @@ def _calendar_view(snapshot, config: Config) -> dict | None:
         effective_date_list,
     )
 
-    window, intervals = single_snapshot_intervals(snapshot)
+    window = snapshot_window(snapshot)
     if window is None:
         return None
     max_days = config.get("report", "calendar_view_max_days", default=550)
     if window.days() > max_days:
-        return None  # 国家規模の長期窓等は対象外 (表示が成立しない)
+        return None
 
     trips = snapshot.table("trips")
     services_with_trips: set[str] = set()
@@ -465,13 +462,14 @@ def _calendar_view(snapshot, config: Config) -> dict | None:
     added_map, removed_map = _exception_dates(snapshot.table("calendar_dates"))
     window_text = window.as_text()
 
-    # service ごとの実効日 → 日付ごとの「アクティブな day_type 集合」
-    by_date: dict[str, set[str]] = {}
+    by_date: dict[str, dict] = {}
 
     def add_dates(sid: str, dates: list[str]) -> None:
         dt = snapshot.day_types.get(sid, "irregular")
         for d in dates:
-            by_date.setdefault(d, set()).add(dt)
+            e = by_date.setdefault(d, {"labels": set(), "_s": set()})
+            e["labels"].add(dt)
+            e["_s"].add(sid)
 
     cal = snapshot.table("calendar")
     flag_services: set[str] = set()
@@ -504,44 +502,162 @@ def _calendar_view(snapshot, config: Config) -> dict | None:
             d for d in dates if d not in removed and lo <= d <= hi
         ))
 
-    # 日付セルの決定
-    days = []
-    d = window.start
-    one = datetime.timedelta(days=1)
-    period_starts = {iv.start: i for i, iv in enumerate(intervals)}
-    period = 0
-    while d <= window.end:
-        text = d.strftime("%Y%m%d")
-        period = period_starts.get(d, period)
-        active = by_date.get(text, set())
-        regular = [t for t in active if t not in ("irregular", "inactive")]
+    import datetime as _dt
+
+    days: dict[str, dict] = {}
+    for text, e in by_date.items():
+        wd = _dt.datetime.strptime(text, "%Y%m%d").date().weekday()
+        regular = [t for t in e["labels"] if t not in ("irregular", "inactive")]
         matching = [
             t for t in regular
-            if (day_set_of(t) or set()) and d.weekday() in day_set_of(t)
+            if (day_set_of(t) or set()) and wd in day_set_of(t)
         ]
-        if matching:
-            # 広い区分 (曜日集合が大きいもの) を代表にする (平日 > dow_*)
-            sym = max(matching, key=lambda t: len(day_set_of(t) or ()))
-            swap = False
-        elif regular:
-            sym = max(regular, key=lambda t: len(day_set_of(t) or ()))
-            swap = True  # 曜日と異なるダイヤで運行 (振替)
+        days[text] = {
+            "svcs": frozenset(e["_s"]),
+            "swap": bool(regular) and not matching,
+            "special": "irregular" in e["labels"],
+        }
+    return {"window": window, "days": days}
+
+
+def _date_runs(dates: list[str], runs_max: int) -> tuple[list[list[str]], int]:
+    """昇順日付列 → 連続ラン [[start, end], ...] (runs_max 件まで) と超過ラン数。"""
+    import datetime as _dt
+
+    runs: list[list[str]] = []
+    prev = None
+    for text in sorted(dates):
+        d = _dt.datetime.strptime(text, "%Y%m%d").date()
+        if prev is not None and (d - prev).days == 1:
+            runs[-1][1] = text
         else:
-            sym = None
-            swap = False
-        days.append({
-            "date": text,
-            "sym": sym,
-            "swap": swap,
-            "special": "irregular" in active,
-            "period": period,
-        })
-        d += one
+            runs.append([text, text])
+        prev = d
+    return runs[:runs_max], max(0, len(runs) - runs_max)
+
+
+def _service_days_note(
+    old, new, config: Config, identity, trip_delta, scope_active: bool
+) -> dict | None:
+    """SD4 (改): 運行日の要点の文字要約 (カレンダー表示の代替。方針決定 2026-07-24)。
+
+    - 掲載範囲 (旧/新の窓) と「両方が重なる期間」
+    - 重なりの中で運行内容が変わる日 (日付単位の内容比較 — 便の内容署名の
+      多重集合が異なる日。ID 非依存)
+    - 曜日と異なるダイヤで走る日 (祝日等)・運行のない日 (各世代)
+    期間が重ならない2時点では日付単位の比較を行わない (被覆の明示のみ) —
+    「任意の2時点で動く」前提の縮退。
+    """
+    from collections import Counter
+
+    from ..events.tripdelta import collect_trips
+    from ..identity.route_family import route_to_family_map
+
+    old_w = _per_date_worlds(old, config)
+    new_w = _per_date_worlds(new, config)
+    if old_w is None or new_w is None:
+        return None
+    runs_max = config.get("report", "note_runs_max", default=8)
+
+    def side_summary(w):
+        swap = [d for d, e in w["days"].items() if e["swap"]]
+        window = w["window"]
+        import datetime as _dt
+
+        none_days = []
+        d = window.start
+        one = _dt.timedelta(days=1)
+        while d <= window.end:
+            if d.strftime("%Y%m%d") not in w["days"]:
+                none_days.append(d.strftime("%Y%m%d"))
+            d += one
+        return swap, none_days
+
+    old_swap, old_none = side_summary(old_w)
+    new_swap, new_none = side_summary(new_w)
+
+    lo = max(old_w["window"].start, new_w["window"].start)
+    hi = min(old_w["window"].end, new_w["window"].end)
+    overlap = lo <= hi
+
+    changed: list[str] = []
+    if overlap:
+        # 便世界: 通常は trip_delta の全便 (scope なし = 全便そのもの)。
+        # 同梱世代でフィルタ済み (scope あり) のときだけ全便を再収集する
+        if scope_active:
+            old_stop_to_base = {
+                pid: c.base_name
+                for c in identity.old_stop_clusters.values()
+                for pid in c.platform_ids
+            }
+            new_stop_to_base = {
+                pid: c.base_name
+                for c in identity.new_stop_clusters.values()
+                for pid in c.platform_ids
+            }
+            old_trips = collect_trips(
+                old, route_to_family_map(identity.old_families), old_stop_to_base
+            )
+            new_trips = collect_trips(
+                new, route_to_family_map(identity.new_families), new_stop_to_base
+            )
+        else:
+            old_trips, new_trips = trip_delta.old_trips, trip_delta.new_trips
+
+        def content_by_service(snapshot, trip_infos):
+            trips = snapshot.table("trips")
+            result: dict[str, Counter] = {}
+            if trips is None or trips.empty:
+                return result
+            for tid, sid in zip(trips["trip_id"], trips["service_id"]):
+                info = trip_infos.get(str(tid))
+                if info is None:
+                    continue
+                # family/day_type は世代間で振れるため内容キーから除外
+                key = hash((info.direction, info.base_seq, info.times))
+                result.setdefault(str(sid), Counter())[key] += 1
+            return result
+
+        old_content = content_by_service(old, old_trips)
+        new_content = content_by_service(new, new_trips)
+        memo: dict[tuple, bool] = {}
+
+        def differs(so: frozenset, sn: frozenset) -> bool:
+            key = (so, sn)
+            if key not in memo:
+                co: Counter = Counter()
+                cn: Counter = Counter()
+                for s in so:
+                    co.update(old_content.get(s, {}))
+                for s in sn:
+                    cn.update(new_content.get(s, {}))
+                memo[key] = co != cn
+            return memo[key]
+
+        import datetime as _dt
+
+        d = lo
+        one = _dt.timedelta(days=1)
+        empty: frozenset = frozenset()
+        while d <= hi:
+            t = d.strftime("%Y%m%d")
+            so = old_w["days"].get(t, {}).get("svcs", empty)
+            sn = new_w["days"].get(t, {}).get("svcs", empty)
+            if differs(so, sn):
+                changed.append(t)
+            d += one
+
+    def pack(dates):
+        runs, extra = _date_runs(dates, runs_max)
+        return {"count": len(dates), "runs": runs, "more_runs": extra}
 
     return {
-        "window": list(window_text),
-        "periods": [list(iv.as_text()) for iv in intervals],
-        "days": days,
+        "old_window": list(old_w["window"].as_text()),
+        "new_window": list(new_w["window"].as_text()),
+        "overlap": [lo.strftime("%Y%m%d"), hi.strftime("%Y%m%d")] if overlap else None,
+        "changed": pack(changed) if overlap else None,
+        "swap": {"old": pack(old_swap), "new": pack(new_swap)},
+        "no_service": {"old": pack(old_none), "new": pack(new_none)},
     }
 
 

@@ -178,9 +178,6 @@ def test_special_day_services(tmp_path, config):
     assert by_id["NY"]["dates"] == 3
     assert (by_id["NY"]["first_date"], by_id["NY"]["last_date"]) == ("20261230", "20270102")
     assert by_id["NY"]["replaces_regular"] is True  # WD が同日を運休 → 置き換え型
-    # SD3: 実効運行日の具体日付リスト
-    assert by_id["NY"]["date_list"] == ["20261230", "20261231", "20270102"]
-    assert by_id["NY"]["truncated"] is False
     assert by_id["DORMANT"]["day_type"] == "inactive"
     assert by_id["DORMANT"]["replaces_regular"] is False
 
@@ -213,7 +210,15 @@ def test_bundle_special_days_flag_based_holiday_service(tmp_path, config):
     specials = bundle["presentation"]["feed_overview"]["special_days"]["new"]
     by_id = {s["service_id"]: s for s in specials}
     assert by_id["HOL"]["day_type"] == "irregular"  # SD1 の密度判定
-    assert by_id["HOL"]["date_list"] == ["20260704"]  # SD3: 具体日付
+    # SD3 (改): 第1部は日数+期間のみ (日付列挙は撤去)。実効日ベースで 7/4 の1日
     assert by_id["HOL"]["dates"] == 1
+    assert by_id["HOL"]["first_date"] == "20260704"
     # 単一世代比較なので比較スコープは付かない
     assert bundle["presentation"]["feed_overview"]["comparison_scope"] is None
+    # SD4 (改): 運行日の要点 (文字要約)。同一フィード同士なので変わる日ゼロ
+    note = bundle["presentation"]["feed_overview"]["service_days_note"]
+    assert note["overlap"] is not None
+    assert note["changed"]["count"] == 0
+    # このフィクスチャは平日 (WD) + HOL (7/4 のみ) しか無いので、
+    # 土日 (窓内 104日) のうち HOL が走る 7/4 を除く 103 日が「運行のない日」
+    assert note["no_service"]["new"]["count"] == 103

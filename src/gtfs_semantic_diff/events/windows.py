@@ -192,25 +192,6 @@ def active_services(snapshot: GtfsSnapshot, interval: DateInterval) -> set[str]:
     return result
 
 
-def single_snapshot_intervals(
-    snapshot: GtfsSnapshot,
-) -> tuple[DateInterval | None, list[DateInterval]]:
-    """1スナップショットの有効窓を、自身の calendar 期間端点で区切った区間列。
-
-    SD4 の運行日カレンダービューが「期間 (世代・季節) の切れ目」を帯表示する
-    ための素材 (比較窓ではなく単独の窓)。"""
-    window = snapshot_window(snapshot)
-    if window is None:
-        return None, []
-    starts = {window.start} | _calendar_boundaries(snapshot, window)
-    ordered = sorted(starts)
-    intervals = []
-    for i, s in enumerate(ordered):
-        e = (ordered[i + 1] - _ONE_DAY) if i + 1 < len(ordered) else window.end
-        intervals.append(DateInterval(s, e))
-    return window, intervals
-
-
 def known_services(snapshot: GtfsSnapshot) -> set[str]:
     """calendar / calendar_dates に現れる service_id の全集合。
 

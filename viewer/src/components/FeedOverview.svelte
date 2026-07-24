@@ -1,6 +1,5 @@
 <script>
-  import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
-  import CalendarView from "./CalendarView.svelte";
+  import { lang, t, dayName } from "../lib/i18n.js";
 
   export let overview; // presentation.feed_overview
   export let feed = {}; // meta.feed (期間)
@@ -25,18 +24,12 @@
   function dayLabel(d) {
     return dayName(d, $lang);
   }
-  // M10 → SD3: 特定日・運行日なし service の内訳の1行。
-  // 実効運行日の具体日付 (date_list) があれば「運行日: 7/21、8/11〜8/16」と
-  // 連続日を範囲に畳んで表示する。無い旧バンドルは日数+期間表示に退避
+  // M10: 特定日・運行日なし service の内訳の1行 (日数+期間のみ。
+  // 日付列挙は 2026-07-24 に撤去 — 具体日付は路線ページのその場解説が受け持つ)
   function specialLine(s) {
     const parts = [dayLabel(s.day_type)];
-    if (s.date_list?.length) {
-      const runs = formatDateRuns(s.date_list, $lang);
-      const extra = (runs.more || 0) + (s.truncated ? s.dates - s.date_list.length : 0);
-      parts.push(tt("fo_special_rundates", runs.text, s.dates, extra));
-    } else if (s.dates) {
+    if (s.dates)
       parts.push(tt("fo_special_dates", s.dates, isoDate(s.first_date), isoDate(s.last_date)));
-    }
     parts.push(`${s.trips}${tt("trips_count")}`);
     if (s.day_type === "inactive") parts.push(tt("fo_special_inactive"));
     else if (s.replaces_regular) parts.push(tt("fo_special_replaces"));
@@ -44,6 +37,24 @@
     return parts.join("・");
   }
   $: scope = overview.comparison_scope;
+  // SD4 (改): 運行日の要点 (文字要約)。runs = [[start,end],...] を M/D 表記に
+  $: note = overview.service_days_note;
+  function runsText(pack) {
+    if (!pack || !pack.count) return tt("sdn_none");
+    const dash = $lang === "en" ? "–" : "〜";
+    const sep = $lang === "en" ? ", " : "、";
+    const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
+    const parts = pack.runs.map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`));
+    let text = parts.join(sep);
+    if (pack.more_runs) text += tt("sdn_more", pack.more_runs);
+    return `${text} (${tt("sdn_days", pack.count)})`;
+  }
+  function sideRuns(packs) {
+    const parts = [];
+    if (packs.old?.count) parts.push(`${tt("old_gen")}: ${runsText(packs.old)}`);
+    if (packs.new?.count) parts.push(`${tt("new_gen")}: ${runsText(packs.new)}`);
+    return parts.join(" / ");
+  }
   $: specials = [
     ...(overview.special_days?.new ?? []).map((s) => ({ ...s, gen: "new" })),
     ...(overview.special_days?.old ?? [])
@@ -209,12 +220,31 @@
   {/if}
 {/if}
 
-{#if overview.calendar_view?.old || overview.calendar_view?.new}
-  <!-- SD4: 運行日カレンダー (新旧並置)。記号第1チャネル (色弱原則) -->
-  <h3>{tt("cal_title")}</h3>
-  <p class="meta">{tt("cal_legend")}</p>
-  <CalendarView view={overview.calendar_view.old} title={tt("old_gen")} />
-  <CalendarView view={overview.calendar_view.new} title={tt("new_gen")} />
+{#if note}
+  <!-- SD4 (改): 運行日の要点 — カレンダー描画は行わず文字で要約する
+       (2026-07-24 決定。改正日・例外日・運休日・掲載範囲が本質で、
+        言葉の方が認知単位に合う) -->
+  <h3>{tt("sdn_title")}</h3>
+  <ul class="sdn">
+    <li>
+      {tt("sdn_windows", isoDate(note.old_window[0]), isoDate(note.old_window[1]),
+          isoDate(note.new_window[0]), isoDate(note.new_window[1]))}
+    </li>
+    {#if note.overlap}
+      <li>{tt("sdn_overlap", isoDate(note.overlap[0]), isoDate(note.overlap[1]))}</li>
+      {#if note.changed}
+        <li>{tt("sdn_changed")}: {runsText(note.changed)}</li>
+      {/if}
+    {:else}
+      <li><strong>{tt("sdn_no_overlap")}</strong></li>
+    {/if}
+    {#if note.swap.old.count || note.swap.new.count}
+      <li>{tt("sdn_swap")}: {sideRuns(note.swap)}</li>
+    {/if}
+    {#if note.no_service.old.count || note.no_service.new.count}
+      <li>{tt("sdn_no_service")}: {sideRuns(note.no_service)}</li>
+    {/if}
+  </ul>
 {/if}
 
 <h3>{tt("fo_meta_events")}</h3>
@@ -244,4 +274,6 @@
   }
   .scope-note p { margin: 0 0 0.2rem; }
   .scope-note ul { margin: 0 0 0.2rem 1.2rem; padding: 0; }
+  .sdn { margin: 0.2rem 0 0.8rem 1.2rem; padding: 0; }
+  .sdn li { margin: 0.15rem 0; }
 </style>
