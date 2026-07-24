@@ -326,8 +326,11 @@ config ゲート + 別途議論)。
   (docs/perf/P2_rules_hotspots.md)】 — O(n²) 2件 (frequency のグループ毎
   全 trip 走査、MatchGraph の照会毎全エッジ走査) を修正。ルール段
   mbta 616s→33.6s (18x)・rome 996s→80.9s (12x)。出力バイト一致
-  (trimet/prt/名古屋/桑名)。残: IN-2 (便対応の残コスト — 修正後の最大支配項、
-  mbta 792s / rome 401s)、IN-3 (RawDiff 1000万件級のメモリ、Lambda 制約)。
+  (trimet/prt/名古屋/桑名)。
+  【IN-2 完了 2026-07-24 (docs/perf/P2_tripdelta_dt.md)】 — 便対応の
+  dt_shared_minutes を trip 毎の時刻前計算に (約5倍)。両修正で
+  mbta 1010s→314s / rome 1523s→320s、**swiss 初完走 (32分)**。
+  残: IN-3 (RawDiff 1000万件級のメモリ、Lambda 制約)。
   課題台帳: docs/verification/intl_feeds.md IN-1〜3
 - **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
   の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)

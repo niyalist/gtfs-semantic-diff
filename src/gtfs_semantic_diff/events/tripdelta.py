@@ -109,31 +109,51 @@ def collect_trips(snapshot: GtfsSnapshot, route_to_family: dict[str, str],
 # --- コスト成分 ---
 
 
+def _time_profile(t: TripInfo) -> tuple[dict[str, int | None], int | None]:
+    """(基底停留所 → 初出の発時刻秒, 始発秒) の前計算。
+
+    dt_shared_minutes を候補ペア毎に素で評価すると、同じ trip の時刻文字列を
+    候補対の数だけパースし直し、tripdelta 段が支配される (IN-2 実測:
+    trimet で parse_gtfs_time 4.6億回)。trip 毎に1回だけパースしておき、
+    ペアループは整数演算に落とす。パース不能は None (比較時に読み飛ばし —
+    従来と同じ扱い)。
+    """
+    first: dict[str, int | None] = {}
+    for s, (arr, dep) in zip(t.base_seq, t.times):
+        if s not in first:
+            first[s] = parse_gtfs_time(dep or arr)
+    return first, parse_gtfs_time(t.first_departure)
+
+
+def _dt_shared_from(
+    o_first: dict[str, int | None],
+    o_dep: int | None,
+    n_first: dict[str, int | None],
+    n_dep: int | None,
+) -> float | None:
+    diffs: list[float] = []
+    for s, b in n_first.items():
+        a = o_first.get(s)
+        if a is not None and b is not None:
+            diffs.append(abs(b - a) / 60)
+    if diffs:
+        return statistics.median(diffs)
+    if o_dep is None or n_dep is None:
+        return None
+    return abs(n_dep - o_dep) / 60
+
+
 def dt_shared_minutes(o: TripInfo, n: TripInfo) -> float | None:
     """共有停留所 (初出) での発時刻差の中央値 (分)。共有なしは始発時刻差。
 
     区間短縮・延長・途中経由変更では共有部分の時刻がほぼ据え置きになるため、
     始発時刻差より頑健な「同じ便か」の証拠になる。
+    (仕様の定義関数。build_trip_delta のホットパスは同値の前計算版
+    _time_profile + _dt_shared_from を使う)
     """
-    old_time: dict[str, str] = {}
-    for s, (arr, dep) in zip(o.base_seq, o.times):
-        old_time.setdefault(s, dep or arr)
-    diffs: list[float] = []
-    seen: set[str] = set()
-    for s, (arr, dep) in zip(n.base_seq, n.times):
-        if s in old_time and s not in seen:
-            seen.add(s)
-            a = parse_gtfs_time(old_time[s])
-            b = parse_gtfs_time(dep or arr)
-            if a is not None and b is not None:
-                diffs.append(abs(b - a) / 60)
-    if diffs:
-        return statistics.median(diffs)
-    a = parse_gtfs_time(o.first_departure)
-    b = parse_gtfs_time(n.first_departure)
-    if a is None or b is None:
-        return None
-    return abs(b - a) / 60
+    o_first, o_dep = _time_profile(o)
+    n_first, n_dep = _time_profile(n)
+    return _dt_shared_from(o_first, o_dep, n_first, n_dep)
 
 
 def lcs_ratio(a: tuple[str, ...], b: tuple[str, ...]) -> float:
@@ -262,13 +282,17 @@ def build_trip_delta(
 
     for key in sorted(blocks):
         olds, news = blocks[key]
+        # 時刻の前計算 (trip 毎に1回)。ペア毎の dt_shared_minutes 素評価は
+        # パース回数が候補対数×停車数で効き、tripdelta 段を支配する (IN-2)
+        old_profs = [(o, *_time_profile(o)) for o in olds]
+        new_profs = [(n, *_time_profile(n)) for n in news]
         candidates = []
-        for o in olds:
-            for n in news:
+        for o, o_first, o_dep in old_profs:
+            for n, n_first, n_dep in new_profs:
                 sim = cached_lcs(o.base_seq, n.base_seq)
                 if sim < params.min_route_sim:
                     continue
-                dt = dt_shared_minutes(o, n)
+                dt = _dt_shared_from(o_first, o_dep, n_first, n_dep)
                 if dt is None or dt > params.max_shift_min:
                     continue
                 cost = (

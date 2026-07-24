@@ -75,12 +75,17 @@ explained は完全一致 = 決定性の再確認)。
 stop_times 100万行規模なら 2.2GB / 134s — この規模までは Lambda 3008MB でも
 視野に入る (メモリは要実測)。
 
+**P2 後の追記 (2026-07-24)**: IN-1 (ルール段) + IN-2 (便対応 Δt) の修正で
+mbta 1010s→314s、rome 1523s→320s、trimet 273s→111s。**swiss は初完走
+(1904s、events 87,035、explained 0.9942)**。数値は docs/perf/P2_rules_hotspots.md
+と P2_tripdelta_dt.md。上の表は I1 時点 (P1 適用後) の記録として保存。
+
 ## 課題一覧 (P2 / I3 / I4 への入力)
 
 | # | 行き先 | 内容 |
 |---|---|---|
 | IN-1 | **解消 (P2、2026-07-24)** | ルール段 (L2) が RawDiff 大量時に非線形 (MBTA 616s / rome 996s / trimet 47s / prt 99s)。**O(n²) 2件 (frequency のグループ毎全 trip 走査・MatchGraph の照会毎全エッジ走査) を特定し修正 — mbta 33.6s (18x)・rome 80.9s (12x)・prt 20.8s。出力は trimet/prt/名古屋/桑名でバイト一致。docs/perf/P2_rules_hotspots.md** |
-| IN-2 | P2 | 便対応の残コスト (Δt 計算×候補対、タプルハッシュ)。swiss 727s / stm 499s。ブロック内前絞り等 |
+| IN-2 | **解消 (P2、2026-07-24)** | 便対応の残コスト (Δt 計算×候補対)。**支配項は候補ペア毎の dt_shared_minutes 素評価 (trimet で parse 4.66億回) — trip 毎の時刻前計算で約5倍 (mbta 792→168s / rome 401→82s)。swiss は初完走 (1904s)。出力バイト一致 (trimet/名古屋/桑名)。docs/perf/P2_tripdelta_dt.md** (タプルハッシュは実測 4.9s で無罪) |
 | IN-3 | P2/I4 | shapes・stop_times 由来の巨大 RawDiff (660万〜1520万) — メモリ (RSS 10GB 級 = Lambda 不可) と HTML サイズに直結。bulk の適用拡大は evidence 設計と要調整。hosted bundle 化とも関連 |
 | IN-4 | I4 | rome の残差 25万件 (stop_times/trips) の精査 — frequencies 運行の便の扱いを確認 |
 | IN-5 | I4 | 未知ファイルの claiming ルール (MBTA multi_route_trips 等・TriMet stop_features) — 山交 pass_rules と同じバックログの国際版。transfers.txt (標準) のルールも未実装 |
