@@ -35,6 +35,7 @@ const DICT = {
       `旧側の比較対象外: ${s} service・${t}便 (期限切れ・持ち越し世代)`,
     fo_scope_excluded_new: (s, t) =>
       `新側の比較対象外: ${s} service・${t}便 (期限切れ・持ち越し世代)`,
+    rp_special_dates: (s) => `この「特定日」の${s}`,
     cal_title: "運行日カレンダー",
     cal_legend: "平/土/休/週/毎/曜 = その日に走るダイヤ区分・▲ = 曜日と異なるダイヤで運行 (祝日等の振替)・◆ = 特定日運行あり・「・」 = 運行なし。期間 (世代・季節) の切れ目は太罫線と背景で示す",
     cal_periods: (p) => `期間: ${p}`,
@@ -203,6 +204,7 @@ const DICT = {
       `Out of scope on the old side: ${s} service(s), ${t} trip(s) (expired / carried-over generation)`,
     fo_scope_excluded_new: (s, t) =>
       `Out of scope on the new side: ${s} service(s), ${t} trip(s) (expired / carried-over generation)`,
+    rp_special_dates: (s) => `The “special dates” here: ${s}`,
     cal_title: "Service calendar",
     cal_legend: "W/S/H/E/D/w = schedule type running that day (weekday/Sat/Sun-holiday/weekend/daily/day-of-week) · ▲ = runs a different schedule than the weekday suggests (holiday swap) · ◆ = special-date service runs · “·” = no service. Period (generation/season) breaks are shown by thick rules and shading",
     cal_periods: (p) => `Periods: ${p}`,

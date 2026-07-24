@@ -1,5 +1,5 @@
 <script>
-  import { lang, t, dayName } from "../lib/i18n.js";
+  import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
   import LevSummary from "./LevSummary.svelte";
   import BandMatrix from "./BandMatrix.svelte";
   import DiffTimetable from "./DiffTimetable.svelte";
@@ -42,6 +42,17 @@
     rows: page.band_matrix.rows.filter((r) => r.day_type === selectedDay),
   };
   $: dayTimetables = page.timetables.filter((tb) => tb.day_type === selectedDay);
+  // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)
+  $: sameSpecial =
+    page.special_dates &&
+    JSON.stringify(page.special_dates.old) === JSON.stringify(page.special_dates.new);
+  function specialRun(side) {
+    const sd = page.special_dates;
+    const runs = formatDateRuns(sd[side], $lang);
+    const total = sd[`${side}_total`];
+    const extra = (runs.more || 0) + Math.max(0, total - sd[side].length);
+    return tt("fo_special_rundates", runs.text, total, extra);
+  }
   $: changedTables = dayTimetables.filter((tb) => tb.columns.some(columnChanged));
 
   // 主要停留所 (key_stops の tier) を残して間を省略。地図のラベル段階と同じ基準を共有
@@ -167,6 +178,22 @@
       </div>
     {/if}
 
+    <!-- SD3 改: 「特定日」タブでは、その場でどの日付を指すのかを解説する -->
+    {#if selectedDay === "irregular" && page.special_dates}
+      <p class="special-dates">
+        {#if sameSpecial}
+          {tt("rp_special_dates", specialRun(page.special_dates.new.length ? "new" : "old"))}
+        {:else}
+          {#if page.special_dates.old_total}
+            {tt("old_gen")}: {specialRun("old")}{page.special_dates.new_total ? " / " : ""}
+          {/if}
+          {#if page.special_dates.new_total}
+            {tt("new_gen")}: {specialRun("new")}
+          {/if}
+        {/if}
+      </p>
+    {/if}
+
     <!-- ③ 時間帯別本数 -->
     {#if dayMatrix.rows.length}
       <h3>{tt("band_table")}</h3>
@@ -194,6 +221,11 @@
 </details>
 
 <style>
+  .special-dates {
+    margin: 0.4rem 0 0.2rem;
+    padding: 0.2rem 0.6rem;
+    border-left: 3px solid var(--fg-soft);
+  }
   .axis-grid {
     display: grid;
     grid-template-columns: max-content 1fr; /* ラベル列幅は最長ラベルで全行共有 */

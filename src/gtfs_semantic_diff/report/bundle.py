@@ -44,6 +44,25 @@ def build_bundle(
     presentation["feed_overview"] = _feed_overview(
         old, new, event_set, rawdiffs, trip_delta, config
     )
+    # SD3 改: 路線ページの「特定日」タブにその場で具体日付を出す
+    from ..identity.route_family import route_to_family_map
+
+    special_old = _route_special_dates(
+        old, route_to_family_map(identity.old_families), identity.old_family_to_group
+    )
+    special_new = _route_special_dates(
+        new, route_to_family_map(identity.new_families), identity.new_family_to_group
+    )
+    if special_old or special_new:
+        list_max = config.get("report", "special_dates_list_max", default=30)
+        for p in presentation["route_pages"]:
+            o = special_old.get(p["route_group"], [])
+            n = special_new.get(p["route_group"], [])
+            if o or n:
+                p["special_dates"] = {
+                    "old": o[:list_max], "new": n[:list_max],
+                    "old_total": len(o), "new_total": len(n),
+                }
     # V5: 全イベントの表示先 (レポートのどの部に現れるか) とレポート被覆率
     presentation["coverage"] = _coverage(event_set)
     # M9 (I3): lev1 便数比率 = 新設/廃止扱いのページに落ちた便の割合。
@@ -238,6 +257,81 @@ def _feed_overview(old, new, event_set, rawdiffs, trip_delta, config: Config) ->
             {"type": t, "count": n} for t, n in sorted(others.items())
         ],
     }
+
+
+def _irregular_service_dates(snapshot) -> dict[str, list[str]]:
+    """特定日 (irregular) service → 実効運行日リスト (YYYYMMDD 昇順)。
+
+    SD3 の第1部内訳と路線ページの「特定日の運行日」表示が共用する。
+    定義は SD1 と同一 (期間×フラグ − 削除 + 追加、フィード有効期間でクリップ)。
+    """
+    from ..events.windows import snapshot_window
+    from ..load.day_types import (
+        _CALENDAR_DAY_COLUMNS,
+        _exception_dates,
+        effective_date_list,
+    )
+
+    targets = {
+        sid for sid, dt in snapshot.day_types.items() if dt == "irregular"
+    }
+    if not targets:
+        return {}
+    added_map, removed_map = _exception_dates(snapshot.table("calendar_dates"))
+    window = snapshot_window(snapshot)
+    window_text = window.as_text() if window is not None else None
+    result: dict[str, list[str]] = {}
+    flag_done: set[str] = set()
+    cal = snapshot.table("calendar")
+    if cal is not None and not cal.empty and (
+        set(_CALENDAR_DAY_COLUMNS) | {"start_date", "end_date"} <= set(cal.columns)
+    ):
+        for _, row in cal.iterrows():
+            sid = str(row.get("service_id", ""))
+            if sid not in targets:
+                continue
+            flags = tuple(
+                str(row[c]).strip() == "1" for c in _CALENDAR_DAY_COLUMNS
+            )
+            if not any(flags):
+                continue
+            computed = effective_date_list(
+                flags, str(row["start_date"]), str(row["end_date"]),
+                added_map.get(sid, set()), removed_map.get(sid, set()),
+                window_text,
+            )
+            if computed is not None:
+                result[sid] = computed[0]
+                flag_done.add(sid)
+    for sid in targets - flag_done:
+        removed = removed_map.get(sid, set())
+        result[sid] = sorted(
+            d for d in set(added_map.get(sid, [])) if d not in removed
+        )
+    return result
+
+
+def _route_special_dates(
+    snapshot, route_to_family: dict[str, str], family_to_group: dict[str, str]
+) -> dict[str, list[str]]:
+    """route_group → 特定日 (irregular) 便の実効運行日 (合併・昇順)。
+
+    路線ページの「特定日」タブにその場で具体日付を出すための素材 (SD3 改)。"""
+    by_service = _irregular_service_dates(snapshot)
+    if not by_service:
+        return {}
+    trips = snapshot.table("trips")
+    if trips is None or trips.empty:
+        return {}
+    result: dict[str, set[str]] = {}
+    for rid, sid in zip(trips["route_id"], trips["service_id"]):
+        dates = by_service.get(str(sid))
+        if not dates:
+            continue
+        family = route_to_family.get(str(rid), "")
+        group = family_to_group.get(family, family) or str(rid)
+        result.setdefault(group, set()).update(dates)
+    return {g: sorted(ds) for g, ds in result.items()}
 
 
 def _special_day_services(snapshot, config: Config) -> list[dict]:
