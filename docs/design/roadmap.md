@@ -322,8 +322,12 @@ config ゲート + 別途議論)。
   (docs/perf/tripdelta_memo.md)】 — TriMet 1789s→273s、MBTA タイムアウト→1010s
   (2026-07-23 再計測。当初記録 1677s はスリープ混入)。
   出力同一性をテストで保証。あわせて set 順序が出力に漏れる非決定性2箇所を修正
-- **P2: ルール段 (L2) の非線形の特定と修正** — MBTA 616s / rome 996s の支配項。
-  ほか: 便対応の残コスト、RawDiff 1000万件級のメモリ (Lambda 制約)。
+- **P2: ルール段 (L2) の非線形の特定と修正** 【IN-1 完了 2026-07-24
+  (docs/perf/P2_rules_hotspots.md)】 — O(n²) 2件 (frequency のグループ毎
+  全 trip 走査、MatchGraph の照会毎全エッジ走査) を修正。ルール段
+  mbta 616s→33.6s (18x)・rome 996s→80.9s (12x)。出力バイト一致
+  (trimet/prt/名古屋/桑名)。残: IN-2 (便対応の残コスト — 修正後の最大支配項、
+  mbta 792s / rome 401s)、IN-3 (RawDiff 1000万件級のメモリ、Lambda 制約)。
   課題台帳: docs/verification/intl_feeds.md IN-1〜3
 - **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
   の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)

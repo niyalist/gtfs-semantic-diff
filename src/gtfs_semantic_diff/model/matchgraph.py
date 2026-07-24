@@ -63,22 +63,47 @@ class MatchEdge:
 
 @dataclass
 class MatchGraph:
-    """L1 の出力。エンティティ種別ごとの対応エッジ集合。"""
+    """L1 の出力。エンティティ種別ごとの対応エッジ集合。
+
+    matches_for_old/new は呼び出し毎の全エッジ走査だとルール段が
+    O(照会数 × エッジ数) で非線形化する (IN-1) ため、(種別, ID) 索引を
+    遅延構築して引く。add() で索引は無効化される。
+    """
 
     edges: list[MatchEdge] = field(default_factory=list)
 
+    # 注釈を付けない = dataclass フィールドにしない (asdict / 等値比較へ漏らさない)
+    _by_old = None
+    _by_new = None
+
     def add(self, edge: MatchEdge) -> None:
         self.edges.append(edge)
+        self._by_old = self._by_new = None
 
     def for_type(self, entity_type: str) -> list[MatchEdge]:
         return [e for e in self.edges if e.entity_type == entity_type]
 
+    def _ensure_index(self) -> None:
+        if self._by_old is not None:
+            return
+        by_old: dict[tuple[str, str], list[MatchEdge]] = {}
+        by_new: dict[tuple[str, str], list[MatchEdge]] = {}
+        for e in self.edges:
+            by_old.setdefault((e.entity_type, e.old_id), []).append(e)
+            by_new.setdefault((e.entity_type, e.new_id), []).append(e)
+        # 安定ソートなので同 confidence の順序は従来の sorted(全走査結果) と一致
+        for bucket in by_old.values():
+            bucket.sort(key=lambda e: e.confidence, reverse=True)
+        for bucket in by_new.values():
+            bucket.sort(key=lambda e: e.confidence, reverse=True)
+        self._by_old, self._by_new = by_old, by_new
+
     def matches_for_old(self, entity_type: str, old_id: str) -> list[MatchEdge]:
         """旧 ID に対する対応候補を confidence 降順で返す。"""
-        found = [e for e in self.edges if e.entity_type == entity_type and e.old_id == old_id]
-        return sorted(found, key=lambda e: e.confidence, reverse=True)
+        self._ensure_index()
+        return list(self._by_old.get((entity_type, old_id), ()))
 
     def matches_for_new(self, entity_type: str, new_id: str) -> list[MatchEdge]:
         """新 ID に対する対応候補を confidence 降順で返す。"""
-        found = [e for e in self.edges if e.entity_type == entity_type and e.new_id == new_id]
-        return sorted(found, key=lambda e: e.confidence, reverse=True)
+        self._ensure_index()
+        return list(self._by_new.get((entity_type, new_id), ()))

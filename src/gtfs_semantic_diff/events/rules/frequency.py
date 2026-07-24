@@ -22,7 +22,7 @@ A群が消費済みの trip (廃止/新設路線のカスケード) はプール
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from ..timebands import parse_gtfs_time
 from ..tripdelta import TripInfo
@@ -64,15 +64,28 @@ def _band_events(ctx: RuleContext) -> None:
             continue
         pools[_group_key(t)][ctx.time_bands.band_of(t.first_departure)]["added"].append(t)
 
+    # グループ別総数・(グループ, ビン) 別本数・始発時刻列は1パスで事前集計する。
+    # グループ毎に全 trip を再走査すると O(グループ数 × trip数) となり、
+    # 大規模フィードでルール段が非線形化する (IN-1)
+    group_totals: tuple[Counter, Counter] = (Counter(), Counter())
+    band_counts: tuple[Counter, Counter] = (Counter(), Counter())
+    deps: tuple[dict[tuple, list[int]], dict[tuple, list[int]]] = (
+        defaultdict(list),
+        defaultdict(list),
+    )
+    for side, trips in enumerate((ctx.trip_delta.old_trips, ctx.trip_delta.new_trips)):
+        for t in trips.values():
+            g = _group_key(t)
+            group_totals[side][g] += 1
+            band_counts[side][(g, ctx.time_bands.band_of(t.first_departure))] += 1
+            if (s := parse_gtfs_time(t.first_departure)) is not None:
+                deps[side][g].append(s)
+
     for group in sorted(pools, key=str):
         family, direction, day_type = group
         # グループ全体の本数 (増減の分母表示用)
-        old_total = sum(
-            1 for t in ctx.trip_delta.old_trips.values() if _group_key(t) == group
-        )
-        new_total = sum(
-            1 for t in ctx.trip_delta.new_trips.values() if _group_key(t) == group
-        )
+        old_total = group_totals[0][group]
+        new_total = group_totals[1][group]
         for band in ctx.time_bands.labels():
             pool = pools[group].get(band)
             if pool is None:
@@ -84,18 +97,8 @@ def _band_events(ctx: RuleContext) -> None:
                 [t.trip_id for t in removed]
             ) + ctx.index.trip_cascade_ids([t.trip_id for t in added])
             # 旧世代/新世代のこのビンの本数
-            old_n = sum(
-                1
-                for t in ctx.trip_delta.old_trips.values()
-                if _group_key(t) == group
-                and ctx.time_bands.band_of(t.first_departure) == band
-            )
-            new_n = sum(
-                1
-                for t in ctx.trip_delta.new_trips.values()
-                if _group_key(t) == group
-                and ctx.time_bands.band_of(t.first_departure) == band
-            )
+            old_n = band_counts[0][(group, band)]
+            new_n = band_counts[1][(group, band)]
             subject = {
                 "route_family": family,
                 "direction": direction,
@@ -133,7 +136,7 @@ def _band_events(ctx: RuleContext) -> None:
                                     "trips_changed": len(removed)},
                 )
 
-        _first_last_event(ctx, group, threshold_min)
+        _first_last_event(ctx, group, threshold_min, deps[0][group], deps[1][group])
 
 
 def _already_claimed(ctx: RuleContext, t: TripInfo) -> bool:
@@ -142,18 +145,16 @@ def _already_claimed(ctx: RuleContext, t: TripInfo) -> bool:
     return bool(ids) and all(ctx.ledger.primary_event_of(i) is not None for i in ids)
 
 
-def _first_last_event(ctx: RuleContext, group: tuple, threshold_min: int) -> None:
+def _first_last_event(
+    ctx: RuleContext,
+    group: tuple,
+    threshold_min: int,
+    old_group_deps: list[int],
+    new_group_deps: list[int],
+) -> None:
     family, direction, day_type = group
-    old_deps = sorted(
-        s
-        for t in ctx.trip_delta.old_trips.values()
-        if _group_key(t) == group and (s := parse_gtfs_time(t.first_departure)) is not None
-    )
-    new_deps = sorted(
-        s
-        for t in ctx.trip_delta.new_trips.values()
-        if _group_key(t) == group and (s := parse_gtfs_time(t.first_departure)) is not None
-    )
+    old_deps = sorted(old_group_deps)
+    new_deps = sorted(new_group_deps)
     if not old_deps or not new_deps:
         return
     first_shift = (new_deps[0] - old_deps[0]) / 60

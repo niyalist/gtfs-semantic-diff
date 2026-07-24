@@ -79,7 +79,7 @@ stop_times 100万行規模なら 2.2GB / 134s — この規模までは Lambda 3
 
 | # | 行き先 | 内容 |
 |---|---|---|
-| IN-1 | **P2 最優先** | ルール段 (L2) が RawDiff 大量時に非線形 (MBTA 616s / rome 996s / trimet 47s / prt 99s)。プロファイルで特定して修正 |
+| IN-1 | **解消 (P2、2026-07-24)** | ルール段 (L2) が RawDiff 大量時に非線形 (MBTA 616s / rome 996s / trimet 47s / prt 99s)。**O(n²) 2件 (frequency のグループ毎全 trip 走査・MatchGraph の照会毎全エッジ走査) を特定し修正 — mbta 33.6s (18x)・rome 80.9s (12x)・prt 20.8s。出力は trimet/prt/名古屋/桑名でバイト一致。docs/perf/P2_rules_hotspots.md** |
 | IN-2 | P2 | 便対応の残コスト (Δt 計算×候補対、タプルハッシュ)。swiss 727s / stm 499s。ブロック内前絞り等 |
 | IN-3 | P2/I4 | shapes・stop_times 由来の巨大 RawDiff (660万〜1520万) — メモリ (RSS 10GB 級 = Lambda 不可) と HTML サイズに直結。bulk の適用拡大は evidence 設計と要調整。hosted bundle 化とも関連 |
 | IN-4 | I4 | rome の残差 25万件 (stop_times/trips) の精査 — frequencies 運行の便の扱いを確認 |
