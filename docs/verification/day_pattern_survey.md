@@ -36,7 +36,49 @@
 分類器適用。結果: data/daytype_survey/ (1フィード1 JSON + _summary.json)。
 zip は保持しない (calendar 統計のみ記録。再取得は API で可能)。
 
-(実行中 — 結果は本ドキュメントに追記)
+### 結果 (2026-07-25 実行、596 フィード・エラー 51)
+
+| タグ | 件数 | 比率 |
+|---|---|---|
+| swap_dates (祝日振替) | 240 | 40% — 日本の標準形 |
+| **dow_odd (変則曜日)** | **145** | **25%** — コミバスの曜日ばらけは主流派 |
+| school_kw (学校日系) | 74 | 12% |
+| cd_only | 61 | 10% |
+| holiday_cd | 21 | |
+| mixed_expiry | 12 | |
+| **holiday_flagged (PRT 型)** | **10** | **日本にも存在する** |
+| seasonal_split | 7 | |
+
+### 新たに観測した類型 (当初の仮説になかったもの)
+
+- **月例運行**: 毎月第N水曜のみ運行 (中津市 東谷線/西谷線/屋形線 —
+  service が月ごとに分かれ、期限も月ごと = mixed_expiry と複合)
+- **施設連動**: 美術館の開館/休館とダイヤ連動 (甲賀市「ミホ開館/休館」、
+  直島「ベネッセ 18時閉館シャトル」)
+- **祭り期間**: 新庄まつり期間 service (フラグ+削除希釈の PRT 型で表現)
+- **特定日増便**: 「20260809_16_23増便」(津エアポートライン) — 花火大会等の
+  1日限り増便が cd_only service で載る
+- **実効0日 service**: 冬期ダイヤが期間外で実効 0 日 (米沢市営 —
+  SD1 の inactive 分類が正しく効く事例)
+
+### 選定した代表フィード (世代ペア取得済み → data/daypattern_pairs/)
+
+| フィード | 類型 | 見どころ |
+|---|---|---|
+| 新庄市営バス (shinjocity) | holiday_flagged | 新庄まつり期間 (平日フラグ 261 日→実効3日)。日本の PRT 型 |
+| 立川くるりんバス (tachikawacity) | holiday_flagged | 「正月」「年末」(毎日フラグ365日→実効 4/1 日) |
+| 市川三郷町コミバス (ichikawamisatotown) | dow_odd | **月水金 (1010100) と 火木 (0101000) の対** — 変則曜日の教科書 |
+| 北九州市 田代・河内 (kitakyushucity) | school_kw | 河内小の**登校日/休校日** — 小学校単位の学校日ダイヤ |
+| 壬生町みぶーぶ (mibutown) | school_kw | 「平日登校日」 |
+| 上松町公共交通 (agematsutown) | school×季節 | 夏平日/冬平日/平日冬(通学利用) — 複合 |
+| 甲賀市コミバス (kokacity) | 施設連動+seasonal | ミホ開館1/休館1… (期間が交互に切替) |
+| 町営渡船しんぐう (shingutown) | seasonal_split | 毎日春夏/毎日秋冬 — **純粋な季節分割の最小例 (3KB)** |
+| つくばね号 (tsukubacity) | mixed_expiry | 終端 3 種・396 日散らばり |
+| 中津市 東谷線 (nakatsucity) | 月例+mixed_expiry | 毎月第N水曜 (prev なし — current のみ) |
+
+ライセンスは全て CC BY 4.0 / CC0 系 (manifest: data/daypattern_pairs/_manifest.json
+に uid・期間を記録 — 再現可能)。海外分は LA Metro (取得済み) + 手持ちの
+PRT / STM / ovapi_nl / swiss が各類型をカバーする。
 
 ## 海外候補 (追加検討)
 
