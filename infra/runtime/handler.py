@@ -680,10 +680,13 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
         old, new, config
     )
-    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    # Web 配信は core バンドル (RD1a): rawdiffs 全量を持たず evidence/生差分は
+    # サンプル+件数。行レベルの完全データは CLI --html / 生データ DL (RD2) で
+    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta,
+                          core=True)
     # バンドル構築後はスナップショット等を解放する。HTML 書き出し中に pandas
     # テーブル (GB 級) を抱えたままにすると 3008MB の Lambda を圧迫する (IN-3)
-    del old, new, event_set, identity, trip_delta
+    del old, new, event_set, identity, trip_delta, rawdiffs
     import gtfs_semantic_diff.report as report_pkg
 
     template = (Path(report_pkg.__file__).parent / "viewer_template.html").read_text(

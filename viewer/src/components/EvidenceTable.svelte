@@ -2,12 +2,17 @@
   import { t } from "../lib/i18n.js";
 
   export let index;
-  export let ids = [];
+  export let ids = [];       // full モード: rawdiff ID 列から引く
+  export let sample = null;  // core モード: 焼き込み済みサンプル行
+  export let total = null;   // core モード: 全件数
 
   const LIMIT = 300;
   $: tt = $t;
-  $: rows = ids.slice(0, LIMIT).map((id) => index.rawdiffById.get(id)).filter(Boolean);
-  $: rest = ids.length - Math.min(ids.length, LIMIT);
+  $: rows = sample
+    ? sample
+    : ids.slice(0, LIMIT).map((id) => index.rawdiffById.get(id)).filter(Boolean);
+  $: all = total ?? ids.length;
+  $: rest = all - Math.min(all, rows.length);
 </script>
 
 <div class="scroll-x">

@@ -34,8 +34,14 @@ def build_bundle(
     rawdiffs: RawDiffSet,
     identity: IdentityResult,
     trip_delta,
+    core: bool = False,
 ) -> dict[str, Any]:
-    """ビューアに埋め込む全データ (JSON 化可能な dict)。"""
+    """ビューアに埋め込む全データ (JSON 化可能な dict)。
+
+    core=True で Web 配信用の軽量バンドル (RD1a、report_delivery.md §3):
+    rawdiffs の行レベル全量を落とし、evidence は件数+サンプル行、
+    検証モードは (file, kind) 別の件数+サンプル行 (説明イベント焼き込み) に。
+    """
     from .presentation import build_presentation
 
     presentation = build_presentation(event_set, identity, trip_delta, config)
@@ -78,7 +84,7 @@ def build_bundle(
         round(lev1 / total, 4) if total else 0.0
     )
 
-    return {
+    bundle = {
         "events": event_set.to_dict(),
         # RawDiffSet のまま持つ (遅延直列化)。数百万件を dict リストに実体化すると
         # それだけで GB 級になり Lambda を落とす (IN-3)。直列化は
@@ -103,6 +109,61 @@ def build_bundle(
             "agency_names": _agency_names(new) or _agency_names(old),
         },
     }
+    if core:
+        return _core_bundle(bundle, rawdiffs, config)
+    return bundle
+
+
+def _core_bundle(bundle: dict[str, Any], rawdiffs: RawDiffSet, config: Config) -> dict[str, Any]:
+    """Web 配信用の軽量バンドル (RD1a)。
+
+    - events: evidence を空にし、evidence_total (件数) と evidence_sample
+      (先頭 evidence_sample_max 行の RawDiff dict) を付与
+    - file_diffs: (file → kind → {count, sample}) — サンプル行には説明イベント
+      (最初に evidence として主張したイベント = 現ビューアの先勝ち規則と同一)
+      の event_id を explainer として焼き込む
+    - rawdiffs キーは持たない (ビューアはこの欠如で core モードを検出)
+
+    網羅性の信頼は数値 (accounting = explained_ratio・ファイル別残差件数) が
+    担い、それは events 側に不変で残る。行レベルの完全監査は全量同梱の
+    CLI --html か生データ DL (RD2) で行う。
+    """
+    ev_max = config.get("report", "evidence_sample_max", default=50)
+    fd_max = config.get("report", "file_diff_sample_max", default=100)
+    by_id = rawdiffs.by_id()
+    events = bundle["events"]["events"]
+
+    explainer: dict[str, str] = {}
+    for e in events:
+        for rid in e.get("evidence", ()):
+            explainer.setdefault(rid, e["event_id"])
+
+    slim_events = []
+    for e in events:
+        ids = e.get("evidence", [])
+        e2 = dict(e)
+        e2["evidence"] = []
+        e2["evidence_total"] = len(ids)
+        e2["evidence_sample"] = [by_id[i].to_dict() for i in ids[:ev_max]]
+        slim_events.append(e2)
+    events_dict = dict(bundle["events"])
+    events_dict["events"] = slim_events
+
+    file_diffs: dict[str, dict[str, dict[str, Any]]] = {}
+    for d in rawdiffs.diffs:
+        slot = file_diffs.setdefault(d.file, {}).setdefault(
+            d.kind, {"count": 0, "sample": []}
+        )
+        slot["count"] += 1
+        if len(slot["sample"]) < fd_max:
+            row = d.to_dict()
+            row["explainer"] = explainer.get(d.rawdiff_id)
+            slot["sample"].append(row)
+
+    out = {k: v for k, v in bundle.items() if k != "rawdiffs"}
+    out["events"] = events_dict
+    out["file_diffs"] = file_diffs
+    return out
 
 
 # --- 第1部 (フィード全体の変化) と第4部 (その他の変化) の素材 ---

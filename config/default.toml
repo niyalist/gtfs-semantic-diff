@@ -22,6 +22,12 @@ special_dates_list_max = 30
 calendar_view_max_days = 550
 # 「運行日の要点」の日付ラン (連続日区間) の表示上限
 note_runs_max = 8
+# RD1a (core バンドル = Web 配信用の軽量ビューアデータ) のサンプル上限:
+# イベント毎の evidence サンプル行数 (全量は evidence_total で件数のみ)。
+# 50 だと名古屋でサンプルだけで 21MB (バンドルの4割) になったため 20
+evidence_sample_max = 20
+# 検証モードの (ファイル, 差分種類) 毎のサンプル行数
+file_diff_sample_max = 100
 
 [events.windows]
 # SD2 (窓内区間対比較): 期限切れ/持ち越し世代の service を比較対象外にする

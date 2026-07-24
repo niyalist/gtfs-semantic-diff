@@ -1,5 +1,7 @@
 <script>
+  import { tick } from "svelte";
   import { buildIndex } from "./lib/data.js";
+  import { jumpTarget, anchorId } from "./lib/jump.js";
   import { lang, t } from "./lib/i18n.js";
   import CoverageSummary from "./components/CoverageSummary.svelte";
   import EventsByDestination from "./components/EventsByDestination.svelte";
@@ -37,6 +39,21 @@
   $: feedOverview = presentation?.feed_overview;
   const catalog = bundle?.catalog ?? {};
   $: catName = (type) => catalog[type]?.[$lang === "ja" ? "ja" : "en"] ?? type;
+
+  // 検証モードの「説明イベント → 表示先」クリックでレポート項目へ (RD1a)
+  $: if ($jumpTarget) handleJump($jumpTarget);
+  async function handleJump(target) {
+    mode = "report";
+    await tick();
+    const el = document.getElementById(anchorId(target));
+    if (!el) return;
+    if (el.tagName === "DETAILS") el.open = true;
+    // 「変更のない路線」の折りたたみ等、祖先の details も開く
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (p.tagName === "DETAILS") p.open = true;
+    }
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function defaultOpen(p) {
     // 既定の折りたたみ戦略: Lev.1/Lev.2 を含むページのみ展開 (大規模改正対策)
@@ -87,12 +104,12 @@
 
     <!-- 第1部: フィード全体の変化 -->
     {#if feedOverview}
-      <h2>{tt("part1_title")}</h2>
+      <h2 id="part1">{tt("part1_title")}</h2>
       <FeedOverview overview={feedOverview} {feed} {catalog} />
     {/if}
 
     <!-- 第2部: 停留所の変化 (地図は最初から表示) -->
-    <h2>{tt("part2_title")}</h2>
+    <h2 id="part2">{tt("part2_title")}</h2>
     {#if hasStopChanges}
       <StopChangesPage changes={stopChanges} />
     {:else}
@@ -130,7 +147,7 @@
 
     <!-- 第4部: その他の変化 (第1〜3部で説明していない項目 — 網羅性の受け皿) -->
     {#if feedOverview}
-      <h2>{tt("part4_title")}</h2>
+      <h2 id="part4">{tt("part4_title")}</h2>
       {#if feedOverview.others.length}
         <p class="meta">{tt("part4_note")}</p>
         <ul>

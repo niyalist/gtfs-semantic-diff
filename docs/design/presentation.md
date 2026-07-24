@@ -250,3 +250,21 @@ viewer (HTML) / markdown
 混入していた。(family, base_name) を第1キーとする引き当てに修正
 (presentation.py `_coord`。基底名のみはフォールバック・新世代優先)。
 合成テスト: test_same_named_stops_use_own_route_coordinates。
+
+## 改訂 (2026-07-24, RD1a): 検証モードの生差分はサンプル+件数に (Web 配信)
+
+Web 配信バンドル (core) では rawdiffs の行レベル全量を持たない
+(docs/design/report_delivery.md — 単一 HTML の 7〜8割が rawdiffs で、
+ビューアは元々表示上限つきでしか描画していなかった)。検証モードの表示は:
+
+- (file, kind) 別の**件数は全量** (網羅性の保証は従来どおり数値で) +
+  行の実体はサンプル (config `report.file_diff_sample_max`、既定100行)
+- イベントの evidence 表もサンプル (`report.evidence_sample_max`、既定50行) +
+  総件数表示
+- 各行の「説明イベント → 表示先」は生成時焼き込みになり、**クリックで
+  当該レポート項目へジャンプ**できるようになった (従来はテキストのみ)
+- CLI `--html` (単一ファイル・全量同梱) は従来どおり — 行レベルの完全監査は
+  こちらか生データ DL (RD2 予定)。explained_ratio・ファイル別残差件数は不変
+
+「網羅性の確認が目的なので何も省かない」(FileDiffBrowser 旧コメント) の
+「省かない」は件数・被覆率が担い、行列挙はその抜き取り検査という整理に改める。

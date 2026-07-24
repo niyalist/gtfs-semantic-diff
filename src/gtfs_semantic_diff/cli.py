@@ -157,7 +157,10 @@ def fetch(ctx: click.Context, org: str, feed: str, old_rid: str, new_rid: str, f
 @click.option("--report", "report_out", type=click.Path(), default=None,
               help="Markdown レポートの出力先")
 @click.option("--html", "html_out", type=click.Path(), default=None,
-              help="自己完結 HTML レポートの出力先 (単一ファイル)")
+              help="自己完結 HTML レポートの出力先 (単一ファイル・全量同梱)")
+@click.option("--html-lite", "html_lite_out", type=click.Path(), default=None,
+              help="軽量 HTML の出力先 (Web 配信と同じ core バンドル — "
+                   "evidence/生差分はサンプル+件数、RD1a)")
 @click.pass_context
 def compare(
     ctx: click.Context,
@@ -170,6 +173,7 @@ def compare(
     rawdiffs_out: str | None,
     report_out: str | None,
     html_out: str | None,
+    html_lite_out: str | None,
 ) -> None:
     """2世代の GTFS を比較し ChangeEvent JSON / Markdown / HTML レポートを出力する。
 
@@ -217,7 +221,7 @@ def compare(
             render_markdown(event_set.to_dict()), encoding="utf-8"
         )
         console.print(f"Markdown レポート: [cyan]{report_out}[/cyan]")
-    if html_out:
+    if html_out or html_lite_out:
         from .report.bundle import build_bundle, write_html
 
         template_path = Path(__file__).parent / "report" / "viewer_template.html"
@@ -225,11 +229,20 @@ def compare(
             raise click.ClickException(
                 "ビューアテンプレートがありません。scripts/build_viewer.sh でビルドしてください"
             )
-        bundle = build_bundle(
-            old_snap, new_snap, config, event_set, rawdiffs, identity, trip_delta
-        )
-        write_html(bundle, template_path.read_text(encoding="utf-8"), html_out)
-        console.print(f"HTML レポート: [cyan]{html_out}[/cyan]")
+        template = template_path.read_text(encoding="utf-8")
+        if html_out:
+            bundle = build_bundle(
+                old_snap, new_snap, config, event_set, rawdiffs, identity, trip_delta
+            )
+            write_html(bundle, template, html_out)
+            console.print(f"HTML レポート: [cyan]{html_out}[/cyan]")
+        if html_lite_out:
+            bundle = build_bundle(
+                old_snap, new_snap, config, event_set, rawdiffs, identity,
+                trip_delta, core=True,
+            )
+            write_html(bundle, template, html_lite_out)
+            console.print(f"HTML レポート (軽量): [cyan]{html_lite_out}[/cyan]")
 
 
 @main.command()

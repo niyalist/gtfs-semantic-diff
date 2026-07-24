@@ -96,10 +96,10 @@ export function eventLine(e, lang) {
     case "FEED_VALIDITY_CHANGED": {
       const changed = q.changed_fields || {};
       const items = Object.entries(changed).map(([k, v]) => `${k}: ${v}`);
-      return items.join("; ") || `${e.evidence?.length ?? 0}`;
+      return items.join("; ") || `${e.evidence_total ?? e.evidence?.length ?? 0}`;
     }
     case "UNEXPLAINED_RESIDUAL":
-      return `${e.subject?.file ?? ""}: ${q.rawdiff_count ?? e.evidence?.length ?? 0}`;
+      return `${e.subject?.file ?? ""}: ${q.rawdiff_count ?? e.evidence_total ?? e.evidence?.length ?? 0}`;
     default: {
       const items = Object.entries(q).slice(0, 3).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
       return items.join("; ");

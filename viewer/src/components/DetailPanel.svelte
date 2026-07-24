@@ -71,5 +71,10 @@
   <MapView geometry={index.geometry} baseNames={targets.baseNames} shapeIds={targets.shapeIds} />
 {/if}
 
-<h4>{tt("evidence")} ({event.evidence.length})</h4>
-<EvidenceTable {index} ids={event.evidence} />
+<h4>{tt("evidence")} ({event.evidence_total ?? event.evidence.length})</h4>
+{#if index.coreMode}
+  <EvidenceTable {index} sample={event.evidence_sample ?? []}
+    total={event.evidence_total ?? 0} />
+{:else}
+  <EvidenceTable {index} ids={event.evidence} />
+{/if}

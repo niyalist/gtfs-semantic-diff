@@ -1,7 +1,17 @@
 # レポート配信の再設計 (RD トラック) — 技術検討 (2026-07-24 draft)
 
-状態: **検討段階 (実装未着手)**。発端: IN-3 後半 (prt の HTML 478MB)、
-国内でも都バス級で単一 HTML が重い、地図リッチ化の構想、AI への出力経路。
+状態: **RD1a 実装済み (2026-07-24)。RD1b 以降は未着手**。発端: IN-3 後半
+(prt の HTML 478MB)、国内でも都バス級で単一 HTML が重い、地図リッチ化の構想、
+AI への出力経路。
+
+**RD1a 実装結果 (2026-07-24)**: core バンドル (`build_bundle(core=True)`) +
+CLI `--html-lite` + Lambda worker の core 化 + ビューア両対応 (coreMode 検出)。
+HTML 実測: 臨港 65→**12MB**、名古屋 137→**40MB**、prt 478→**45MB**。
+名古屋 core の内訳: presentation 22.3MB (表示本体) / events 約10MB (うち
+evidence サンプル。上限は config `evidence_sample_max=20` — 50 だと
+サンプルだけで 21MB になり 20 に調整) / file_diffs 0.3MB。検証モード行 →
+レポート項目のクリックジャンプも実装 (§3.2)。合成テスト
+test_core_bundle (explainer 先勝ち規則・件数保存・accounting 不変)。
 
 ## 1. 現状の仕組み (実測)
 

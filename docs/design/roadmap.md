@@ -339,6 +339,28 @@ config ゲート + 別途議論)。
 - **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
   の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)
 
+## RD: レポート配信の再設計 【承認 2026-07-24、設計: docs/design/report_delivery.md】
+
+発端: 単一 HTML の 7〜8割が rawdiffs (名古屋 94MB/137MB、prt 403MB/500MB) で、
+ビューアは表示上限つきでしか描画していない (dead weight)。方針: rawdiffs の
+行レベル全量を Web ビューアに持たせない。DL 導線は検証モードのみ。
+レポートモードの見た目は保つ。
+
+- **RD1a: core バンドル (軽量ビューアデータ)** — events の evidence を
+  件数+サンプル行に置換、検証モード用 (file, kind) 別サンプル+件数
+  (説明イベントを生成時焼き込み・クリックジャンプ化)、rawdiffs キー除去。
+  CLI `--html` (全量同梱) は不変、`--html-lite` を追加、Web (Lambda) は core に。
+  DoD: 検証フィードでサイズ実測 (名古屋 137→40MB 級)・表示情報の同等性・
+  pytest。閾値 (サンプル上限) は config。
+- **RD1b: 配信分割** — app.html + core.json.gz (Content-Encoding: gzip、
+  CloudFront 10MB 自動圧縮制限の回避)。版管理を r/{pair}/v/{版}/ ディレクトリに
+  拡張。DoD: 転送量実測 (名古屋 ~4MB)・lazy 再生成・版不変性の回帰。
+- **RD2: 生データ DL 導線** — events.json / rawdiffs.json.gz を版と並置。
+  DL ボタンは検証モードのみ。国際級の Web 開放 (サイズガード撤廃)。
+- **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。
+- **RD4: AI digest** — `--digest` (Markdown/JSON の事実要約層)。X1 (スキーマ
+  文書化) をここに併合。
+
 ## SD: 運行日モデルの精緻化 【承認 2026-07-23、設計: docs/design/service_days.md】
 
 発端は PRT の見かけ倍増 (IN-8) と日本の世代同梱 (三重県走査・桑名定点観測)。

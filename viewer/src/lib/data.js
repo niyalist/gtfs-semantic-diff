@@ -12,24 +12,49 @@ export function buildIndex(bundle) {
   const events = bundle.events.events;
   const context = bundle.events.context || {};
 
-  const rawdiffById = new Map(bundle.rawdiffs.map((d) => [d.rawdiff_id, d]));
+  // core モード (RD1a): rawdiffs 全量を持たない Web 配信バンドル。
+  // evidence はイベント側の evidence_sample/evidence_total、生差分ブラウザは
+  // bundle.file_diffs (件数 + 説明イベント焼き込み済みサンプル) を使う
+  const coreMode = !Array.isArray(bundle.rawdiffs);
+  const eventById = new Map(events.map((e) => [e.event_id, e]));
+
+  const rawdiffById = new Map(
+    coreMode ? [] : bundle.rawdiffs.map((d) => [d.rawdiff_id, d])
+  );
 
   // rawdiff_id → 説明イベント (最初に evidence として主張したイベント =
   // 台帳の主説明とほぼ一致。UNEXPLAINED_RESIDUAL も1つのイベントとして現れる)
   const explainerByRawdiff = new Map();
-  for (const e of events) {
-    for (const id of e.evidence || []) {
-      if (!explainerByRawdiff.has(id)) explainerByRawdiff.set(id, e);
+  if (!coreMode) {
+    for (const e of events) {
+      for (const id of e.evidence || []) {
+        if (!explainerByRawdiff.has(id)) explainerByRawdiff.set(id, e);
+      }
     }
   }
 
-  // rawdiffs をファイル別・種類別に索引 (網羅性ビューの生差分ブラウザ用)
-  const rawdiffsByFile = new Map();
-  for (const d of bundle.rawdiffs) {
-    if (!rawdiffsByFile.has(d.file)) rawdiffsByFile.set(d.file, new Map());
-    const kinds = rawdiffsByFile.get(d.file);
-    if (!kinds.has(d.kind)) kinds.set(d.kind, []);
-    kinds.get(d.kind).push(d);
+  // 生差分ブラウザ用の統一形: file → kind → {count, rows}
+  // (row.explainer は event_id。full モードでは explainerByRawdiff から補完)
+  const fileDiffs = new Map();
+  if (coreMode) {
+    for (const [file, kinds] of Object.entries(bundle.file_diffs || {})) {
+      const m = new Map();
+      for (const [kind, slot] of Object.entries(kinds)) {
+        m.set(kind, { count: slot.count, rows: slot.sample });
+      }
+      fileDiffs.set(file, m);
+    }
+  } else {
+    // full モードは行オブジェクトをコピーしない (数百万件で倍増するため)。
+    // 説明イベントは explainerOf() が表示時に解決する
+    for (const d of bundle.rawdiffs) {
+      if (!fileDiffs.has(d.file)) fileDiffs.set(d.file, new Map());
+      const kinds = fileDiffs.get(d.file);
+      if (!kinds.has(d.kind)) kinds.set(d.kind, { count: 0, rows: [] });
+      const slot = kinds.get(d.kind);
+      slot.count += 1;
+      slot.rows.push(d);
+    }
   }
 
   const routeEvents = events.filter(
@@ -78,10 +103,10 @@ export function buildIndex(bundle) {
   });
 
   return {
-    events, context,
-    rawdiffById, explainerByRawdiff, rawdiffsByFile,
+    events, context, coreMode, eventById, fileDiffs,
+    rawdiffById, explainerByRawdiff,
     coverage: bundle.presentation?.coverage ?? null,
-    rawdiffs: bundle.rawdiffs,
+    rawdiffs: bundle.rawdiffs ?? null,
     routeEvents, stopEvents, validationEvents, feedEvents,
     byGroup, groupOrder, groupInfo, familyStructure, profilesByFamily,
     timetableByKey, unchangedGroups,
@@ -93,6 +118,15 @@ export function buildIndex(bundle) {
     catalog: bundle.catalog,
     meta: bundle.meta,
   };
+}
+
+export function explainerOf(index, row) {
+  // 生差分行の説明イベント。core = 焼き込み済み explainer (event_id)、
+  // full = evidence 逆引き
+  if (index.coreMode) {
+    return row.explainer ? index.eventById.get(row.explainer) ?? null : null;
+  }
+  return index.explainerByRawdiff.get(row.rawdiff_id) ?? null;
 }
 
 export function timetableFor(index, e) {

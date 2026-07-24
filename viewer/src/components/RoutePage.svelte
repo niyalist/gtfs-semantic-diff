@@ -120,7 +120,7 @@
   }
 </script>
 
-<details class="chapter" {open}>
+<details class="chapter" {open} id={"route-" + page.route_group}>
   <summary>
     {index}. {page.route_group}
     <span class="count">

@@ -13,13 +13,15 @@ from .conftest import MINIMAL_FEED, make_gtfs_zip
 from .test_diff0 import NEW_FILES
 
 
-def _bundle(tmp_path, config):
+def _bundle(tmp_path, config, core=False):
     old = load_snapshot(make_gtfs_zip(tmp_path, name="old.zip"), config=config)
     new = load_snapshot(make_gtfs_zip(tmp_path, files=NEW_FILES, name="new.zip"), config=config)
     event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
         old, new, config
     )
-    return build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    return build_bundle(
+        old, new, config, event_set, rawdiffs, identity, trip_delta, core=core
+    )
 
 
 def test_bundle_structure(tmp_path, config):
@@ -52,6 +54,50 @@ def test_bundle_structure(tmp_path, config):
 
     # レポート表題用の事業者名 (agency.txt 由来)
     assert bundle["meta"]["agency_names"] == ["テストバス"]
+
+
+def test_core_bundle(tmp_path, config):
+    """RD1a: core バンドル — rawdiffs キーなし、evidence は件数+サンプル、
+    file_diffs は (file, kind) 別の件数+説明イベント焼き込みサンプル。"""
+    full = _bundle(tmp_path, config)
+    core = _bundle(tmp_path, config, core=True)
+    assert "rawdiffs" not in core
+    assert set(core) == {
+        "events", "presentation", "geometry", "timetables", "catalog", "meta",
+        "file_diffs",
+    }
+    # そのまま JSON 直列化できる (RawDiffSet を含まない)
+    json.dumps(core, ensure_ascii=False)
+
+    full_events = {e["event_id"]: e for e in full["events"]["events"]}
+    ev_max = config.get("report", "evidence_sample_max", default=50)
+    for e in core["events"]["events"]:
+        orig = full_events[e["event_id"]]
+        assert e["evidence"] == []
+        assert e["evidence_total"] == len(orig["evidence"])
+        expect = orig["evidence"][:ev_max]
+        assert [d["rawdiff_id"] for d in e["evidence_sample"]] == expect
+
+    # file_diffs の件数合計 = RawDiff 総数 (網羅性は件数で保証)
+    total = sum(
+        slot["count"] for kinds in core["file_diffs"].values() for slot in kinds.values()
+    )
+    assert total == len(full["rawdiffs"].diffs)
+    # サンプル行の explainer は「最初に claim したイベント」(先勝ち規則)
+    first_claim = {}
+    for ev in full["events"]["events"]:
+        for rid in ev["evidence"]:
+            first_claim.setdefault(rid, ev["event_id"])
+    for kinds in core["file_diffs"].values():
+        for slot in kinds.values():
+            assert len(slot["sample"]) <= config.get(
+                "report", "file_diff_sample_max", default=100
+            )
+            for row in slot["sample"]:
+                assert row["explainer"] == first_claim.get(row["rawdiff_id"])
+
+    # accounting (網羅性の数値) は full と同一
+    assert core["events"]["accounting"] == full["events"]["accounting"]
 
 
 def test_feed_overview_structure(tmp_path, config):
