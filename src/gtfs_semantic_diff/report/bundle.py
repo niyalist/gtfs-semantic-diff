@@ -965,6 +965,39 @@ def write_html(bundle: dict[str, Any], template_html: str, path) -> None:
         f.write(tail)
 
 
+def write_events_json_gz(event_set_dict: dict[str, Any], path) -> int:
+    """ChangeEventSet JSON (evidence 全量 = 安定 IF) を gzip 書き出し (RD2)。
+
+    CLI `-o` と同じ構造。戻り値は非圧縮バイト数 (DL 表示用)。
+    GzipFile の tell() は書き込みモードで非圧縮オフセットを返す
+    (テキストラッパの tell は不透明値のため使わない)。"""
+    import io
+
+    with gzip.open(path, "wb", compresslevel=6) as gz:
+        with io.TextIOWrapper(gz, encoding="utf-8") as f:
+            json.dump(event_set_dict, f, ensure_ascii=False, indent=2)
+            f.flush()
+            return gz.tell()
+
+
+def write_rawdiffs_json_gz(rawdiffs: RawDiffSet, path) -> int:
+    """RawDiff 全件 JSON を gzip 逐次書き出し (RD2)。CLI `--rawdiffs` と同じ
+    {"rawdiffs": [...]} 構造。dict リストを実体化しない (IN-3 と同じ理由)。
+    戻り値は非圧縮バイト数。"""
+    import io
+
+    with gzip.open(path, "wb", compresslevel=6) as gz:
+        with io.TextIOWrapper(gz, encoding="utf-8") as f:
+            f.write('{"rawdiffs": [')
+            for i, d in enumerate(rawdiffs.diffs):
+                if i:
+                    f.write(",")
+                f.write(json.dumps(d.to_dict(), ensure_ascii=False))
+            f.write("]}")
+            f.flush()
+            return gz.tell()
+
+
 def write_html_split(
     bundle: dict[str, Any],
     template_html: str,

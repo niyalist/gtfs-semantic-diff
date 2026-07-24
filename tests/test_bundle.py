@@ -10,8 +10,10 @@ from gtfs_semantic_diff.load import load_snapshot
 from gtfs_semantic_diff.report.bundle import (
     build_bundle,
     render_html,
+    write_events_json_gz,
     write_html,
     write_html_split,
+    write_rawdiffs_json_gz,
 )
 
 from .conftest import MINIMAL_FEED, make_gtfs_zip
@@ -125,6 +127,31 @@ def test_write_html_split(tmp_path, config):
     write_html_split(bundle, template, html_p, gz_p, "/r/pair/v/1.json")
     with gzip.open(gz_p, "rt", encoding="utf-8") as f:
         assert json.load(f) == data
+
+
+def test_raw_json_exports(tmp_path, config):
+    """RD2: 生データ DL 用 gzip 書き出しは CLI 出力と同形式・同内容。"""
+    import gzip
+
+    old = load_snapshot(make_gtfs_zip(tmp_path, name="old.zip"), config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=NEW_FILES, name="new.zip"),
+                        config=config)
+    event_set, rawdiffs, _, _ = compare_snapshots_with_artifacts(old, new, config)
+
+    ev_p = tmp_path / "events.json.gz"
+    rd_p = tmp_path / "rawdiffs.json.gz"
+    ev_bytes = write_events_json_gz(event_set.to_dict(), ev_p)
+    rd_bytes = write_rawdiffs_json_gz(rawdiffs, rd_p)
+
+    with gzip.open(ev_p, "rt", encoding="utf-8") as f:
+        text = f.read()
+    assert len(text.encode("utf-8")) == ev_bytes  # 戻り値 = 非圧縮バイト数
+    assert json.loads(text) == event_set.to_dict()
+
+    with gzip.open(rd_p, "rt", encoding="utf-8") as f:
+        text = f.read()
+    assert len(text.encode("utf-8")) == rd_bytes
+    assert json.loads(text) == {"rawdiffs": [d.to_dict() for d in rawdiffs.diffs]}
 
 
 def test_feed_overview_structure(tmp_path, config):

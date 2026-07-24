@@ -1,8 +1,18 @@
 # レポート配信の再設計 (RD トラック) — 技術検討 (2026-07-24 draft)
 
-状態: **RD1a・RD1b 実装済み (2026-07-24)。RD2 以降は未着手**。発端: IN-3 後半
-(prt の HTML 478MB)、国内でも都バス級で単一 HTML が重い、地図リッチ化の構想、
-AI への出力経路。
+状態: **RD1a・RD1b (2026-07-24)・RD2 (2026-07-25) 実装済み。RD3 以降は未着手**。
+発端: IN-3 後半 (prt の HTML 478MB)、国内でも都バス級で単一 HTML が重い、
+地図リッチ化の構想、AI への出力経路。
+
+**RD2 実装 (2026-07-25)**: 生データ DL。
+- 版ごとに `v/{版}.events.json` (ChangeEventSet = 安定 IF、evidence 全量) と
+  `v/{版}.rawdiffs.json` ({"rawdiffs": [...]}、CLI --rawdiffs と同形式) を
+  gzip (Content-Encoding) で並置 (immutable)。アップロード由来も同様、
+  履歴削除は4ファイル対で削除
+- DL リンクは**検証モードのみ** (台帳サマリー直下)。URL と非圧縮サイズは
+  生成時に `meta.raw_urls` へ焼き込み (旧版バンドルには無い → リンク非表示)
+- 書き出しは trip/snapshot 解放前・ストリーミング (write_events_json_gz /
+  write_rawdiffs_json_gz — 戻り値が非圧縮バイト数。test_raw_json_exports)
 
 **RD1b 実装 (2026-07-24)**: アプリ HTML とデータ JSON の分離配信。
 - HTML の URL 体系は不変 (`r/{pair}.html` / `r/{pair}/v/{版}.html`)。HTML は

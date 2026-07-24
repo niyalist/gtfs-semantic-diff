@@ -55,6 +55,13 @@
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function fmtBytes(n) {
+    if (!Number.isFinite(n)) return "";
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+    if (n >= 1e6) return `${Math.round(n / 1e6)} MB`;
+    return `${Math.max(1, Math.round(n / 1e3))} KB`;
+  }
+
   function defaultOpen(p) {
     // 既定の折りたたみ戦略: Lev.1/Lev.2 を含むページのみ展開 (大規模改正対策)
     return Boolean(p.summary.level1 || p.summary.level2.length);
@@ -165,6 +172,17 @@
          到達できる (説明台帳への導線を維持) -->
     <h2>{tt("cov_title")}</h2>
     <CoverageSummary {index} />
+    {#if index.meta?.raw_urls}
+      <!-- RD2: 生データ DL (検証モードのみ — レポートモードには置かない) -->
+      <p class="meta">
+        {tt("raw_dl_label")}:
+        <a href={index.meta.raw_urls.events.url} download>
+          {tt("raw_dl_events")} ({fmtBytes(index.meta.raw_urls.events.bytes)})</a>
+        /
+        <a href={index.meta.raw_urls.rawdiffs.url} download>
+          {tt("raw_dl_rawdiffs")} ({fmtBytes(index.meta.raw_urls.rawdiffs.bytes)})</a>
+      </p>
+    {/if}
     <h2>{tt("dest_title")}</h2>
     <EventsByDestination {index} />
     <h2>{tt("fdb_title")}</h2>

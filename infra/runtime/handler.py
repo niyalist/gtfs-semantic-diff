@@ -369,11 +369,12 @@ def _api_me_history_delete(user_id: str, sk: str) -> dict:
     result_url = str(item.get("result_url", ""))
     if item.get("kind") == "upload" and result_url.startswith("/r/u/"):
         s3.delete_object(Bucket=RESULTS_BUCKET, Key=result_url[1:])
-        # RD1b: 分離データ JSON も対で削除 (旧レポートには存在しないが無害)
+        # RD1b/RD2: 分離データ・生データ JSON も対で削除
+        # (旧レポートには存在しないが無害)
         if result_url.endswith(".html"):
-            s3.delete_object(
-                Bucket=RESULTS_BUCKET, Key=result_url[1:-5] + ".json"
-            )
+            base = result_url[1:-5]
+            for suffix in (".json", ".events.json", ".rawdiffs.json"):
+                s3.delete_object(Bucket=RESULTS_BUCKET, Key=base + suffix)
     table.delete_item(Key={"user_id": user_id, "sk": sk})
     return _resp(200, {"ok": True})
 
@@ -642,7 +643,12 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     from gtfs_semantic_diff.config import Config
     from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
     from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
-    from gtfs_semantic_diff.report.bundle import build_bundle, write_html_split
+    from gtfs_semantic_diff.report.bundle import (
+        build_bundle,
+        write_events_json_gz,
+        write_html_split,
+        write_rawdiffs_json_gz,
+    )
 
     config = Config.load()
     pair_feed_info = None
@@ -686,9 +692,16 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         old, new, config
     )
     # Web 配信は core バンドル (RD1a): rawdiffs 全量を持たず evidence/生差分は
-    # サンプル+件数。行レベルの完全データは CLI --html / 生データ DL (RD2) で
+    # サンプル+件数。行レベルの完全データは生データ DL (RD2、下) で
     bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta,
                           core=True)
+    # RD2: 生データ (安定 IF の ChangeEventSet + RawDiff 全件) を gzip で書き出し
+    # (検証モードの DL リンク)。バンドルの meta.raw_urls に URL と非圧縮サイズを
+    # 焼き込む。書き出しは snapshot 解放前に行う
+    events_path = "/tmp/events.json.gz"
+    rawdiffs_path = "/tmp/rawdiffs.json.gz"
+    events_bytes = write_events_json_gz(event_set.to_dict(), events_path)
+    rawdiffs_bytes = write_rawdiffs_json_gz(rawdiffs, rawdiffs_path)
     # バンドル構築後はスナップショット等を解放する。HTML 書き出し中に pandas
     # テーブル (GB 級) を抱えたままにすると 3008MB の Lambda を圧迫する (IN-3)
     del old, new, event_set, identity, trip_delta, rawdiffs
@@ -706,17 +719,41 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         # アップロード由来: ランダム URL。匿名 = r/anon/ (30日削除)、
         # ログイン = r/u/ (恒久、削除ライフサイクルなし)
         prefix = "r/u" if job_input.get("user_id") else "r/anon"
+        cache = "public, max-age=300"
+        keys = {
+            "events": f"{prefix}/{job_id}.events.json",
+            "rawdiffs": f"{prefix}/{job_id}.rawdiffs.json",
+        }
+        _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+        _put_json_file(keys["events"], events_path, cache=cache)
+        _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=cache)
         write_html_split(bundle, template, html_path, data_path,
                          data_url=f"/{prefix}/{job_id}.json")
-        _put_json_file(f"{prefix}/{job_id}.json", data_path,
-                       cache="public, max-age=300")
+        _put_json_file(f"{prefix}/{job_id}.json", data_path, cache=cache)
         result_key = f"{prefix}/{job_id}.html"
-        _put_html_file(result_key, html_path, cache="public, max-age=300")
+        _put_html_file(result_key, html_path, cache=cache)
         return result_key
     version = _tool_version()
+    immutable = "public, max-age=31536000, immutable"
+    keys = {
+        "events": versioning.events_key(job_id, version),
+        "rawdiffs": versioning.rawdiffs_key(job_id, version),
+    }
+    _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+    _put_json_file(keys["events"], events_path, cache=immutable)
+    _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=immutable)
     write_html_split(bundle, template, html_path, data_path,
                      data_url="/" + versioning.data_key(job_id, version))
     return _write_versioned(job_id, html_path, data_path, version, pair_feed_info)
+
+
+def _bake_raw_urls(bundle: dict, keys: dict, events_bytes: int,
+                   rawdiffs_bytes: int) -> None:
+    """検証モードの生データ DL リンク (RD2) を meta に焼き込む。"""
+    bundle["meta"]["raw_urls"] = {
+        "events": {"url": "/" + keys["events"], "bytes": events_bytes},
+        "rawdiffs": {"url": "/" + keys["rawdiffs"], "bytes": rawdiffs_bytes},
+    }
 
 
 def _snapshot_label_parts(snapshot) -> tuple[str, str]:

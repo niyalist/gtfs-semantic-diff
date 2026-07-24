@@ -48,6 +48,16 @@ def data_key(pair: str, version: str) -> str:
     return f"r/{pair}/v/{version}.json"
 
 
+def events_key(pair: str, version: str) -> str:
+    """生データ DL: ChangeEventSet JSON (RD2)。不変。"""
+    return f"r/{pair}/v/{version}.events.json"
+
+
+def rawdiffs_key(pair: str, version: str) -> str:
+    """生データ DL: RawDiff 全件 JSON (RD2)。不変。"""
+    return f"r/{pair}/v/{version}.rawdiffs.json"
+
+
 def index_key(pair: str) -> str:
     return f"r/{pair}/index.json"
 

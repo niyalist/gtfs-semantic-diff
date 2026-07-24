@@ -358,8 +358,10 @@ config ゲート + 別途議論)。
   URL 体系は不変、版データは r/{pair}/v/{版}.json。CLI --html-dir 追加。
   本番検証済み: 永井で入口 1.07MB + データ gzip 87KB = 初期転送 1.2MB
   (旧 4.6MB)、lazy 再生成・版不変性・旧版 (埋め込み型) の後方互換を確認。
-- **RD2: 生データ DL 導線** — events.json / rawdiffs.json.gz を版と並置。
-  DL ボタンは検証モードのみ。国際級の Web 開放 (サイズガード撤廃)。
+- **RD2: 生データ DL 導線** 【実装 2026-07-25 (report_delivery.md §RD2)】 —
+  v/{版}.events.json / v/{版}.rawdiffs.json (gzip・immutable) を版と並置、
+  検証モードに DL リンク (URL+非圧縮サイズは meta.raw_urls に焼き込み)。
+  アップロード由来も並置・削除は対。残 DoD: デプロイ後の本番確認。
 - **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。
 - **RD4: AI digest** — `--digest` (Markdown/JSON の事実要約層)。X1 (スキーマ
   文書化) をここに併合。
