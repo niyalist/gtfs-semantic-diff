@@ -45,6 +45,32 @@ _DAILY_INDEX = DAY_ORDER.index("daily")
 _DUP = "__dup_world__"
 
 
+def date_runs_year_split(dates, max_runs: int):
+    """YYYYMMDD 昇順リスト → 連続日ラン [[a,b],…]。
+
+    連続していれば月を跨いでも繋げるが、**年境 (12/31|1/1) では必ず分割**する
+    (2026-07-25 ユーザー指定 — 「3/1〜10/31」は1本、「12/30〜1/3」は
+    「12/30〜12/31」「1/1〜1/3」)。戻り値: (runs[:max_runs], あふれたラン数)。"""
+    import datetime as _dt
+
+    def d(t):
+        return _dt.date(int(t[:4]), int(t[4:6]), int(t[6:8]))
+
+    runs: list[list[str]] = []
+    start = prev = None
+    for t in dates:
+        if (prev is not None and (d(t) - d(prev)).days == 1
+                and t[:4] == prev[:4]):
+            prev = t
+            continue
+        if start is not None:
+            runs.append([start, prev])
+        start = prev = t
+    if start is not None:
+        runs.append([start, prev])
+    return runs[:max_runs], max(0, len(runs) - max_runs)
+
+
 def base_day(day_type: str) -> str:
     """SD5b: 表示セルラベル "saturday@2" の基底 day_type。"""
     return day_type.partition("@")[0]
@@ -631,6 +657,10 @@ class _Builder:
                     ck = (od, nd)
                     rank = {"content": 3, "dates": 2, "flow": 1}.get(sg, 0)
                     if ck not in cell_meta or rank > cell_meta[ck]["_rank"]:
+                        runs_max = self.config.get(
+                            "report", "note_runs_max", default=8)
+                        ro, ro_more = date_runs_year_split(od, runs_max)
+                        rn, rn_more = date_runs_year_split(nd, runs_max)
                         cell_meta[ck] = {
                             "_rank": rank,
                             "signal": sg or ("old_only" if i is not None
@@ -639,6 +669,11 @@ class _Builder:
                             "dates_new": list(nd[:dates_max]),
                             "dates_old_total": len(od),
                             "dates_new_total": len(nd),
+                            # 全日付からサーバー側でラン圧縮 (キャップ後の
+                            # 圧縮だと「3/1〜3/30 ほか(全245日)」になる —
+                            # しんぐうの実例)
+                            "runs_old": ro, "runs_old_more": ro_more,
+                            "runs_new": rn, "runs_new_more": rn_more,
                         }
             order = sorted(cell_meta, key=lambda ck: (
                 ck[0][0] if ck[0] else "99999999",

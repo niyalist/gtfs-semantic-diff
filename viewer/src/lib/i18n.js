@@ -437,7 +437,9 @@ export function formatDateRuns(dates, language, maxRuns = 8) {
   let start = null;
   let prev = null;
   for (const s of dates ?? []) {
-    if (prev !== null && toTime(s) - toTime(prev) === 86400000) {
+    if (prev !== null && toTime(s) - toTime(prev) === 86400000
+        && s.slice(0, 4) === prev.slice(0, 4)) {
+      // 連続日は月を跨いでも繋げるが、年境 (12/31|1/1) では分割する
       prev = s;
       continue;
     }

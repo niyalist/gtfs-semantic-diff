@@ -44,11 +44,22 @@
   $: dayTimetables = page.timetables.filter((tb) => tb.day_type === selectedDay);
   // SD5b: 選択タブが複数世界セルならメタ (運行日・対応信号) を出す
   $: cellMeta = page.day_cells?.[selectedDay] ?? null;
-  function cellDates(dates, total) {
-    const r = formatDateRuns(dates ?? [], $lang);
-    let out = r.text;
-    if (r.more) out += $lang === "en" ? ` +${r.more}` : ` ほか${r.more}区間`;
-    if (total > (dates?.length ?? 0)) out += ` ${tt("cell_dates_more", total)}`;
+  function cellDates(side) {
+    const m = cellMeta;
+    const runs = m[`runs_${side}`];
+    const total = m[`dates_${side}_total`];
+    if (!runs) {
+      // 旧版バンドル互換 (runs なし)
+      const r = formatDateRuns(m[`dates_${side}`] ?? [], $lang);
+      return r.text + (r.more ? ($lang === "en" ? ` +${r.more}` : ` ほか${r.more}区間`) : "");
+    }
+    const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
+    const dash = $lang === "en" ? "–" : "〜";
+    let out = runs.map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`))
+      .join($lang === "en" ? ", " : "、");
+    const more = m[`runs_${side}_more`];
+    if (more) out += $lang === "en" ? ` +${more}` : ` ほか${more}区間`;
+    out += ` (${$lang === "en" ? `${total} days` : `全${total}日`})`;
     return out;
   }
   // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)
@@ -191,11 +202,11 @@
     {#if cellMeta}
       <p class="special-dates">
         {#if cellMeta.dates_old_total}
-          {tt("old_gen")}: {cellDates(cellMeta.dates_old, cellMeta.dates_old_total)}
+          {tt("old_gen")}: {cellDates("old")}
         {/if}
         {#if cellMeta.dates_old_total && cellMeta.dates_new_total}&nbsp;→&nbsp;{/if}
         {#if cellMeta.dates_new_total}
-          {tt("new_gen")}: {cellDates(cellMeta.dates_new, cellMeta.dates_new_total)}
+          {tt("new_gen")}: {cellDates("new")}
         {/if}
         {#if cellMeta.signal === "content"}({tt("cell_same_content")}){/if}
         {#if cellMeta.signal === "flow"}({tt("cell_flow")}){/if}
