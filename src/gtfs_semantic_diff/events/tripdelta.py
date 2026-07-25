@@ -44,6 +44,8 @@ class TripInfo:
     day_type: str
     base_seq: tuple[str, ...]  # 停留所クラスタ基底名列
     times: tuple[tuple[str, str], ...]  # (arrival, departure) 列
+    # SD5: 運行日世界の引き当て用 (signature には含めない — 照合規則不変)
+    service_id: str = ""
 
     @property
     def signature(self) -> tuple:
@@ -102,6 +104,7 @@ def collect_trips(snapshot: GtfsSnapshot, route_to_family: dict[str, str],
             day_type=snapshot.day_types.get(service_id, "irregular"),
             base_seq=tuple(stop_to_base.get(s, s) for s in stop_seq),
             times=tuple(zip(arrs.get(trip_id, ()), deps.get(trip_id, ()))),
+            service_id=str(service_id).strip(),
         )
     return result
 

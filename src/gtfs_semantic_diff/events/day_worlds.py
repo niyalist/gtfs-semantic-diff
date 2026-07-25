@@ -130,3 +130,106 @@ def build_day_worlds(snapshot) -> DayWorlds:
         worlds=tuple(worlds), by_service=by_service,
         multi_labels=frozenset(multi),
     )
+
+
+# --- パターン束ねと世代間対応 (SD5、(路線×方向) 粒度) ---
+
+
+@dataclass(frozen=True)
+class WorldPattern:
+    """(family, direction, day_type) 内で内容が完全一致する世界の束。
+
+    trips_per_day = 1世界あたりの便数 (束内の全世界が同内容なので共通)。
+    """
+
+    day_type: str
+    digest: str
+    world_ids: tuple[str, ...]
+    dates: tuple[str, ...]  # 束内全世界の実効日 (昇順)
+    trips_per_day: int
+
+
+def group_patterns(trips, worlds: DayWorlds) -> dict:
+    """(family, direction, day_type) → [WorldPattern] (dates[0] 順)。
+
+    trips は TripInfo の iterable。世界毎に内容 (base_seq, times) の多重集合を
+    ダイジェスト化し、完全一致する世界を1パターンに束ねる。
+    断定は完全一致のみ (service_days.md §9 の方針3原則)。
+    """
+    import hashlib
+    from collections import Counter
+
+    per_world: dict = {}
+    for t in trips:
+        wid = worlds.world_of(t.service_id)
+        key = (t.family, t.direction, t.day_type)
+        per_world.setdefault(key, {}).setdefault(wid, Counter())[
+            (t.base_seq, t.times)] += 1
+
+    by_id = worlds.by_id()
+    out: dict = {}
+    for key, wmap in per_world.items():
+        classes: dict = {}
+        for wid in sorted(wmap):
+            digest = hashlib.sha1(
+                repr(sorted(wmap[wid].items())).encode()).hexdigest()[:12]
+            classes.setdefault(digest, []).append(wid)
+        pats = []
+        for digest, wids in classes.items():
+            dates = tuple(sorted({
+                d for w in wids for d in (by_id[w].dates if w in by_id else ())
+            }))
+            pats.append(WorldPattern(
+                day_type=key[2], digest=digest, world_ids=tuple(wids),
+                dates=dates,
+                trips_per_day=sum(wmap[wids[0]].values()),
+            ))
+        pats.sort(key=lambda p: (p.dates[0] if p.dates else "99999999",
+                                 p.digest))
+        out[key] = pats
+    return out
+
+
+def match_patterns(old_pats: list, new_pats: list) -> list:
+    """世代間のパターン対応 (完全一致の2信号のみ)。
+
+    戻り値: (old_index | None, new_index | None, signal) のリスト。
+    signal = "content" (内容ダイジェスト一致 — 日付が変わっても同じ時刻表) /
+    "dates" (実効日集合一致 — 同じ日々で内容が変化) / None (対応なし)。
+    content を優先し、残りに dates を適用。多重一致は日付順の貪欲 (決定的)。
+    """
+    used_new: set[int] = set()
+    result = []
+    # 信号1: 内容一致 (1:N を許す — PRT の旧1日 → 新2日はここで対応)
+    by_digest: dict = {}
+    for j, p in enumerate(new_pats):
+        by_digest.setdefault(p.digest, []).append(j)
+    matched_old: set[int] = set()
+    for i, p in enumerate(old_pats):
+        js = [j for j in by_digest.get(p.digest, []) if j not in used_new]
+        if js:
+            for j in js:
+                used_new.add(j)
+                result.append((i, j, "content"))
+            matched_old.add(i)
+    # 信号2: 日付集合一致
+    for i, p in enumerate(old_pats):
+        if i in matched_old:
+            continue
+        for j, q in enumerate(new_pats):
+            if j in used_new:
+                continue
+            if p.dates and p.dates == q.dates:
+                used_new.add(j)
+                result.append((i, j, "dates"))
+                matched_old.add(i)
+                break
+    for i in range(len(old_pats)):
+        if i not in matched_old:
+            result.append((i, None, None))
+    for j in range(len(new_pats)):
+        if j not in used_new:
+            result.append((None, j, None))
+    result.sort(key=lambda r: (r[0] if r[0] is not None else 10**9,
+                               r[1] if r[1] is not None else 10**9))
+    return result

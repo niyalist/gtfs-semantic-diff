@@ -95,3 +95,60 @@ def test_overlap_via_shared_date_merges(tmp_path, config):
     w = build_day_worlds(snap)
     assert w.world_of("A") == w.world_of("B")
     assert w.multi_labels == frozenset()
+
+
+def _ti(trip_id, day_type, service_id, dep="08:00:00"):
+    from gtfs_semantic_diff.events.tripdelta import TripInfo
+    return TripInfo(
+        trip_id=trip_id, route_id="R", family="F", direction="0",
+        day_type=day_type, base_seq=("A", "B"),
+        times=(("", dep), (dep, "")), service_id=service_id,
+    )
+
+
+def _worlds(*specs):
+    """specs: (day_type, world_id, services, dates)"""
+    from gtfs_semantic_diff.events.day_worlds import DayWorld, DayWorlds
+    ws = tuple(DayWorld(day_type=d, world_id=w, services=tuple(s),
+                        dates=tuple(dt)) for d, w, s, dt in specs)
+    by_service = {s: w.world_id for w in ws for s in w.services}
+    labels = {}
+    for w in ws:
+        labels.setdefault(w.day_type, []).append(w)
+    multi = frozenset(k for k, v in labels.items() if len(v) > 1)
+    return DayWorlds(worlds=ws, by_service=by_service, multi_labels=multi)
+
+
+def test_group_patterns_bundles_identical_worlds(tmp_path, config):
+    """内容同一の世界はパターンに束なる (市川三郷の花火分割型)。"""
+    from gtfs_semantic_diff.events.day_worlds import group_patterns
+    w = _worlds(
+        ("irregular", "irregular#1", ["S1"], ["20260704"]),
+        ("irregular", "irregular#2", ["S2"], ["20260907"]),
+        ("irregular", "irregular#3", ["S3"], ["20261123"]),
+    )
+    trips = [_ti("t1", "irregular", "S1"), _ti("t2", "irregular", "S2"),
+             _ti("t3", "irregular", "S3", dep="09:00:00")]
+    pats = group_patterns(trips, w)[("F", "0", "irregular")]
+    assert len(pats) == 2  # 8時組 (2世界束ね) + 9時組
+    assert pats[0].world_ids == ("irregular#1", "irregular#2")
+    assert pats[0].dates == ("20260704", "20260907")
+    assert pats[0].trips_per_day == 1
+
+
+def test_match_patterns_two_signals(tmp_path, config):
+    """content 一致 (日付変更) と dates 一致 (内容変更) の対応。"""
+    from gtfs_semantic_diff.events.day_worlds import (
+        WorldPattern, match_patterns)
+    p = lambda digest, dates: WorldPattern(  # noqa: E731
+        day_type="irregular", digest=digest, world_ids=("x",),
+        dates=tuple(dates), trips_per_day=1)
+    old = [p("aaa", ["20250525"]), p("bbb", ["20250824"])]
+    new = [p("aaa", ["20260704"]), p("aaa", ["20260907"]),
+           p("ccc", ["20250824"])]
+    m = match_patterns(old, new)
+    # 旧 aaa は新 aaa 2件へ 1:N content 対応 (PRT 型)
+    assert (0, 0, "content") in m and (0, 1, "content") in m
+    # 旧 bbb は日付一致で新 ccc へ (新庄まつり型)
+    assert (1, 2, "dates") in m
+    assert all(r[2] is not None for r in m)
