@@ -50,8 +50,9 @@
   $: dayTimetables = page.timetables.filter((tb) => tb.day_type === selectedDay);
   // SD5b: 選択タブが複数世界セルならメタ (運行日・対応信号) を出す
   $: cellMeta = page.day_cells?.[selectedDay] ?? null;
-  function cellDates(side) {
-    const m = cellMeta;
+  // 引数に meta を取る (Svelte のテンプレート更新は参照変数で追跡されるため、
+  // クロージャで cellMeta を読むとタブ切替時に再描画されない)
+  function cellDates(m, side) {
     const runs = m[`runs_${side}`];
     const total = m[`dates_${side}_total`];
     if (!runs) {
@@ -208,11 +209,11 @@
     {#if cellMeta}
       <p class="special-dates">
         {#if cellMeta.dates_old_total}
-          {tt("old_gen")}: {cellDates("old")}
+          {tt("old_gen")}: {cellDates(cellMeta, "old")}
         {/if}
         {#if cellMeta.dates_old_total && cellMeta.dates_new_total}&nbsp;→&nbsp;{/if}
         {#if cellMeta.dates_new_total}
-          {tt("new_gen")}: {cellDates("new")}
+          {tt("new_gen")}: {cellDates(cellMeta, "new")}
         {/if}
         {#if cellMeta.signal === "content"}({tt("cell_same_content")}){/if}
         {#if cellMeta.signal === "flow"}({tt("cell_flow")}){/if}
