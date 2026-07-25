@@ -369,12 +369,14 @@ config ゲート + 別途議論)。
 ## SD: 運行日モデルの精緻化 【承認 2026-07-23、設計: docs/design/service_days.md。
 v0.8 (SD5/SD6) 設計 2026-07-25 — 検証: docs/verification/day_pattern_survey.md】
 
-- **SD5: 運行日世界** (service_days.md §9.1) — day_type ラベル内の実効日
-  重なり成分を集計・表示・世代間対応の単位に。便数の意味を「1日あたり」に
-  統一。(路線×方向) 粒度の完全一致ダイジェストで束ね (特定日1/2…)。
-  便対応 v1 のブロックはラベル単位のまま (規則不変)。
-  DoD: PRT 38→38×2日 / STM 四半期別 / 1世界系フィードで events 不変 /
-  束ね・対応の実例 (市川三郷・甲賀・河内小・しんぐう・新庄) / 合成テスト。
+- **SD5: 運行日世界** (service_days.md §9.1) —
+  【コア完了 2026-07-25 (docs/verification/SD5_day_worlds.md)】
+  events/day_worlds.py (世界分解・パターン束ね・2信号対応) + C群の世界セル化 +
+  SERVICE_DAYS_CHANGED (v0.2.4)。PRT の見かけ倍増解消 (SDC 85件・explained 1.0)、
+  STM 四半期の分母正常化、桑名・trimet バイト一致 (退化保証)、pytest 235。
+  【残 = SD5b 表示層】day_totals (曜日タブ「38→76▲」)・③本数表・④時刻表・
+  band_profiles を世界表示に一括改修 (部分修正は③④と食い違うため一括で。
+  presentation.md 改訂注が必要)。名古屋ほか multi-world 群の目視も残。
 - **SD6: 切替の整列** (service_days.md §9.2) — 単調な世界交代のみを切替と
   判定し旧初期 vs 新最終で比較 (桑名 A+B vs B → A vs B)。再出現 (季節・振動)
   は切替扱いしない (T3 の解)。SD2 を吸収再編。
