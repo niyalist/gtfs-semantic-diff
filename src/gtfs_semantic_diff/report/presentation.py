@@ -621,7 +621,9 @@ class _Builder:
             for ck, disp in disp_of.items():
                 meta = dict(cell_meta[ck])
                 meta.pop("_rank", None)
-                gmeta[disp] = meta
+                # 実効日が両側とも空 (inactive 等) の注記はノイズなので出さない
+                if meta["dates_old_total"] or meta["dates_new_total"]:
+                    gmeta[disp] = meta
             for key, o_pats, n_pats, cells in entries:
                 fam, direction, _label = key
                 for i, j, s in cells:
