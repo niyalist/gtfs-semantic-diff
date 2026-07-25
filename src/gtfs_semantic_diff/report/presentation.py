@@ -532,11 +532,13 @@ class _Builder:
         self.wc = day_worlds
         self._disp: dict = {}  # (side, family, direction, label, world_id) → 表示ラベル
         self.group_day_cells: dict[str, dict] = {}  # group → 表示ラベル → メタ
-        # content セル: (fam, dir, label) → (旧パターン世界集合, 新パターン世界集合)
-        # — 内容同一なので表示は代表世界同士を署名再ペアリングする (§9.4)
-        self._content_cells: dict = {}
+        # 双子写像 (SD5b 第2弾): パターン内の世界は内容同一なので、
+        # 非代表世界の便 → 代表世界の同内容便 (署名順 zip)。表示側の対応・
+        # チップ・③④はこの正規形から作る (content/flow の区別なく整合する)
+        self._twin: dict = {}  # (side, trip_id) → 代表世界の TripInfo
         if self.wc is not None:
             self._build_day_cells()
+            self._build_twins()
 
     def _build_day_cells(self) -> None:
         from collections import Counter as _Counter
@@ -626,9 +628,6 @@ class _Builder:
                     od = o_pats[i].dates if i is not None else ()
                     nd = n_pats[j].dates if j is not None else ()
                     disp = disp_of[(od, nd)]
-                    if s == "content":
-                        self._content_cells[(fam, direction, _label)] = (
-                            set(o_pats[i].world_ids), set(n_pats[j].world_ids))
                     # 代表世界 (初日側) のみ表示。同内容の他世界の便は表示上
                     # 1日分に畳む (タブ・③④の便数 = 1日あたり。日付は
                     # day_cells 注記と SERVICE_DAYS_CHANGED が示す)
@@ -641,38 +640,37 @@ class _Builder:
                             self._disp[("n", fam, direction, label, w)] = (
                                 disp if k_ == 0 else _DUP)
 
-    def _display_repairs(self, old_trips, new_trips):
-        """content セルの表示用ペア (代表世界同士、署名順 zip) と抑制集合。
+    def _build_twins(self) -> None:
+        wc = self.wc
+        buckets: dict = defaultdict(list)
+        for side, trips, w in (("o", self.delta.old_trips, wc.old),
+                               ("n", self.delta.new_trips, wc.new)):
+            for t in trips.values():
+                if t.day_type in w.multi_labels:
+                    buckets[(side, t.family, t.direction, t.day_type,
+                             w.world_of(t.service_id))].append(t)
 
-        内容同一の保証があるセル限定 — v1 が重複世界の双子と張った対応を、
-        表示上は代表世界同士に張り替える (④の対応線とチップを正す)。
-        戻り値: (pairs [(o, n)], skip_old ids, skip_new ids)。"""
-        if not self._content_cells:
-            return [], set(), set()
-        pairs, skip_old, skip_new = [], set(), set()
-        by_cell_o: dict = defaultdict(list)
-        by_cell_n: dict = defaultdict(list)
-        for t in old_trips:
-            key = (t.family, t.direction, t.day_type)
-            cw = self._content_cells.get(key)
-            if cw and self.wc.old.world_of(t.service_id) in cw[0]:
-                skip_old.add(t.trip_id)
-                if self._dlabel("o", t) != _DUP:
-                    by_cell_o[key].append(t)
-        for t in new_trips:
-            key = (t.family, t.direction, t.day_type)
-            cw = self._content_cells.get(key)
-            if cw and self.wc.new.world_of(t.service_id) in cw[1]:
-                skip_new.add(t.trip_id)
-                if self._dlabel("n", t) != _DUP:
-                    by_cell_n[key].append(t)
-        for key in by_cell_o:
-            olds = sorted(by_cell_o[key],
-                          key=lambda t: (t.times, t.base_seq, t.trip_id))
-            news = sorted(by_cell_n.get(key, []),
-                          key=lambda t: (t.times, t.base_seq, t.trip_id))
-            pairs.extend(zip(olds, news))
-        return pairs, skip_old, skip_new
+        def skey(t):
+            return (t.times, t.base_seq, t.trip_id)
+
+        for side, pats_map in (("o", wc.old_patterns), ("n", wc.new_patterns)):
+            for (fam, direction, label), pats in pats_map.items():
+                for pat in pats:
+                    if len(pat.world_ids) < 2:
+                        continue
+                    rep = sorted(
+                        buckets.get((side, fam, direction, label,
+                                     pat.world_ids[0]), []), key=skey)
+                    for w in pat.world_ids[1:]:
+                        twins = sorted(
+                            buckets.get((side, fam, direction, label, w), []),
+                            key=skey)
+                        for tw, tr in zip(twins, rep):
+                            self._twin[(side, tw.trip_id)] = tr
+
+    def _norm(self, side: str, t: TripInfo) -> TripInfo:
+        """表示正規形: 非代表世界の便を代表世界の双子便に写す。"""
+        return self._twin.get((side, t.trip_id), t)
 
     def _dlabel(self, side: str, t: TripInfo) -> str:
         """trip の表示上の day_type (セルラベル)。side: "o"/"n"。"""
@@ -816,44 +814,78 @@ class _Builder:
         systems = self._systems(group, old_trips, new_trips)
         dgroups = self._direction_groups(systems)
         self._leg_views(dgroups)
-        band_matrix = self._band_matrix(dgroups, old_trips, new_trips)
         # 時刻表を先に構築し、表示用ペアリング (廃止×新設の組) を summary と共有する。
         # trip_id が張り替わるフィードでも Lev.3 / Lev.5 が経路・時刻変更を拾える
         # 便の対応付けはコア (trip matching v2) が担い、表示層の後付けペアリングは
         # 廃止した (docs/design/trip_matching.md)
-        repairs, skip_old, skip_new = self._display_repairs(old_trips, new_trips)
-        timetables = self._timetables(dgroups, old_trips, new_trips,
-                                      repairs, skip_old, skip_new)
+        # SD5b: 表示正規形 — 対応・増減を双子写像で代表世界に写し、
+        # 同じ代表便への重複写像は先勝ちで畳む (1世界系では恒等 = 従来どおり)
+        disp_pairs: list = []  # (source, o2, n2)
+        used_o: set = set()
+        used_n: set = set()
+        for source, pairs_src in (("exact", self.delta.exact_pairs),
+                                  ("modified", self.delta.modified)):
+            for o, nw in pairs_src:
+                if (self.f2g.get(nw.family) != group
+                        and self.f2g.get(o.family) != group):
+                    continue
+                o2, n2 = self._norm("o", o), self._norm("n", nw)
+                if o2.trip_id in used_o or n2.trip_id in used_n:
+                    continue
+                used_o.add(o2.trip_id)
+                used_n.add(n2.trip_id)
+                disp_pairs.append((source, o2, n2))
+        disp_removed: list = []
+        for t in self.delta.removed:
+            if self.f2g.get(t.family) != group:
+                continue
+            t2 = self._norm("o", t)
+            if t2.trip_id not in used_o:
+                used_o.add(t2.trip_id)
+                disp_removed.append(t2)
+        disp_added: list = []
+        for t in self.delta.added:
+            if self.f2g.get(t.family) != group:
+                continue
+            t2 = self._norm("n", t)
+            if t2.trip_id not in used_n:
+                used_n.add(t2.trip_id)
+                disp_added.append(t2)
+        # 表示 trip 集合 (元の並び順を保存 — 1世界系で従来と同一の列順)
+        display_old: list = []
+        seen: set = set()
+        for t in old_trips:
+            t2 = self._norm("o", t)
+            if t2.trip_id not in seen and self._dlabel("o", t2) != _DUP:
+                seen.add(t2.trip_id)
+                display_old.append(t2)
+        display_new: list = []
+        seen = set()
+        for t in new_trips:
+            t2 = self._norm("n", t)
+            if t2.trip_id not in seen and self._dlabel("n", t2) != _DUP:
+                seen.add(t2.trip_id)
+                display_new.append(t2)
+        band_matrix = self._band_matrix(dgroups, display_old, display_new)
+        timetables = self._timetables(dgroups, display_old, display_new,
+                                      disp_pairs)
 
         # R19: 便ラベル (曜日別・ラベル別の件数)。素材はコアの対応付けのみ
         day_labels: dict[str, Counter] = defaultdict(Counter)
-        for o, nw in self.delta.modified:
-            if self.f2g.get(nw.family) == group:
-                if o.trip_id in skip_old or nw.trip_id in skip_new:
-                    continue  # content セルは表示用再ペアで数える
-                dl = self._dlabel("n", nw)
-                if dl != _DUP:
-                    day_labels[dl][
-                        trip_pair_label(o, nw, self.retime_minor)
-                    ] += 1
-        for t in self.delta.removed:
-            if self.f2g.get(t.family) == group:
-                if t.trip_id in skip_old:
-                    continue
-                dl = self._dlabel("o", t)
-                if dl != _DUP:
-                    day_labels[dl]["removed"] += 1
-        for t in self.delta.added:
-            if self.f2g.get(t.family) == group:
-                if t.trip_id in skip_new:
-                    continue
-                dl = self._dlabel("n", t)
-                if dl != _DUP:
-                    day_labels[dl]["added"] += 1
-        for o, nw in repairs:
-            dl = self._dlabel("n", nw)
+        for source, o2, n2 in disp_pairs:
+            if source != "modified":
+                continue
+            dl = self._dlabel("n", n2)
             if dl != _DUP:
-                day_labels[dl][trip_pair_label(o, nw, self.retime_minor)] += 1
+                day_labels[dl][trip_pair_label(o2, n2, self.retime_minor)] += 1
+        for t2 in disp_removed:
+            dl = self._dlabel("o", t2)
+            if dl != _DUP:
+                day_labels[dl]["removed"] += 1
+        for t2 in disp_added:
+            dl = self._dlabel("n", t2)
+            if dl != _DUP:
+                day_labels[dl]["added"] += 1
         label_totals: Counter = Counter()
         for c in day_labels.values():
             label_totals.update(c)
@@ -870,14 +902,10 @@ class _Builder:
         # 曜日タブ用 (R18): 新旧いずれかに便がある day_type を固定順で列挙。
         # 廃止された運行日 (old>0, new=0) もタブに残す — 消えたこと自体が情報
         day_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-        for t in old_trips:
-            dl = self._dlabel("o", t)
-            if dl != _DUP:
-                day_counts[dl][0] += 1
-        for t in new_trips:
-            dl = self._dlabel("n", t)
-            if dl != _DUP:
-                day_counts[dl][1] += 1
+        for t in display_old:
+            day_counts[self._dlabel("o", t)][0] += 1
+        for t in display_new:
+            day_counts[self._dlabel("n", t)][1] += 1
         day_totals = [
             {"day_type": d, "old": day_counts[d][0], "new": day_counts[d][1],
              # R19: 折りたたみチップ用のラベル別件数 (0件は出さない)
@@ -1295,8 +1323,6 @@ class _Builder:
                     continue
                 band = self.bands.band_of(t.first_departure)
                 dl = self._dlabel("o" if gen == "old" else "n", t)
-                if dl == _DUP:
-                    continue
                 cells[(s["direction_group"], dl, s["system_id"], band)][side] += 1
                 days.add(dl)
 
@@ -1582,8 +1608,7 @@ class _Builder:
     # --- ④ 新旧時刻表 (R17) ---
 
     def _timetables(self, dgroups, old_trips, new_trips,
-                    repairs=(), skip_old=frozenset(),
-                    skip_new=frozenset()) -> list[dict]:
+                    disp_pairs=()) -> list[dict]:
         sys_by_old = {}
         sys_by_new = {}
         for g in dgroups:
@@ -1603,21 +1628,17 @@ class _Builder:
         # trip 対応 (差分表示の素材)
         pair_of_old: dict[str, tuple[str, TripInfo, TripInfo]] = {}
         pair_of_new: dict[str, tuple[str, TripInfo, TripInfo]] = {}
-        for o, nw in self.delta.exact_pairs:
-            if o.trip_id in skip_old or nw.trip_id in skip_new:
-                continue
-            status = "unchanged" if o.trip_id == nw.trip_id else "id_changed"
-            pair_of_old[o.trip_id] = (status, o, nw)
-            pair_of_new[nw.trip_id] = (status, o, nw)
-        for o, nw in self.delta.modified:
-            if o.trip_id in skip_old or nw.trip_id in skip_new:
-                continue
-            status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
-            pair_of_old[o.trip_id] = (status, o, nw)
-            pair_of_new[nw.trip_id] = (status, o, nw)
-        # SD5b: content セルの表示用再ペア (代表世界同士。内容同一の保証下)
-        for o, nw in repairs:
-            status = "unchanged" if o.trip_id == nw.trip_id else "id_changed"
+        # SD5b: 対応は表示正規形 (双子写像・先勝ち畳み済み) から張る。
+        # disp_pairs 未指定 (直接呼び出し) は従来どおり delta から
+        if not disp_pairs:
+            disp_pairs = (
+                [("exact", o, nw) for o, nw in self.delta.exact_pairs]
+                + [("modified", o, nw) for o, nw in self.delta.modified])
+        for source, o, nw in disp_pairs:
+            if source == "exact":
+                status = "unchanged" if o.trip_id == nw.trip_id else "id_changed"
+            else:
+                status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
             pair_of_old[o.trip_id] = (status, o, nw)
             pair_of_new[nw.trip_id] = (status, o, nw)
 
@@ -1625,14 +1646,14 @@ class _Builder:
         buckets: dict[tuple, dict] = defaultdict(lambda: {"old": [], "new": []})
         for t in old_trips:
             s = locate(t, "old")
-            dl = self._dlabel("o", t)
-            if s and dl != _DUP:
-                buckets[(s["direction_group"], s["leg"], dl)]["old"].append(t)
+            if s:
+                buckets[(s["direction_group"], s["leg"],
+                         self._dlabel("o", t))]["old"].append(t)
         for t in new_trips:
             s = locate(t, "new")
-            dl = self._dlabel("n", t)
-            if s and dl != _DUP:
-                buckets[(s["direction_group"], s["leg"], dl)]["new"].append(t)
+            if s:
+                buckets[(s["direction_group"], s["leg"],
+                         self._dlabel("n", t))]["new"].append(t)
 
         dg_label = {}
         for g in dgroups:
@@ -1704,8 +1725,10 @@ class _Builder:
                 label_counts: Counter = Counter()
                 trips_old = trips_new = 0
                 for status, o, nw in specs:
-                    trips_old += o is not None
-                    trips_new += nw is not None
+                    # SD5b: セル跨ぎ対応 (相手が別タブの世界セル) の相手側は
+                    # このタブの便数に数えない (1世界系では恒等)
+                    trips_old += o is not None and self._dlabel("o", o) == day
+                    trips_new += nw is not None and self._dlabel("n", nw) == day
                     if status in ("added", "removed"):
                         label_counts[status] += 1
                     elif status in ("retimed", "rerouted"):
