@@ -191,26 +191,31 @@ def group_patterns(trips, worlds: DayWorlds) -> dict:
 
 
 def match_patterns(old_pats: list, new_pats: list) -> list:
-    """世代間のパターン対応 (完全一致の2信号のみ)。
+    """世代間のパターン対応 (完全一致の2信号のみ、**厳密 1:1**)。
 
     戻り値: (old_index | None, new_index | None, signal) のリスト。
     signal = "content" (内容ダイジェスト一致 — 日付が変わっても同じ時刻表) /
     "dates" (実効日集合一致 — 同じ日々で内容が変化) / None (対応なし)。
-    content を優先し、残りに dates を適用。多重一致は日付順の貪欲 (決定的)。
+    content を優先し、残りに dates を適用。
+
+    1:1 の根拠 (2026-07-25 決定 — M9 route identity との相似で「世代内は
+    データに忠実・世代間のみ内容対応」だが、世界パターンには路線名のような
+    実体性がないため N:M は張らない): content は group_patterns が同一世代内の
+    同 digest 世界を1パターンに束ねるので構造上 1:1。dates も先勝ち 1:1。
+    PRT の「旧1日 → 新2日」は新側が1パターンに束なった上での 1:1 対応。
     """
     used_new: set[int] = set()
     result = []
-    # 信号1: 内容一致 (1:N を許す — PRT の旧1日 → 新2日はここで対応)
+    # 信号1: 内容一致 (digest は各世代で一意 — group_patterns の束ねによる)
     by_digest: dict = {}
     for j, p in enumerate(new_pats):
-        by_digest.setdefault(p.digest, []).append(j)
+        by_digest.setdefault(p.digest, j)
     matched_old: set[int] = set()
     for i, p in enumerate(old_pats):
-        js = [j for j in by_digest.get(p.digest, []) if j not in used_new]
-        if js:
-            for j in js:
-                used_new.add(j)
-                result.append((i, j, "content"))
+        j = by_digest.get(p.digest)
+        if j is not None and j not in used_new:
+            used_new.add(j)
+            result.append((i, j, "content"))
             matched_old.add(i)
     # 信号2: 日付集合一致
     for i, p in enumerate(old_pats):

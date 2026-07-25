@@ -137,18 +137,23 @@ def test_group_patterns_bundles_identical_worlds(tmp_path, config):
 
 
 def test_match_patterns_two_signals(tmp_path, config):
-    """content 一致 (日付変更) と dates 一致 (内容変更) の対応。"""
+    """content 一致 (日付変更) と dates 一致 (内容変更) の厳密 1:1 対応。
+
+    PRT の「旧1日 → 新2日」は group_patterns が新側の同内容世界を
+    1パターンに束ねた上での 1:1 (dates に両日が入る)。"""
     from gtfs_semantic_diff.events.day_worlds import (
         WorldPattern, match_patterns)
-    p = lambda digest, dates: WorldPattern(  # noqa: E731
-        day_type="irregular", digest=digest, world_ids=("x",),
+    p = lambda digest, dates, wids=("x",): WorldPattern(  # noqa: E731
+        day_type="irregular", digest=digest, world_ids=wids,
         dates=tuple(dates), trips_per_day=1)
     old = [p("aaa", ["20250525"]), p("bbb", ["20250824"])]
-    new = [p("aaa", ["20260704"]), p("aaa", ["20260907"]),
+    new = [p("aaa", ["20260704", "20260907"], ("w1", "w2")),
            p("ccc", ["20250824"])]
     m = match_patterns(old, new)
-    # 旧 aaa は新 aaa 2件へ 1:N content 対応 (PRT 型)
-    assert (0, 0, "content") in m and (0, 1, "content") in m
-    # 旧 bbb は日付一致で新 ccc へ (新庄まつり型)
-    assert (1, 2, "dates") in m
+    assert (0, 0, "content") in m  # PRT 型: 束ねられた新パターンと 1:1
+    assert (1, 1, "dates") in m    # 新庄まつり型: 日付一致・内容変化
     assert all(r[2] is not None for r in m)
+    # 1:1 保証: 各 index は一度しか現れない
+    olds = [r[0] for r in m if r[0] is not None]
+    news = [r[1] for r in m if r[1] is not None]
+    assert len(olds) == len(set(olds)) and len(news) == len(set(news))
