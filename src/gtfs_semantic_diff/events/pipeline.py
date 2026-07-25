@@ -20,7 +20,9 @@ from .rules.base import RuleContext
 from .timebands import TimeBands
 from .tripdelta import TripInfo, build_trip_delta, collect_trips
 from .windows import (
+    DateInterval,
     WindowScope,
+    common_window,
     comparison_units,
     feed_info_brief,
     known_services,
@@ -49,6 +51,67 @@ def _covered_enough(families: set[str], covered: set[str], coverage_min: float) 
     if not families:
         return False
     return len(families & covered) / len(families) >= coverage_min
+
+
+def _resolve_switch_scope(
+    old: GtfsSnapshot,
+    new: GtfsSnapshot,
+    old_trips: dict[str, TripInfo],
+    new_trips: dict[str, TripInfo],
+) -> WindowScope | None:
+    """SD6 (service_days.md §9.2): 単調な世代交代の検出と整列。
+
+    day_worlds.resolve_generation_switch が持ち越し/先行同梱の世界を特定したら、
+    それらの service/trip を比較対象外にした WindowScope を返す (switch_date
+    付き)。除外分の行差分は従来どおり GENERATION_SCOPE ルールが claim する。
+    """
+    from .day_worlds import resolve_generation_switch
+
+    sw = resolve_generation_switch(old, new, old_trips, new_trips)
+    if sw is None:
+        return None
+    window = common_window(old, new)
+    if window is None:
+        return None  # 同居検出なのに共通窓が無い場合は安全側で不発
+
+    def trips_of(trips, services):
+        return frozenset(
+            t.trip_id for t in trips.values() if t.service_id in services
+        )
+
+    old_keep = DateInterval(*(
+        _parse_ymd(sw.old_keep_interval[0]), _parse_ymd(sw.old_keep_interval[1])
+    ))
+    new_keep = DateInterval(*(
+        _parse_ymd(sw.new_keep_interval[0]), _parse_ymd(sw.new_keep_interval[1])
+    ))
+    old_known = known_services(old)
+    new_known = known_services(new)
+    logger.info(
+        "generation switch: 切替日 %s, 旧除外 %d / 新除外 %d service",
+        sw.switch_date, len(sw.old_excluded_services),
+        len(sw.new_excluded_services),
+    )
+    return WindowScope(
+        window=window,
+        intervals=(),
+        primary_intervals=(old_keep, new_keep),
+        identical_intervals=(),
+        old_universe=frozenset(old_known - sw.old_excluded_services),
+        new_universe=frozenset(new_known - sw.new_excluded_services),
+        old_excluded_services=sw.old_excluded_services,
+        new_excluded_services=sw.new_excluded_services,
+        old_excluded_trips=trips_of(old_trips, sw.old_excluded_services),
+        new_excluded_trips=trips_of(new_trips, sw.new_excluded_services),
+        multi_generation=True,
+        switch_date=sw.switch_date,
+    )
+
+
+def _parse_ymd(text: str):
+    import datetime as _dt
+
+    return _dt.date(int(text[:4]), int(text[4:6]), int(text[6:8]))
 
 
 def _resolve_window_scope(
@@ -256,14 +319,20 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
     new_trips_all = collect_trips(
         new, route_to_family_map(identity.new_families), new_stop_to_base
     )
-    # SD2 (窓内区間対比較): 同梱世代があるフィードでは比較の便世界を
-    # primary 区間の世代に絞る。通常フィードでは scope=None (現行挙動)
-    scope = _resolve_window_scope(
-        old, new, old_trips_all, new_trips_all, old_family_block, new_family_block,
-        coverage_min=config.get(
-            "events", "windows", "carryover_coverage_min", default=0.8
-        ),
-    )
+    # SD6 (切替の整列): 単調な世代交代 (持ち越し同居) を先に判定する。
+    # 検出したら「旧の初期世界 vs 新の最終世界」で比較 (A+B vs B → A vs B)。
+    # 不発なら SD2 (窓内区間対比較) に従来どおり委ねる
+    scope = _resolve_switch_scope(old, new, old_trips_all, new_trips_all)
+    if scope is None:
+        # SD2 (窓内区間対比較): 同梱世代があるフィードでは比較の便世界を
+        # primary 区間の世代に絞る。通常フィードでは scope=None (現行挙動)
+        scope = _resolve_window_scope(
+            old, new, old_trips_all, new_trips_all,
+            old_family_block, new_family_block,
+            coverage_min=config.get(
+                "events", "windows", "carryover_coverage_min", default=0.8
+            ),
+        )
     if scope is not None:
         logger.info(
             "window scope: 窓 %s, primary %s, 除外 old %d / new %d service",
@@ -367,6 +436,8 @@ def _scope_context(
         return None
     return {
         "comparison_window": list(scope.window.as_text()),
+        # SD6: 切替日 (単調な世代交代を検出した場合のみ)
+        "switch_date": scope.switch_date,
         "intervals": [list(iv.as_text()) for iv in scope.intervals],
         "primary_periods": [list(iv.as_text()) for iv in scope.primary_intervals],
         "identical_periods": [list(iv.as_text()) for iv in scope.identical_intervals],

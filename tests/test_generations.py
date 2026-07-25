@@ -85,8 +85,12 @@ def test_coexistence_as_new_side_no_false_increase(tmp_path, config):
     # 比較は A vs B: TA1 (8:00) → TB1 (8:05) の変化が便レベルで説明される
     assert event_set.accounting.explained_ratio == 1.0
     scope = event_set.context["comparison_scope"]
-    assert scope["primary_periods"] == [["20260711", "20261003"]]
-    assert scope["identical_periods"] == [["20260601", "20260710"]]
+    # SD6 (切替の整列): 旧の初期世界 vs 新の最終世界。primary は両側の期間、
+    # 切替日は新ダイヤ側の初日 (フィクスチャは平日のみ → 7/11(土) 明けの 7/13)
+    assert scope["switch_date"] == "20260713"
+    assert scope["primary_periods"] == [
+        ["20260601", "20261002"], ["20260713", "20261012"]]
+    assert scope["identical_periods"] == []
     assert scope["excluded"]["new_services"] == ["WD_A"]
     # feed_info は任意ファイル — 無いフィクスチャでは None (viewer が「なし」を表示)
     assert scope["old_feed_info"] is None
@@ -118,7 +122,11 @@ def test_scope_carries_feed_info_when_present(tmp_path, config):
 
 
 def test_coexistence_as_old_side_no_false_decrease(tmp_path, config):
-    """同居 vs 改正後のみ: 旧世代は窓外に落ち、偽減便を出さない。"""
+    """同居 vs 改正後のみ: SD6 で持ち越し (B) を除外し A vs B を比較する。
+
+    SD2 時代は旧 A を窓外に落として B vs B (変化なし) だったが、SD6 は
+    「旧の初期世界 vs 新の最終世界」に整列する — 桑名 A+B vs B で 7/11 改正が
+    見えるようになった対応 (service_days.md §9.2)。偽減便は引き続き出ない。"""
     event_set, rawdiffs = _load_pair(
         tmp_path, config,
         {"calendar.txt": _CAL_COEX, "trips.txt": _TRIPS_AB, "stop_times.txt": _ST_AB},
@@ -127,10 +135,12 @@ def test_coexistence_as_old_side_no_false_decrease(tmp_path, config):
     counts = _counts(event_set)
     assert counts.get("SERVICE_REDUCED", 0) == 0  # 桑名実測1の偽減便が出ない
     assert counts.get("TRIP_DISCONTINUED", 0) == 0
+    # A (8:00) vs B (8:05) の改正が便レベルで見える (B vs B の「変化なし」でない)
+    assert counts.get("TIMETABLE_SHIFTED", 0) >= 1
     assert event_set.accounting.explained_ratio == 1.0
     scope = event_set.context["comparison_scope"]
-    assert scope["excluded"]["old_services"] == ["WD_A"]
-    assert scope["excluded"]["old_trips"] == 2
+    assert scope["switch_date"] == "20260713"
+    assert scope["excluded"]["old_services"] == ["WD_B"]
 
 
 def test_coexistence_both_sides_all_identical(tmp_path, config):

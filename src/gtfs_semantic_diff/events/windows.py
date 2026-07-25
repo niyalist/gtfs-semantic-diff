@@ -299,3 +299,5 @@ class WindowScope:
     old_excluded_trips: frozenset[str]
     new_excluded_trips: frozenset[str]
     multi_generation: bool
+    # SD6: 単調な世代交代を検出した場合の切替日 (YYYYMMDD)。None = SD2 経路
+    switch_date: str | None = None

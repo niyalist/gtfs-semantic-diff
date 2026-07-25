@@ -262,3 +262,114 @@ def build_world_context(old_snap, new_snap, old_trips, new_trips) -> WorldContex
         matches[key] = match_patterns(old_p.get(key, []), new_p.get(key, []))
     return WorldContext(old=old_w, new=new_w, old_patterns=old_p,
                         new_patterns=new_p, matches=matches)
+
+
+# --- SD6: 切替の整列 (service_days.md §9.2) ---
+
+
+@dataclass(frozen=True)
+class GenerationSwitch:
+    """単調な世代交代の検出結果。
+
+    old/new_excluded_services = 持ち越し・先行掲載の世界の service。
+    switch_date = 新ダイヤの開始日 (YYYYMMDD)。
+    old/new_keep_interval = 比較に残す側の期間 (表示用)。
+    """
+
+    old_excluded_services: frozenset
+    new_excluded_services: frozenset
+    switch_date: str
+    old_keep_interval: tuple  # (from, to) YYYYMMDD
+    new_keep_interval: tuple
+
+
+def _label_world_digests(trips, worlds: DayWorlds) -> dict:
+    """world_id → フィードレベル内容ダイジェスト (便を持つ世界のみ)。"""
+    import hashlib
+    from collections import Counter
+
+    per_world: dict = defaultdict(Counter)
+    for t in trips.values():
+        w = worlds.world_of(t.service_id)
+        if w:
+            per_world[w][(t.family, t.direction, t.base_seq, t.times)] += 1
+    return {w: hashlib.sha1(repr(sorted(c.items())).encode()).hexdigest()[:16]
+            for w, c in per_world.items()}
+
+
+def resolve_generation_switch(old_snap, new_snap, old_trips, new_trips):
+    """単調な世代交代 (同居の持ち越し) を検出する。該当なしは None。
+
+    発動条件 (レギュラー型ラベルのうち複数世界を持つ全ラベルで成立):
+    - 旧が複数世界: 末尾世界の内容が新に存在し (持ち越し)、
+      先頭世界の内容は新に存在しない (再出現なし = 季節でない)
+    - 新が複数世界: 先頭世界の内容が旧に存在し (旧世代の先行同梱)、
+      末尾世界の内容は旧に存在しない
+    発動時は「旧の先頭世界 vs 新の末尾世界」で比較する (§9.2)。
+    特定日 (irregular)・inactive は従来どおり比較対象に残す。
+    再出現 (季節・振動) は不発 — 世界セル表示 (SD5) が説明する。
+    """
+    old_w = build_day_worlds(old_snap)
+    new_w = build_day_worlds(new_snap)
+
+    def regular(label: str) -> bool:
+        return label not in ("irregular", "inactive")
+
+    dig_o = _label_world_digests(old_trips, old_w)
+    dig_n = _label_world_digests(new_trips, new_w)
+
+    def label_worlds(w: DayWorlds, digs):
+        out: dict = defaultdict(list)
+        for world in w.worlds:
+            if regular(world.day_type) and world.world_id in digs and world.dates:
+                out[world.day_type].append(world)
+        for ws in out.values():
+            ws.sort(key=lambda x: x.dates[0])
+        return out
+
+    lw_o = label_worlds(old_w, dig_o)
+    lw_n = label_worlds(new_w, dig_n)
+    targets = [lbl for lbl in sorted(set(lw_o) | set(lw_n))
+               if len(lw_o.get(lbl, ())) > 1 or len(lw_n.get(lbl, ())) > 1]
+    if not targets:
+        return None
+
+    excl_o: set = set()
+    excl_n: set = set()
+    keep_o_dates: list = []
+    keep_n_dates: list = []
+    switch_dates: list = []
+    for lbl in targets:
+        ow = lw_o.get(lbl, [])
+        nw = lw_n.get(lbl, [])
+        if not ow or not nw:
+            return None  # 片側にラベルがない — 交代とは言えない
+        digs_o_here = {dig_o[w.world_id] for w in ow}
+        digs_n_here = {dig_n[w.world_id] for w in nw}
+        if len(ow) > 1:
+            if dig_o[ow[-1].world_id] not in digs_n_here:
+                return None  # 末尾が持ち越しでない
+            if dig_o[ow[0].world_id] in digs_n_here:
+                return None  # 先頭が再出現 = 季節・振動
+            for w in ow[1:]:
+                excl_o.update(w.services)
+            switch_dates.append(ow[1].dates[0])
+        if len(nw) > 1:
+            if dig_n[nw[0].world_id] not in digs_o_here:
+                return None
+            if dig_n[nw[-1].world_id] in digs_o_here:
+                return None
+            for w in nw[:-1]:
+                excl_n.update(w.services)
+            switch_dates.append(nw[-1].dates[0])
+        keep_o_dates.extend(ow[0].dates)
+        keep_n_dates.extend(nw[-1].dates)
+    if not (excl_o or excl_n):
+        return None
+    return GenerationSwitch(
+        old_excluded_services=frozenset(excl_o),
+        new_excluded_services=frozenset(excl_n),
+        switch_date=min(switch_dates),
+        old_keep_interval=(min(keep_o_dates), max(keep_o_dates)),
+        new_keep_interval=(min(keep_n_dates), max(keep_n_dates)),
+    )

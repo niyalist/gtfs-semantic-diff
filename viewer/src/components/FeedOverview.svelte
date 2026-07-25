@@ -196,7 +196,12 @@
       {:else}
         <li>{tt("sdn_overlap", isoDate(note.overlap[0]), isoDate(note.overlap[1]))}</li>
         {#if scope?.primary_periods?.length}
-          <li>{tt("cmp_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}${dash}${isoDate(p[1])}`).join(", "))}</li>
+          {#if scope.switch_date}
+            <!-- SD6: 単調な世代交代 — 切替日を比較の条件として明示 -->
+            <li>{tt("cmp_scope_switch", isoDate(scope.switch_date))}</li>
+          {:else}
+            <li>{tt("cmp_scope_primary", scope.primary_periods.map((p) => `${isoDate(p[0])}${dash}${isoDate(p[1])}`).join(", "))}</li>
+          {/if}
         {/if}
         {#if scope?.excluded?.old_services?.length}
           <li>{tt("fo_scope_excluded_old", scope.excluded.old_services.length, scope.excluded.old_trips)}</li>

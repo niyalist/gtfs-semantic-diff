@@ -352,7 +352,7 @@ uniform / TRAVEL_TIME は arrival_time / departure_time の field_changed。
 有効期間は API メタデータ (from_date/to_date) → calendar/calendar_dates の
 最小・最大日付の順で解決する。
 
-### 4.5b 窓内区間対比較と GENERATION_SCOPE (SD2、events/windows.py + rules/generations.py)
+### 4.5b 窓内区間対比較と GENERATION_SCOPE (SD2→SD6、events/windows.py + day_worlds.py + rules/generations.py)。SD6 (2026-07-25): 単調な世代交代 (旧末尾世界=持ち越しが新に内容一致・旧先頭は再出現なし) を SD2 の前段で検出し、旧初期世界 vs 新最終世界で比較 (switch_date 付き)。不発時は SD2 に委譲
 
 **世代同梱フィード** (改正前後のダイヤを期間で分けて1ファイルに同梱 — bus-vision
 系の日次配信は改正のたびに約1週間この形で流通する) を正しく比較するための機構
