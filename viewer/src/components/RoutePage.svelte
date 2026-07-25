@@ -45,9 +45,11 @@
   // SD5b: 選択タブが複数世界セルならメタ (運行日・対応信号) を出す
   $: cellMeta = page.day_cells?.[selectedDay] ?? null;
   function cellDates(dates, total) {
-    const runs = formatDateRuns(dates ?? [], $lang);
-    return total > (dates?.length ?? 0)
-      ? `${runs} ${tt("cell_dates_more", total)}` : runs;
+    const r = formatDateRuns(dates ?? [], $lang);
+    let out = r.text;
+    if (r.more) out += $lang === "en" ? ` +${r.more}` : ` ほか${r.more}区間`;
+    if (total > (dates?.length ?? 0)) out += ` ${tt("cell_dates_more", total)}`;
+    return out;
   }
   // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)
   $: sameSpecial =
@@ -201,7 +203,7 @@
     {/if}
 
     <!-- SD3 改: 「特定日」タブでは、その場でどの日付を指すのかを解説する -->
-    {#if selectedDay === "irregular" && page.special_dates}
+    {#if selectedDay === "irregular" && page.special_dates && !cellMeta}
       <p class="special-dates">
         {#if sameSpecial}
           {tt("rp_special_dates", specialRun(page.special_dates.new.length ? "new" : "old"))}
