@@ -59,6 +59,11 @@ evidence/生差分は件数+サンプル、網羅性は accounting の数値が�
 RD1b (アプリ HTML + データ JSON gzip の分離配信、URL 体系不変・後方互換) 完了。
 名古屋 137MB→初期転送 ~4MB、永井 1.2MB。残: RD2 (検証モードに生データ DL)、
 RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)。**
+**UQ トラック (UI 品質) 2026-07-26: SD5 追従漏れの監査で不整合11件を検出・修正
+(第1部便数の表示便数化 PI-1、mixed の全面伝播 PI-2、日付ラン一本化 PI-3)。
+表示不変条件 PI を presentation.md に凍結、self_check を検証モードに常設、
+vitest (viewer/tests、16件) を build_viewer.sh に組込、bundle.schema_version=1
+導入。監査と仕組み: docs/design/ui_quality.md。**
 国際化 (I トラック): I1 (国際検証データセット) 完了、I2〜I5 (入力 UI 英語化、
 JSON 言語中立化、地図タイル、README.en) は未着手。Web 公開 (W3) は全フェーズ
 完了・運用中。
@@ -139,3 +144,9 @@ M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / 
   event_types.py → ルール実装 + 合成テスト → detection.md 更新」の順で行う
   (例: v0.2.1 の HEADSIGN_CHANGED)。
 - 検出ロジック・閾値を変更したら docs/spec/detection.md を同期更新する。
+- **表示 (viewer / presentation) の規約を変えたら docs/design/presentation.md の
+  PI (表示不変条件) を同期更新し、表示変更の DoD (PI 棚卸し・vitest・検証フィード
+  目視) を守る**。便数表記・日付ランの整形は viewer/src/lib/format.js の
+  countText / runsText と Python の date_runs_year_split に一元化 —
+  表示面ごとの独自整形の追加は禁止 (経緯: docs/design/ui_quality.md)。
+  viewer のテストは `cd viewer && npm test` (build_viewer.sh にも組込済み)。

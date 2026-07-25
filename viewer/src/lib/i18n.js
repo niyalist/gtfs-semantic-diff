@@ -184,6 +184,10 @@ const DICT = {
     raw_dl_label: "生データのダウンロード",
     raw_dl_events: "イベント JSON (evidence 全量)",
     raw_dl_rawdiffs: "RawDiff 全件 JSON",
+    selfcheck_title: "表示整合セルフチェック",
+    selfcheck_ok: "違反なし (曜日別便数と④時刻表の列数は全路線・全区分で一致)",
+    selfcheck_line: (h, t) => `ヘッダ ${h}便 / ④時刻表 ${t}便 — 不一致`,
+    selfcheck_mixed: "(混成世界 — ヘッダは「のべ」・④は対応整列のため、差は設計上の既知差)",
     cell_same_content: "内容同一 — 運行日の変更",
     cell_flow: "便対応で接続 — 時刻等の変更として説明",
     cell_dates_more: (n) => `ほか (全${n}日)`,
@@ -381,6 +385,10 @@ const DICT = {
     raw_dl_label: "Raw data downloads",
     raw_dl_events: "Events JSON (full evidence)",
     raw_dl_rawdiffs: "All RawDiffs JSON",
+    selfcheck_title: "Display consistency self-check",
+    selfcheck_ok: "No violations (per-day counts match timetable columns for every route and day type)",
+    selfcheck_line: (h, t) => `header ${h} / timetable ${t} — mismatch`,
+    selfcheck_mixed: "(mixed worlds — header shows gross totals while the timetable is aligned by pairing; known by design)",
     cell_same_content: "same content — operating dates changed",
     cell_flow: "linked by trip matching — explained as time changes",
     cell_dates_more: (n) => `and more (${n} days total)`,
@@ -398,10 +406,15 @@ const DICT = {
   },
 };
 
-export const t = derived(lang, ($lang) => (key, ...args) => {
-  const v = DICT[$lang][key] ?? DICT.ja[key] ?? key;
-  return typeof v === "function" ? v(...args) : v;
-});
+// 非ストア版 (表示射影・テストから使う。t ストアと同一実装)
+export function translator(language) {
+  return (key, ...args) => {
+    const v = DICT[language][key] ?? DICT.ja[key] ?? key;
+    return typeof v === "function" ? v(...args) : v;
+  };
+}
+
+export const t = derived(lang, ($lang) => translator($lang));
 
 // day_type → 表示名 (M10)。dow_XXXXXXX (月→日の7ビット) は値から生成する
 const DOW_NAMES = {

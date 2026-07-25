@@ -1,5 +1,6 @@
 <script>
   import { lang, t, dayName } from "../lib/i18n.js";
+  import { countText, runsText as runsBase } from "../lib/format.js";
 
   export let overview; // presentation.feed_overview
   export let feed = {}; // meta.feed (期間)
@@ -77,15 +78,11 @@
     if (c.runs.length > 1 || c.more_runs) lines.push(tt("cmp_total", c.count));
     return lines;
   }
-  // SD4 (改): 運行日の要点 (文字要約)。runs = [[start,end],...] を M/D 表記に
+  // SD4 (改): 運行日の要点 (文字要約)。ラン整形は format.runsText に一元化 (PI-3)
   $: note = overview.service_days_note;
   function runsText(pack) {
     if (!pack || !pack.count) return tt("sdn_none");
-    const dash = $lang === "en" ? "–" : "〜";
-    const sep = $lang === "en" ? ", " : "、";
-    const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
-    const parts = pack.runs.map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`));
-    let text = parts.join(sep);
+    let text = runsBase(pack.runs, 0, null, $lang);
     if (pack.more_runs) text += tt("sdn_more", pack.more_runs);
     return `${text} (${tt("sdn_days", pack.count)})`;
   }
@@ -266,12 +263,12 @@
   <h3>{tt("fo_day_types")}</h3>
   <table class="fo-table">
     <tbody>
+      <!-- PI-1: 表示便数 (第3部の曜日タブ合計と一致)。PI-2: mixed は「のべ」。
+           表記は countText (第3部と同一実装) -->
       {#each overview.day_types as d}
-        <tr class:quiet={d.old === d.new}>
+        <tr class:quiet={d.old === d.new && !d.mixed_old && !d.mixed_new}>
           <td>{dayLabel(d.day_type)}</td>
-          <td class="num">
-            {#if d.old === d.new}{d.new}{:else}{d.old}→{d.new} {delta(d.old, d.new)}{/if}
-          </td>
+          <td class="num">{countText(tt, d)}</td>
         </tr>
       {/each}
     </tbody>

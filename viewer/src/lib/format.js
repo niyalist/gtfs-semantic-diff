@@ -112,3 +112,32 @@ export function fmtTime(hms) {
   const [h, m] = hms.split(":");
   return `${parseInt(h, 10)}:${m}`;
 }
+
+// PI-1/PI-2 (ui_quality.md S2): 便数の「旧→新▲▼」表記の一元実装。
+// タブ・折りたたみヘッダ・第1部の便数表・④件数はすべてこれを使う。
+// mixed (混成世界) の側は必ず「のべ」を冠し、1日あたりと断定しない。
+// 記号▲▼+数値が第1チャネル (色弱原則)
+export function countText(tt, d) {
+  const mo = Boolean(d.mixed_old);
+  const mn = Boolean(d.mixed_new);
+  const one = (n, mixed) => (mixed ? tt("gross_trips", n) : `${n}${tt("trips_count")}`);
+  if (d.old === d.new && !mo && !mn) return one(d.new, false);
+  if (d.old === d.new) return one(d.new, mo || mn);
+  const sym = d.new > d.old ? "▲" : "▼";
+  if (!mo && !mn) return `${d.old}→${d.new}${tt("trips_count")}${sym}`;
+  return `${one(d.old, mo)}→${one(d.new, mn)}${sym}`;
+}
+
+// PI-3 (ui_quality.md S2): 日付ラン表示の一元実装。runs はサーバー側
+// date_runs_year_split の出力 ([[a,b],…] — 年境のみ分割済み)。
+// total を渡すと「(全N日)」を付ける
+export function runsText(runs, more, total, lang) {
+  const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
+  const dash = lang === "en" ? "–" : "〜";
+  let out = (runs ?? [])
+    .map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`))
+    .join(lang === "en" ? ", " : "、");
+  if (more) out += lang === "en" ? ` +${more}` : ` ほか${more}区間`;
+  if (total != null) out += ` (${lang === "en" ? `${total} days` : `全${total}日`})`;
+  return out;
+}

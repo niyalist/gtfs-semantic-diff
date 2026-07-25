@@ -34,8 +34,10 @@ def _bundle(tmp_path, config, core=False):
 def test_bundle_structure(tmp_path, config):
     bundle = _bundle(tmp_path, config)
     assert set(bundle) == {
-        "events", "rawdiffs", "presentation", "geometry", "timetables", "catalog", "meta",
+        "schema_version", "events", "rawdiffs", "presentation", "geometry",
+        "timetables", "catalog", "meta",
     }
+    assert bundle["schema_version"] == 1
     # 埋め込みペイロードは「rawdiffs を dict リスト化した bundle の JSON」と等価
     # (rawdiffs は RawDiffSet のまま遅延直列化する — IN-3。render_html が正)
     html = render_html(bundle, "<x>__GTFS_SEMDIFF_DATA__</x>")
@@ -70,8 +72,8 @@ def test_core_bundle(tmp_path, config):
     core = _bundle(tmp_path, config, core=True)
     assert "rawdiffs" not in core
     assert set(core) == {
-        "events", "presentation", "geometry", "timetables", "catalog", "meta",
-        "file_diffs",
+        "schema_version", "events", "presentation", "geometry", "timetables",
+        "catalog", "meta", "file_diffs",
     }
     # そのまま JSON 直列化できる (RawDiffSet を含まない)
     json.dumps(core, ensure_ascii=False)
@@ -331,3 +333,102 @@ def test_bundle_special_days_flag_based_holiday_service(tmp_path, config):
     # このフィクスチャは平日 (WD) + HOL (7/4 のみ) しか無いので、
     # 土日 (窓内 104日) のうち HOL が走る 7/4 を除く 103 日が「運行のない日」
     assert note["no_service"]["new"]["count"] == 103
+
+
+def test_feed_day_types_match_route_pages(tmp_path, config):
+    """PI-1: 第1部の曜日区分別便数 = 第3部曜日タブの基底ラベル別合計。
+
+    双子世界 (同内容・別日付の2 service) では生カウント (のべ) と表示便数が
+    乖離する (PRT の 38→76 問題 — ui_quality.md A1)。第1部は表示便数を使う。"""
+    from gtfs_semantic_diff.report.presentation import base_day
+
+    files = {}
+    files["calendar.txt"] = MINIMAL_FEED["calendar.txt"] + (
+        "SP1,0,0,0,0,0,0,0,20260401,20270331\n"
+        "SP2,0,0,0,0,0,0,0,20260401,20270331\n"
+    )
+    files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\n"
+        "SP1,20260704,1\nSP2,20260907,1\n"
+    )
+    # SP1/SP2 は同内容 (双子世界 → 1パターンに束なる)
+    files["trips.txt"] = MINIMAL_FEED["trips.txt"] + "R1,SP1,T7\nR1,SP2,T8\n"
+    files["stop_times.txt"] = MINIMAL_FEED["stop_times.txt"] + (
+        "T7,12:00:00,12:00:00,S1,1\nT7,12:05:00,12:05:00,S2,2\nT7,12:10:00,12:10:00,S3,3\n"
+        "T8,12:00:00,12:00:00,S1,1\nT8,12:05:00,12:05:00,S2,2\nT8,12:10:00,12:10:00,S3,3\n"
+    )
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="o.zip"), config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="n.zip"), config=config)
+    event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
+        old, new, config
+    )
+    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    day_types = bundle["presentation"]["feed_overview"]["day_types"]
+    by_day = {d["day_type"]: d for d in day_types}
+    # 特定日はのべ2便 (T7+T8) だが表示便数は1日あたり1便
+    assert by_day["irregular"]["old"] == by_day["irregular"]["new"] == 1
+    # 不変条件: 第1部 = 第3部の基底ラベル別合計 (全区分)
+    sums: dict[str, list[int]] = {}
+    for p in bundle["presentation"]["route_pages"]:
+        for d in p["day_totals"]:
+            b = sums.setdefault(base_day(d["day_type"]), [0, 0])
+            b[0] += d["old"]
+            b[1] += d["new"]
+    assert {d["day_type"]: [d["old"], d["new"]] for d in day_types} == sums
+    # 表示整合セルフチェック (S3): 違反ゼロ
+    assert bundle["presentation"]["self_check"] == []
+
+
+def test_special_dates_runs_server_side(tmp_path, config):
+    """PI-3 (A4): special_dates はサーバー側で全日付からラン圧縮する。
+
+    30日 cap 後にクライアントで圧縮すると「3/1〜3/30 ほか(全245日)」型の
+    誤誘導になる (しんぐうの実例)。runs は cap 前の全日付を代表する。"""
+    files = {}
+    files["calendar.txt"] = MINIMAL_FEED["calendar.txt"] + (
+        "SP,0,0,0,0,0,0,0,20260401,20270331\n"
+    )
+    # 4/1〜6/9 の連続70日 (cap 30 を超える) を calendar_dates で追加
+    import datetime
+
+    dates = [
+        (datetime.date(2026, 4, 1) + datetime.timedelta(days=i)).strftime("%Y%m%d")
+        for i in range(70)
+    ]
+    files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\n"
+        + "".join(f"SP,{d},1\n" for d in dates)
+    )
+    files["trips.txt"] = MINIMAL_FEED["trips.txt"] + "R1,SP,T7\n"
+    files["stop_times.txt"] = MINIMAL_FEED["stop_times.txt"] + (
+        "T7,12:00:00,12:00:00,S1,1\nT7,12:05:00,12:05:00,S2,2\nT7,12:10:00,12:10:00,S3,3\n"
+    )
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="o.zip"), config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="n.zip"), config=config)
+    event_set, rawdiffs, identity, trip_delta = compare_snapshots_with_artifacts(
+        old, new, config
+    )
+    bundle = build_bundle(old, new, config, event_set, rawdiffs, identity, trip_delta)
+    page = next(
+        p for p in bundle["presentation"]["route_pages"] if "special_dates" in p
+    )
+    sd = page["special_dates"]
+    assert sd["new_total"] == 70
+    assert len(sd["new"]) == 30  # 互換のための cap 済みリスト
+    # runs は全70日を1本のラン (4/1〜6/9) で代表する
+    assert sd["runs_new"] == [["20260401", "20260609"]]
+    assert sd["runs_new_more"] == 0
+
+
+def test_date_runs_year_split():
+    """PI-3: 連続日は月を跨いで繋げ、年境 (12/31|1/1) のみ分割する。"""
+    from gtfs_semantic_diff.report.presentation import date_runs_year_split
+
+    runs, more = date_runs_year_split(
+        ["20261229", "20261230", "20261231", "20270101", "20270102"], 8
+    )
+    assert runs == [["20261229", "20261231"], ["20270101", "20270102"]]
+    assert more == 0
+    # 月跨ぎは繋げる
+    runs, more = date_runs_year_split(["20260331", "20260401"], 8)
+    assert runs == [["20260331", "20260401"]]

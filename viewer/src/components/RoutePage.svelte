@@ -1,5 +1,6 @@
 <script>
   import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
+  import { countText, runsText } from "../lib/format.js";
   import LevSummary from "./LevSummary.svelte";
   import BandMatrix from "./BandMatrix.svelte";
   import DiffTimetable from "./DiffTimetable.svelte";
@@ -27,17 +28,9 @@
   $: dayTabs = page.day_totals ?? [];
   let selectedDay = null;
   $: if (selectedDay === null && dayTabs.length) selectedDay = dayTabs[0].day_type;
+  // 便数表記は countText に一元化 (PI-1/PI-2 — mixed は「のべ」を冠する)
   function tabLabel(d) {
-    const name = dayJa(d.day_type) + addedTo(d);
-    // SD5c 案C: 混成世界 (日により運行構成が異なる) は「のべ」を冠して
-    // 1日あたりと断定しない
-    const num = (n, mixed) => (mixed ? tt("gross_trips", n) : `${n}${tt("trips_count")}`);
-    if (d.old === d.new && !d.mixed_old && !d.mixed_new)
-      return `${name} ${d.new}${tt("trips_count")}`;
-    if (d.old === d.new)
-      return `${name} ${num(d.new, d.mixed_old || d.mixed_new)}`;
-    const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
-    return `${name} ${num(d.old, d.mixed_old)}→${num(d.new, d.mixed_new)}${sym}`;
+    return `${dayJa(d.day_type)}${addedTo(d)} ${countText(tt, d)}`;
   }
   // M10: 増便/限定型の注記 (dow の曜日集合を包含する day_type が同居する場合)
   function addedTo(d) {
@@ -56,29 +49,33 @@
     const runs = m[`runs_${side}`];
     const total = m[`dates_${side}_total`];
     if (!runs) {
-      // 旧版バンドル互換 (runs なし)
+      // 旧版バンドル互換 (schema_version 0: runs なし)
       const r = formatDateRuns(m[`dates_${side}`] ?? [], $lang);
       return r.text + (r.more ? ($lang === "en" ? ` +${r.more}` : ` ほか${r.more}区間`) : "");
     }
-    const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
-    const dash = $lang === "en" ? "–" : "〜";
-    let out = runs.map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`))
-      .join($lang === "en" ? ", " : "、");
-    const more = m[`runs_${side}_more`];
-    if (more) out += $lang === "en" ? ` +${more}` : ` ほか${more}区間`;
-    out += ` (${$lang === "en" ? `${total} days` : `全${total}日`})`;
-    return out;
+    return runsText(runs, m[`runs_${side}_more`], total, $lang);
   }
-  // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)
+  // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)。
+  // 同一判定は cap 前の全日付を代表する runs+total で行う (ui_quality.md B1 —
+  // cap 済みリスト比較では先頭30日一致だけで同一と誤判定する)
   $: sameSpecial =
     page.special_dates &&
-    JSON.stringify(page.special_dates.old) === JSON.stringify(page.special_dates.new);
+    page.special_dates.old_total === page.special_dates.new_total &&
+    JSON.stringify(page.special_dates.runs_old ?? page.special_dates.old) ===
+      JSON.stringify(page.special_dates.runs_new ?? page.special_dates.new);
   function specialRun(side) {
     const sd = page.special_dates;
-    const runs = formatDateRuns(sd[side], $lang);
     const total = sd[`${side}_total`];
-    const extra = (runs.more || 0) + Math.max(0, total - sd[side].length);
-    return tt("fo_special_rundates", runs.text, total, extra);
+    const runs = sd[`runs_${side}`];
+    if (runs) {
+      // PI-3: サーバー側で全日付から圧縮したラン (cap 後圧縮の誤誘導なし)
+      return tt("fo_special_rundates",
+                runsText(runs, sd[`runs_${side}_more`], null, $lang), total, 0);
+    }
+    // 旧版バンドル互換 (schema_version 0)
+    const r = formatDateRuns(sd[side], $lang);
+    const extra = (r.more || 0) + Math.max(0, total - sd[side].length);
+    return tt("fo_special_rundates", r.text, total, extra);
   }
   $: changedTables = dayTimetables.filter((tb) => tb.columns.some(columnChanged));
 
@@ -110,11 +107,11 @@
   function dayJa(d) {
     return dayName(d, $lang);
   }
-  // R19: 折りたたみヘッダ = 曜日別便数 (旧→新、合計は出さない) + 質的チップ
+  // R19: 折りたたみヘッダ = 曜日別便数 (旧→新、合計は出さない) + 質的チップ。
+  // countText 経由なので mixed は折りたたみ時も「のべ」になる (PI-2 —
+  // タブだけ直して折りたたみが旧表記のままだった ui_quality.md A2 の再発防止)
   function dayCount(d) {
-    if (d.old === d.new) return `${dayJa(d.day_type)} ${d.new}${tt("trips_count")}`;
-    const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
-    return `${dayJa(d.day_type)} ${d.old}→${d.new}${tt("trips_count")}${sym}`;
+    return `${dayJa(d.day_type)} ${countText(tt, d)}`;
   }
   function chips(p) {
     const s = p.summary;
@@ -134,9 +131,7 @@
   $: chipList = chips(page);
   // R19: 時刻表の折りたたみ行 = 旧→新便数 + ラベル別件数 (変更なしは出さない)
   function tbCount(tb) {
-    if (tb.trips_old === tb.trips_new) return `${tb.trips_new}${tt("trips_count")}`;
-    const sym = tb.trips_new > tb.trips_old ? "▲" : "▼";
-    return `${tb.trips_old}→${tb.trips_new}${tt("trips_count")}${sym}`;
+    return countText(tt, { old: tb.trips_old, new: tb.trips_new });
   }
   function tbChips(tb) {
     const names = tt("trip_labels");

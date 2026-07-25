@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import { buildIndex } from "./lib/data.js";
   import { jumpTarget, anchorId } from "./lib/jump.js";
-  import { lang, t } from "./lib/i18n.js";
+  import { lang, t, dayName } from "./lib/i18n.js";
   import CoverageSummary from "./components/CoverageSummary.svelte";
   import EventsByDestination from "./components/EventsByDestination.svelte";
   import FeedOverview from "./components/FeedOverview.svelte";
@@ -172,6 +172,25 @@
          到達できる (説明台帳への導線を維持) -->
     <h2>{tt("cov_title")}</h2>
     <CoverageSummary {index} />
+    <!-- S3 (ui_quality.md): 表示整合セルフチェック — presentation 層の
+         不変条件違反 (ヘッダ便数 vs ④時刻表列数) の台帳。explained_ratio と
+         同格で常時表示する (ログにしか出ないと誰も見ない) -->
+    {#if presentation?.self_check}
+      <h3>{tt("selfcheck_title")}</h3>
+      {#if presentation.self_check.length}
+        <ul>
+          {#each presentation.self_check as c}
+            <li>
+              <strong>▲ {c.route_group}</strong> / {dayName(c.day_type, $lang)}:
+              {tt("selfcheck_line", c.header.join("→"), c.timetable.join("→"))}
+              {#if c.mixed}<span class="meta">{tt("selfcheck_mixed")}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="meta">{tt("selfcheck_ok")}</p>
+      {/if}
+    {/if}
     {#if index.meta?.raw_urls}
       <!-- RD2: 生データ DL (検証モードのみ — レポートモードには置かない) -->
       <p class="meta">

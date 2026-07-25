@@ -558,6 +558,9 @@ class _Builder:
         self.wc = day_worlds
         self._disp: dict = {}  # (side, family, direction, label, world_id) → 表示ラベル
         self.group_day_cells: dict[str, dict] = {}  # group → 表示ラベル → メタ
+        # 表示整合セルフチェック (PI 違反の台帳)。warning ログに流すだけでなく
+        # bundle に載せ、検証モードで可視化する (ui_quality.md S3)
+        self.self_check: list[dict] = []
         # 双子写像 (SD5b 第2弾): パターン内の世界は内容同一なので、
         # 非代表世界の便 → 代表世界の同内容便 (署名順 zip)。表示側の対応・
         # チップ・③④はこの正規形から作る (content/flow の区別なく整合する)
@@ -789,7 +792,42 @@ class _Builder:
             "day_type_order": DAY_ORDER,
             "route_pages": pages,
             "stop_changes": self._stop_changes(),
+            # PI-1: 第1部「曜日区分ごとの便数」もここから取る (第3部と同じ
+            # 表示便数 = 代表世界のみ・1日あたり)。bundle 側で再集計しない
+            "day_type_totals": self._feed_day_totals(),
+            "self_check": self.self_check,
         }
+
+    def _feed_day_totals(self) -> list[dict]:
+        """フィード全体の day_type 別表示便数 (基底ラベル集計)。
+
+        第1部の便数表は従来 trip の生カウント (のべ) だったため、双子世界を
+        束ねた第3部と矛盾する数字が出た (PRT 特定日 38→76 vs 38→38 —
+        ui_quality.md A1)。_dlabel の表示射影を通し、重複世界 (_DUP) を除いて
+        数える。mixed な世界を含む区分にはフラグを伝播する (PI-2)。"""
+        counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        for side, trips in (("o", self.delta.old_trips),
+                            ("n", self.delta.new_trips)):
+            for t in trips.values():
+                dl = self._dlabel(side, t)
+                if dl == _DUP:
+                    continue
+                counts[base_day(dl)][0 if side == "o" else 1] += 1
+        mixed: dict[str, list[bool]] = defaultdict(lambda: [False, False])
+        for gmeta in self.group_day_cells.values():
+            for disp, meta in gmeta.items():
+                b = base_day(disp)
+                mixed[b][0] |= bool(meta.get("mixed_old"))
+                mixed[b][1] |= bool(meta.get("mixed_new"))
+        out = []
+        for d in sorted(counts, key=day_sort_key):
+            entry = {"day_type": d, "old": counts[d][0], "new": counts[d][1]}
+            if mixed[d][0]:
+                entry["mixed_old"] = True
+            if mixed[d][1]:
+                entry["mixed_new"] = True
+            out.append(entry)
+        return out
 
     # --- 停留所の変化 (V4: 路線に紐付かないレポート章) ---
 
@@ -1002,6 +1040,15 @@ class _Builder:
                     "presentation 整合エラー: %s %s ヘッダ %d→%d / ④ %d→%d",
                     group, d, n_old, n_new, got[0], got[1],
                 )
+                meta = self.group_day_cells.get(group, {}).get(d) or {}
+                self.self_check.append({
+                    "check": "header_vs_timetable",
+                    "route_group": group, "day_type": d,
+                    "header": [n_old, n_new], "timetable": list(got),
+                    # 混成世界 (SD5c 案C) はヘッダが「のべ」・④が対応整列で、
+                    # 数の不一致は設計上の既知差 — パネルではその旨を注記する
+                    "mixed": bool(meta.get("mixed_old") or meta.get("mixed_new")),
+                })
         # SD5c 案C: 混成世界セルのタブは「のべ便数」表記 (断定しない)
         for entry in day_totals:
             meta = self.group_day_cells.get(group, {}).get(entry["day_type"])
@@ -1577,7 +1624,10 @@ class _Builder:
                       for k in ("rerouted", "shortened", "extended"))
         if n_route:
             facts.append({"kind": "reroute", "trips": n_route})
-        changed_days = [d for d in day_totals if d["old"] != d["new"]]
+        # PI-2: mixed (のべ便数) の区分は増減を断定できないのでダイジェスト対象外。
+        # ⚠注記と のべ表記はタブ側が受け持つ
+        changed_days = [d for d in day_totals if d["old"] != d["new"]
+                        and not (d.get("mixed_old") or d.get("mixed_new"))]
         if changed_days:
             facts.append({"kind": "trips", "days": [
                 {"day_type": d["day_type"], "old": d["old"], "new": d["new"]}

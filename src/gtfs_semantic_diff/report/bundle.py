@@ -56,7 +56,8 @@ def build_bundle(
     # 第1部 (フィード全体) と第4部 (その他) はスナップショット・RawDiff を
     # 素材にするためここで付与する (presentation.py は events/identity/delta のみ)
     presentation["feed_overview"] = _feed_overview(
-        old, new, event_set, rawdiffs, trip_delta, config, identity
+        old, new, event_set, rawdiffs, trip_delta, config, identity,
+        day_type_totals=presentation.pop("day_type_totals", None),
     )
     # SD3 改: 路線ページの「特定日」タブにその場で具体日付を出す
     from ..identity.route_family import route_to_family_map
@@ -68,14 +69,24 @@ def build_bundle(
         new, route_to_family_map(identity.new_families), identity.new_family_to_group
     )
     if special_old or special_new:
+        from .presentation import date_runs_year_split
+
         list_max = config.get("report", "special_dates_list_max", default=30)
+        runs_max = config.get("report", "note_runs_max", default=8)
         for p in presentation["route_pages"]:
             o = special_old.get(p["route_group"], [])
             n = special_new.get(p["route_group"], [])
             if o or n:
+                # PI-3: ラン圧縮はサーバー側で全日付から (cap 後圧縮は
+                # 「3/1〜3/30 ほか215」型の誤誘導になる — ui_quality.md A4)。
+                # 日付リストは互換のため cap 付きで残す
+                ro, ro_more = date_runs_year_split(o, runs_max)
+                rn, rn_more = date_runs_year_split(n, runs_max)
                 p["special_dates"] = {
                     "old": o[:list_max], "new": n[:list_max],
                     "old_total": len(o), "new_total": len(n),
+                    "runs_old": ro, "runs_old_more": ro_more,
+                    "runs_new": rn, "runs_new_more": rn_more,
                 }
     # V5: 全イベントの表示先 (レポートのどの部に現れるか) とレポート被覆率
     presentation["coverage"] = _coverage(event_set)
@@ -93,6 +104,11 @@ def build_bundle(
     )
 
     bundle = {
+        # データ契約の版 (ui_quality.md S2)。ビューアの互換分岐はフィールドの
+        # 嗅ぎ分けでなくこの版番号で行う。旧バンドル (欠損) は 0 とみなす。
+        # 1: 2026-07-26 — special_dates.runs_*、feed_overview.day_types の
+        #    表示便数化 (mixed_old/new)、presentation.self_check
+        "schema_version": 1,
         "events": event_set.to_dict(),
         # RawDiffSet のまま持つ (遅延直列化)。数百万件を dict リストに実体化すると
         # それだけで GB 級になり Lambda を落とす (IN-3)。直列化は
@@ -228,7 +244,8 @@ def _coverage(event_set) -> dict:
 
 
 def _feed_overview(
-    old, new, event_set, rawdiffs, trip_delta, config: Config, identity=None
+    old, new, event_set, rawdiffs, trip_delta, config: Config, identity=None,
+    day_type_totals=None,
 ) -> dict:
     """4部構成レポートの第1部・第4部ビュー。
 
@@ -239,8 +256,6 @@ def _feed_overview(
       レポート面の取りこぼしを常に可視化する (V5 で presentation_refs による
       機械的な網羅判定に昇格予定)
     """
-    from .presentation import day_sort_key
-
     # ファイル対応表。集約 RawDiff (rows_*_bulk) は保持している行数で計上する
     # (台帳上は1件だが、ファイル表は「何行変わったか」を示すのが役割)
     old_names = {f"{n}.txt" for n in old.tables}
@@ -276,15 +291,11 @@ def _feed_overview(
             + counts.get("column_removed", 0),
         })
 
-    # 曜日区分ごとの便数 旧→新
-    day_counts: dict[str, list[int]] = {}
-    for trips, side in ((trip_delta.old_trips, 0), (trip_delta.new_trips, 1)):
-        for t in trips.values():
-            day_counts.setdefault(t.day_type, [0, 0])[side] += 1
-    day_types = [
-        {"day_type": d, "old": c[0], "new": c[1]}
-        for d, c in sorted(day_counts.items(), key=lambda kv: day_sort_key(kv[0]))
-    ]
+    # 曜日区分ごとの便数 旧→新。PI-1: 生カウント (のべ) ではなく
+    # presentation の表示便数 (代表世界のみ・1日あたり) を使う — 第3部の
+    # 曜日タブ合計と必ず一致する (ui_quality.md A1。build_bundle 側で
+    # day_type_totals に差し替える)
+    day_types = day_type_totals if day_type_totals is not None else []
     # M10: 特定日 (irregular) / 運行日なし (inactive) service の内訳。
     # 「その全日付を他 service が exception_type=2 で運休しているか」で
     # 置き換え型 (年末年始ダイヤ等) と追加型 (臨時便) を見分ける
@@ -618,21 +629,6 @@ def _per_date_worlds(snapshot, config: Config) -> dict | None:
     return {"window": window, "days": days}
 
 
-def _date_runs(dates: list[str], runs_max: int) -> tuple[list[list[str]], int]:
-    """昇順日付列 → 連続ラン [[start, end], ...] (runs_max 件まで) と超過ラン数。"""
-    import datetime as _dt
-
-    runs: list[list[str]] = []
-    prev = None
-    for text in sorted(dates):
-        d = _dt.datetime.strptime(text, "%Y%m%d").date()
-        if prev is not None and (d - prev).days == 1:
-            runs[-1][1] = text
-        else:
-            runs.append([text, text])
-        prev = d
-    return runs[:runs_max], max(0, len(runs) - runs_max)
-
 
 def _service_days_note(
     old, new, config: Config, identity, trip_delta, scope_active: bool
@@ -746,7 +742,11 @@ def _service_days_note(
             d += one
 
     def pack(dates):
-        runs, extra = _date_runs(dates, runs_max)
+        # PI-3: ラン圧縮は date_runs_year_split の1本 (年境のみ分割)。
+        # 旧 _date_runs (年境分割なし) は 2026-07-26 に廃止 (ui_quality.md A5)
+        from .presentation import date_runs_year_split
+
+        runs, extra = date_runs_year_split(sorted(dates), runs_max)
         return {"count": len(dates), "runs": runs, "more_runs": extra}
 
     return {

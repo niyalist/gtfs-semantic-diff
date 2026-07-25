@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest run --mode test"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
+    "@testing-library/svelte": "^5.4.2",
+    "jsdom": "^29.1.1",
     "svelte": "^4.2.19",
     "vite": "^5.4.11",
-    "vite-plugin-singlefile": "^2.0.3"
+    "vite-plugin-singlefile": "^2.0.3",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "maplibre-gl": "^4.7.1"
