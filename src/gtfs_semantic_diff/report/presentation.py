@@ -543,39 +543,69 @@ class _Builder:
     def _build_day_cells(self) -> None:
         from collections import Counter as _Counter
 
+        from ..events.day_worlds import match_patterns
+
         wc = self.wc
         dates_max = self.config.get("events", "service_days", "dates_list_max",
                                     default=30)
-        # 便対応 v1 の実対応 → 世界間フロー (多数決整列の材料)
+        # 表示セルの整列は (route_group, 方向, ラベル) 粒度で行う。
+        # family 名が世代間で張り替わる路線 (M9 対応) では (family, …) キーの
+        # ままだと旧/新のパターンが別キーに割れ、flow 整列が不発になって
+        # 「48→0▼ / 0→47▲」の見かけ分裂を生む (桑名 名古屋桑名高速線の実例)
+        def gkey(fam, direction, label):
+            g = self.f2g.get(fam)
+            return (g, direction, label) if g else None
+
+        merged_old: dict = defaultdict(list)
+        merged_new: dict = defaultdict(list)
+        for (fam, direction, label), pats in wc.old_patterns.items():
+            if (label in wc.old.multi_labels or label in wc.new.multi_labels):
+                k = gkey(fam, direction, label)
+                if k:
+                    merged_old[k].extend((fam, p) for p in pats)
+        for (fam, direction, label), pats in wc.new_patterns.items():
+            if (label in wc.old.multi_labels or label in wc.new.multi_labels):
+                k = gkey(fam, direction, label)
+                if k:
+                    merged_new[k].extend((fam, p) for p in pats)
+
+        # 便対応 v1 の実対応 → 世界間フロー (group 粒度で架橋)。
+        # exact_pairs も数える — 改正で時刻が変わらない路線は対応が全部 exact
+        # になり、1便の増減だけで digest が割れて flow が組めなくなる
+        # (桑名 栄桑名高速線: exact 207 / modified 0 の実例)
+        from itertools import chain
+
         flows: dict = {}
-        for o, n in self.delta.modified:
-            ko = (o.family, o.direction, o.day_type)
-            if ko != (n.family, n.direction, n.day_type):
+        for o, n in chain(self.delta.modified, self.delta.exact_pairs):
+            ko = gkey(o.family, o.direction, o.day_type)
+            kn = gkey(n.family, n.direction, n.day_type)
+            if ko is None or ko != kn:
                 continue
             wo = wc.old.world_of(o.service_id)
             wn = wc.new.world_of(n.service_id)
             flows.setdefault(ko, _Counter())[(wo, wn)] += 1
 
         per_gl: dict = defaultdict(list)
-        for key in sorted(set(wc.old_patterns) | set(wc.new_patterns), key=str):
-            fam, direction, label = key
-            if (label not in wc.old.multi_labels
-                    and label not in wc.new.multi_labels):
-                continue
-            group = self.f2g.get(fam)
-            if not group:
-                continue
-            o_pats = wc.old_patterns.get(key, [])
-            n_pats = wc.new_patterns.get(key, [])
-            matches = wc.matches.get(key, [])
-            cells = [(i, j, s) for i, j, s in matches if s is not None]
-            un_old = [i for i, j, s in matches if s is None and i is not None]
-            un_new = [j for i, j, s in matches if s is None and j is not None]
-            # 多数決 1:1 (フロー降順・決定的)
-            w2p_o = {w: idx for idx, p in enumerate(o_pats) for w in p.world_ids}
-            w2p_n = {w: idx for idx, p in enumerate(n_pats) for w in p.world_ids}
+        for k in sorted(set(merged_old) | set(merged_new), key=str):
+            group, direction, label = k
+            o_entries = sorted(merged_old.get(k, []),
+                               key=lambda fp: (fp[1].dates[:1], fp[0]))
+            n_entries = sorted(merged_new.get(k, []),
+                               key=lambda fp: (fp[1].dates[:1], fp[0]))
+            o_pats = [p for _, p in o_entries]
+            n_pats = [p for _, p in n_entries]
+            o_fams = [f for f, _ in o_entries]
+            n_fams = [f for f, _ in n_entries]
+            matches = match_patterns(o_pats, n_pats)
+            cells = [(i, j, sg) for i, j, sg in matches if sg is not None]
+            un_old = [i for i, j, sg in matches if sg is None and i is not None]
+            un_new = [j for i, j, sg in matches if sg is None and j is not None]
+            w2p_o = {w: idx for idx, p in enumerate(o_pats)
+                     for w in p.world_ids}
+            w2p_n = {w: idx for idx, p in enumerate(n_pats)
+                     for w in p.world_ids}
             pf: _Counter = _Counter()
-            for (wo, wn), cnt in flows.get(key, _Counter()).items():
+            for (wo, wn), cnt in flows.get(k, _Counter()).items():
                 i, j = w2p_o.get(wo), w2p_n.get(wn)
                 if i in un_old and j in un_new:
                     pf[(i, j)] += cnt
@@ -589,23 +619,22 @@ class _Builder:
                 cells.append((i, j, "flow"))
             cells.extend((i, None, None) for i in un_old if i not in used_o)
             cells.extend((None, j, None) for j in un_new if j not in used_n)
-            per_gl[(group, label)].append((key, o_pats, n_pats, cells))
+            per_gl[(group, label)].append(
+                (direction, o_pats, n_pats, o_fams, n_fams, cells))
 
         for (group, label), entries in per_gl.items():
-            # 表示セルの同一性 = (旧日付集合, 新日付集合)。group 内で同じ
-            # 日付構造のセル (family/方向違い) は同じ番号に併合する
             cell_meta: dict = {}
-            for key, o_pats, n_pats, cells in entries:
-                for i, j, s in cells:
+            for direction, o_pats, n_pats, o_fams, n_fams, cells in entries:
+                for i, j, sg in cells:
                     od = o_pats[i].dates if i is not None else ()
                     nd = n_pats[j].dates if j is not None else ()
                     ck = (od, nd)
-                    rank = {"content": 3, "dates": 2, "flow": 1}.get(s, 0)
+                    rank = {"content": 3, "dates": 2, "flow": 1}.get(sg, 0)
                     if ck not in cell_meta or rank > cell_meta[ck]["_rank"]:
                         cell_meta[ck] = {
                             "_rank": rank,
-                            "signal": s or ("old_only" if i is not None
-                                            else "new_only"),
+                            "signal": sg or ("old_only" if i is not None
+                                             else "new_only"),
                             "dates_old": list(od[:dates_max]),
                             "dates_new": list(nd[:dates_max]),
                             "dates_old_total": len(od),
@@ -621,25 +650,20 @@ class _Builder:
             for ck, disp in disp_of.items():
                 meta = dict(cell_meta[ck])
                 meta.pop("_rank", None)
-                # 実効日が両側とも空 (inactive 等) の注記はノイズなので出さない
                 if meta["dates_old_total"] or meta["dates_new_total"]:
                     gmeta[disp] = meta
-            for key, o_pats, n_pats, cells in entries:
-                fam, direction, _label = key
-                for i, j, s in cells:
+            for direction, o_pats, n_pats, o_fams, n_fams, cells in entries:
+                for i, j, sg in cells:
                     od = o_pats[i].dates if i is not None else ()
                     nd = n_pats[j].dates if j is not None else ()
                     disp = disp_of[(od, nd)]
-                    # 代表世界 (初日側) のみ表示。同内容の他世界の便は表示上
-                    # 1日分に畳む (タブ・③④の便数 = 1日あたり。日付は
-                    # day_cells 注記と SERVICE_DAYS_CHANGED が示す)
                     if i is not None:
                         for k_, w in enumerate(o_pats[i].world_ids):
-                            self._disp[("o", fam, direction, label, w)] = (
+                            self._disp[("o", o_fams[i], direction, label, w)] = (
                                 disp if k_ == 0 else _DUP)
                     if j is not None:
                         for k_, w in enumerate(n_pats[j].world_ids):
-                            self._disp[("n", fam, direction, label, w)] = (
+                            self._disp[("n", n_fams[j], direction, label, w)] = (
                                 disp if k_ == 0 else _DUP)
 
     def _build_twins(self) -> None:
