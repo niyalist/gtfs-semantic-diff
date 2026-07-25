@@ -183,6 +183,9 @@ const DICT = {
     raw_dl_label: "生データのダウンロード",
     raw_dl_events: "イベント JSON (evidence 全量)",
     raw_dl_rawdiffs: "RawDiff 全件 JSON",
+    cell_same_content: "内容同一 — 運行日の変更",
+    cell_flow: "便対応で接続 — 時刻等の変更として説明",
+    cell_dates_more: (n) => `ほか (全${n}日)`,
     fdb_columns: "列変更",
     kind_file_added: "ファイル追加", kind_file_removed: "ファイル削除",
     kind_column_added: "列追加", kind_column_removed: "列削除",
@@ -373,6 +376,9 @@ const DICT = {
     raw_dl_label: "Raw data downloads",
     raw_dl_events: "Events JSON (full evidence)",
     raw_dl_rawdiffs: "All RawDiffs JSON",
+    cell_same_content: "same content — operating dates changed",
+    cell_flow: "linked by trip matching — explained as time changes",
+    cell_dates_more: (n) => `and more (${n} days total)`,
     fdb_columns: "column changes",
     kind_file_added: "File added", kind_file_removed: "File removed",
     kind_column_added: "Column added", kind_column_removed: "Column removed",
@@ -394,7 +400,15 @@ const DOW_NAMES = {
   ja: ["月", "火", "水", "木", "金", "土", "日"],
   en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
 };
+const CIRCLED = ["", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
+
 export function dayName(dayType, language) {
+  // SD5b: 表示セルラベル "saturday@2" → 「土曜②」(運行日世界の細分)
+  if (typeof dayType === "string" && dayType.includes("@")) {
+    const [base, n] = dayType.split("@");
+    const suffix = CIRCLED[Number(n)] ?? `#${n}`;
+    return dayName(base, language) + suffix;
+  }
   if (typeof dayType === "string" && dayType.startsWith("dow_")) {
     const names = DOW_NAMES[language] ?? DOW_NAMES.ja;
     const days = [...dayType.slice(4)]

@@ -43,9 +43,16 @@ def build_bundle(
     rawdiffs の行レベル全量を落とし、evidence は件数+サンプル行、
     検証モードは (file, kind) 別の件数+サンプル行 (説明イベント焼き込み) に。
     """
+    from ..events.day_worlds import build_world_context
     from .presentation import build_presentation
 
-    presentation = build_presentation(event_set, identity, trip_delta, config)
+    # SD5b: 運行日世界 (曜日タブ・③④のセル表示用)。pipeline と同条件で再計算
+    world_ctx = build_world_context(
+        old, new, trip_delta.old_trips, trip_delta.new_trips
+    )
+    presentation = build_presentation(
+        event_set, identity, trip_delta, config, day_worlds=world_ctx
+    )
     # 第1部 (フィード全体) と第4部 (その他) はスナップショット・RawDiff を
     # 素材にするためここで付与する (presentation.py は events/identity/delta のみ)
     presentation["feed_overview"] = _feed_overview(

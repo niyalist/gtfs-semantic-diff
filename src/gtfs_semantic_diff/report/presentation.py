@@ -41,15 +41,26 @@ _PATTERN_EVENT_TYPES = {
 _DAILY_INDEX = DAY_ORDER.index("daily")
 
 
+# SD5b: 表示から畳む重複世界の便 (代表世界以外) の番兵ラベル
+_DUP = "__dup_world__"
+
+
+def base_day(day_type: str) -> str:
+    """SD5b: 表示セルラベル "saturday@2" の基底 day_type。"""
+    return day_type.partition("@")[0]
+
+
 def day_sort_key(day_type: str) -> tuple:
+    day_type, _, _suffix = day_type.partition("@")
+    suffix = int(_suffix) if _suffix.isdigit() else 0
     if day_type.startswith("dow_"):
         # '1' < '0' になるよう反転: 月曜を含むパターンが先に来る
         bits = day_type[4:]
         inverted = "".join("0" if b == "1" else "1" for b in bits)
-        return (_DAILY_INDEX, 1, inverted)
+        return (_DAILY_INDEX, 1, inverted, suffix)
     if day_type in DAY_ORDER:
-        return (DAY_ORDER.index(day_type), 0, "")
-    return (len(DAY_ORDER), 0, day_type)
+        return (DAY_ORDER.index(day_type), 0, "", suffix)
+    return (len(DAY_ORDER), 0, day_type, suffix)
 
 
 # --- 便ラベル (R19): 便ごとの変化を代表1ラベルに分類 ---
@@ -418,13 +429,18 @@ def build_presentation(
     identity: IdentityResult,
     trip_delta: TripDelta,
     config: Config,
+    day_worlds=None,
 ) -> dict:
-    builder = _Builder(event_set, identity, trip_delta, config)
+    """day_worlds (events.day_worlds.WorldContext | None): SD5b。
+    与えると複数世界ラベルの曜日タブ・③④が対応セル単位になる
+    (service_days.md §9.4 案C'。None なら従来表示)。"""
+    builder = _Builder(event_set, identity, trip_delta, config,
+                       day_worlds=day_worlds)
     return builder.build()
 
 
 class _Builder:
-    def __init__(self, event_set, identity, trip_delta, config):
+    def __init__(self, event_set, identity, trip_delta, config, day_worlds=None):
         self.events = event_set.events
         self.identity = identity
         self.delta = trip_delta
@@ -508,6 +524,163 @@ class _Builder:
                 for pattern in c.patterns:
                     for stop in pattern.base_names:
                         self.stop_groups[stop].add(g)
+
+        # SD5b (案C'): 複数世界ラベルの表示セル。世界パターンの世代間対応
+        # (2信号) + 便対応 v1 の多数決 (厳密 1:1、フロー降順の貪欲) で
+        # セルを整列し、trip の表示上の day_type を "label@N" に細分する。
+        # コアの events は不変。1世界ラベル・day_worlds なしでは完全に従来どおり
+        self.wc = day_worlds
+        self._disp: dict = {}  # (side, family, direction, label, world_id) → 表示ラベル
+        self.group_day_cells: dict[str, dict] = {}  # group → 表示ラベル → メタ
+        # content セル: (fam, dir, label) → (旧パターン世界集合, 新パターン世界集合)
+        # — 内容同一なので表示は代表世界同士を署名再ペアリングする (§9.4)
+        self._content_cells: dict = {}
+        if self.wc is not None:
+            self._build_day_cells()
+
+    def _build_day_cells(self) -> None:
+        from collections import Counter as _Counter
+
+        wc = self.wc
+        dates_max = self.config.get("events", "service_days", "dates_list_max",
+                                    default=30)
+        # 便対応 v1 の実対応 → 世界間フロー (多数決整列の材料)
+        flows: dict = {}
+        for o, n in self.delta.modified:
+            ko = (o.family, o.direction, o.day_type)
+            if ko != (n.family, n.direction, n.day_type):
+                continue
+            wo = wc.old.world_of(o.service_id)
+            wn = wc.new.world_of(n.service_id)
+            flows.setdefault(ko, _Counter())[(wo, wn)] += 1
+
+        per_gl: dict = defaultdict(list)
+        for key in sorted(set(wc.old_patterns) | set(wc.new_patterns), key=str):
+            fam, direction, label = key
+            if (label not in wc.old.multi_labels
+                    and label not in wc.new.multi_labels):
+                continue
+            group = self.f2g.get(fam)
+            if not group:
+                continue
+            o_pats = wc.old_patterns.get(key, [])
+            n_pats = wc.new_patterns.get(key, [])
+            matches = wc.matches.get(key, [])
+            cells = [(i, j, s) for i, j, s in matches if s is not None]
+            un_old = [i for i, j, s in matches if s is None and i is not None]
+            un_new = [j for i, j, s in matches if s is None and j is not None]
+            # 多数決 1:1 (フロー降順・決定的)
+            w2p_o = {w: idx for idx, p in enumerate(o_pats) for w in p.world_ids}
+            w2p_n = {w: idx for idx, p in enumerate(n_pats) for w in p.world_ids}
+            pf: _Counter = _Counter()
+            for (wo, wn), cnt in flows.get(key, _Counter()).items():
+                i, j = w2p_o.get(wo), w2p_n.get(wn)
+                if i in un_old and j in un_new:
+                    pf[(i, j)] += cnt
+            used_o: set = set()
+            used_n: set = set()
+            for (i, j), _cnt in sorted(pf.items(), key=lambda kv: (-kv[1], kv[0])):
+                if i in used_o or j in used_n:
+                    continue
+                used_o.add(i)
+                used_n.add(j)
+                cells.append((i, j, "flow"))
+            cells.extend((i, None, None) for i in un_old if i not in used_o)
+            cells.extend((None, j, None) for j in un_new if j not in used_n)
+            per_gl[(group, label)].append((key, o_pats, n_pats, cells))
+
+        for (group, label), entries in per_gl.items():
+            # 表示セルの同一性 = (旧日付集合, 新日付集合)。group 内で同じ
+            # 日付構造のセル (family/方向違い) は同じ番号に併合する
+            cell_meta: dict = {}
+            for key, o_pats, n_pats, cells in entries:
+                for i, j, s in cells:
+                    od = o_pats[i].dates if i is not None else ()
+                    nd = n_pats[j].dates if j is not None else ()
+                    ck = (od, nd)
+                    rank = {"content": 3, "dates": 2, "flow": 1}.get(s, 0)
+                    if ck not in cell_meta or rank > cell_meta[ck]["_rank"]:
+                        cell_meta[ck] = {
+                            "_rank": rank,
+                            "signal": s or ("old_only" if i is not None
+                                            else "new_only"),
+                            "dates_old": list(od[:dates_max]),
+                            "dates_new": list(nd[:dates_max]),
+                            "dates_old_total": len(od),
+                            "dates_new_total": len(nd),
+                        }
+            order = sorted(cell_meta, key=lambda ck: (
+                ck[0][0] if ck[0] else "99999999",
+                ck[1][0] if ck[1] else "99999999", ck))
+            multi = len(order) > 1
+            disp_of = {ck: (f"{label}@{idx}" if multi else label)
+                       for idx, ck in enumerate(order, start=1)}
+            gmeta = self.group_day_cells.setdefault(group, {})
+            for ck, disp in disp_of.items():
+                meta = dict(cell_meta[ck])
+                meta.pop("_rank", None)
+                gmeta[disp] = meta
+            for key, o_pats, n_pats, cells in entries:
+                fam, direction, _label = key
+                for i, j, s in cells:
+                    od = o_pats[i].dates if i is not None else ()
+                    nd = n_pats[j].dates if j is not None else ()
+                    disp = disp_of[(od, nd)]
+                    if s == "content":
+                        self._content_cells[(fam, direction, _label)] = (
+                            set(o_pats[i].world_ids), set(n_pats[j].world_ids))
+                    # 代表世界 (初日側) のみ表示。同内容の他世界の便は表示上
+                    # 1日分に畳む (タブ・③④の便数 = 1日あたり。日付は
+                    # day_cells 注記と SERVICE_DAYS_CHANGED が示す)
+                    if i is not None:
+                        for k_, w in enumerate(o_pats[i].world_ids):
+                            self._disp[("o", fam, direction, label, w)] = (
+                                disp if k_ == 0 else _DUP)
+                    if j is not None:
+                        for k_, w in enumerate(n_pats[j].world_ids):
+                            self._disp[("n", fam, direction, label, w)] = (
+                                disp if k_ == 0 else _DUP)
+
+    def _display_repairs(self, old_trips, new_trips):
+        """content セルの表示用ペア (代表世界同士、署名順 zip) と抑制集合。
+
+        内容同一の保証があるセル限定 — v1 が重複世界の双子と張った対応を、
+        表示上は代表世界同士に張り替える (④の対応線とチップを正す)。
+        戻り値: (pairs [(o, n)], skip_old ids, skip_new ids)。"""
+        if not self._content_cells:
+            return [], set(), set()
+        pairs, skip_old, skip_new = [], set(), set()
+        by_cell_o: dict = defaultdict(list)
+        by_cell_n: dict = defaultdict(list)
+        for t in old_trips:
+            key = (t.family, t.direction, t.day_type)
+            cw = self._content_cells.get(key)
+            if cw and self.wc.old.world_of(t.service_id) in cw[0]:
+                skip_old.add(t.trip_id)
+                if self._dlabel("o", t) != _DUP:
+                    by_cell_o[key].append(t)
+        for t in new_trips:
+            key = (t.family, t.direction, t.day_type)
+            cw = self._content_cells.get(key)
+            if cw and self.wc.new.world_of(t.service_id) in cw[1]:
+                skip_new.add(t.trip_id)
+                if self._dlabel("n", t) != _DUP:
+                    by_cell_n[key].append(t)
+        for key in by_cell_o:
+            olds = sorted(by_cell_o[key],
+                          key=lambda t: (t.times, t.base_seq, t.trip_id))
+            news = sorted(by_cell_n.get(key, []),
+                          key=lambda t: (t.times, t.base_seq, t.trip_id))
+            pairs.extend(zip(olds, news))
+        return pairs, skip_old, skip_new
+
+    def _dlabel(self, side: str, t: TripInfo) -> str:
+        """trip の表示上の day_type (セルラベル)。side: "o"/"n"。"""
+        if self.wc is None:
+            return t.day_type
+        w = (self.wc.old if side == "o" else self.wc.new).world_of(t.service_id)
+        return self._disp.get(
+            (side, t.family, t.direction, t.day_type, w), t.day_type)
 
     def _coord(self, families, base: str) -> tuple[float, float] | None:
         """停留所座標の引き当て。当該路線 (family) を通るクラスタを優先する。"""
@@ -648,21 +821,39 @@ class _Builder:
         # trip_id が張り替わるフィードでも Lev.3 / Lev.5 が経路・時刻変更を拾える
         # 便の対応付けはコア (trip matching v2) が担い、表示層の後付けペアリングは
         # 廃止した (docs/design/trip_matching.md)
-        timetables = self._timetables(dgroups, old_trips, new_trips)
+        repairs, skip_old, skip_new = self._display_repairs(old_trips, new_trips)
+        timetables = self._timetables(dgroups, old_trips, new_trips,
+                                      repairs, skip_old, skip_new)
 
         # R19: 便ラベル (曜日別・ラベル別の件数)。素材はコアの対応付けのみ
         day_labels: dict[str, Counter] = defaultdict(Counter)
         for o, nw in self.delta.modified:
             if self.f2g.get(nw.family) == group:
-                day_labels[nw.day_type][
-                    trip_pair_label(o, nw, self.retime_minor)
-                ] += 1
+                if o.trip_id in skip_old or nw.trip_id in skip_new:
+                    continue  # content セルは表示用再ペアで数える
+                dl = self._dlabel("n", nw)
+                if dl != _DUP:
+                    day_labels[dl][
+                        trip_pair_label(o, nw, self.retime_minor)
+                    ] += 1
         for t in self.delta.removed:
             if self.f2g.get(t.family) == group:
-                day_labels[t.day_type]["removed"] += 1
+                if t.trip_id in skip_old:
+                    continue
+                dl = self._dlabel("o", t)
+                if dl != _DUP:
+                    day_labels[dl]["removed"] += 1
         for t in self.delta.added:
             if self.f2g.get(t.family) == group:
-                day_labels[t.day_type]["added"] += 1
+                if t.trip_id in skip_new:
+                    continue
+                dl = self._dlabel("n", t)
+                if dl != _DUP:
+                    day_labels[dl]["added"] += 1
+        for o, nw in repairs:
+            dl = self._dlabel("n", nw)
+            if dl != _DUP:
+                day_labels[dl][trip_pair_label(o, nw, self.retime_minor)] += 1
         label_totals: Counter = Counter()
         for c in day_labels.values():
             label_totals.update(c)
@@ -680,9 +871,13 @@ class _Builder:
         # 廃止された運行日 (old>0, new=0) もタブに残す — 消えたこと自体が情報
         day_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
         for t in old_trips:
-            day_counts[t.day_type][0] += 1
+            dl = self._dlabel("o", t)
+            if dl != _DUP:
+                day_counts[dl][0] += 1
         for t in new_trips:
-            day_counts[t.day_type][1] += 1
+            dl = self._dlabel("n", t)
+            if dl != _DUP:
+                day_counts[dl][1] += 1
         day_totals = [
             {"day_type": d, "old": day_counts[d][0], "new": day_counts[d][1],
              # R19: 折りたたみチップ用のラベル別件数 (0件は出さない)
@@ -714,15 +909,16 @@ class _Builder:
             return (a["old"] > 0 and b["old"] > 0) or (a["new"] > 0 and b["new"] > 0)
 
         for entry in day_totals:
-            if not entry["day_type"].startswith("dow_"):
+            if not base_day(entry["day_type"]).startswith("dow_"):
                 continue
-            own = day_set_of(entry["day_type"])
+            own = day_set_of(base_day(entry["day_type"]))
             covers = [
-                (len(day_set_of(other["day_type"])), day_sort_key(other["day_type"]),
-                 other["day_type"])
+                (len(day_set_of(base_day(other["day_type"]))),
+                 day_sort_key(other["day_type"]), other["day_type"])
                 for other in day_totals
-                if other is not entry and day_set_of(other["day_type"])
-                and own < day_set_of(other["day_type"]) and coexists(entry, other)
+                if other is not entry and day_set_of(base_day(other["day_type"]))
+                and own < day_set_of(base_day(other["day_type"]))
+                and coexists(entry, other)
             ]
             if covers:
                 entry["added_to"] = min(covers)[2]
@@ -747,6 +943,8 @@ class _Builder:
             "similar_candidates": similar,
             "has_changes": has_changes,
             "day_totals": day_totals,
+            # SD5b: 表示セルのメタ (日付・対応信号)。1世界系では空
+            "day_cells": self.group_day_cells.get(group, {}),
             "overview": {
                 "trip_totals": {"old": len(old_trips), "new": len(new_trips)},
                 "direction_groups": dgroups,
@@ -1096,8 +1294,11 @@ class _Builder:
                 if s is None:
                     continue
                 band = self.bands.band_of(t.first_departure)
-                cells[(s["direction_group"], t.day_type, s["system_id"], band)][side] += 1
-                days.add(t.day_type)
+                dl = self._dlabel("o" if gen == "old" else "n", t)
+                if dl == _DUP:
+                    continue
+                cells[(s["direction_group"], dl, s["system_id"], band)][side] += 1
+                days.add(dl)
 
         band_labels = self.bands.labels()
         rows = []
@@ -1380,7 +1581,9 @@ class _Builder:
 
     # --- ④ 新旧時刻表 (R17) ---
 
-    def _timetables(self, dgroups, old_trips, new_trips) -> list[dict]:
+    def _timetables(self, dgroups, old_trips, new_trips,
+                    repairs=(), skip_old=frozenset(),
+                    skip_new=frozenset()) -> list[dict]:
         sys_by_old = {}
         sys_by_new = {}
         for g in dgroups:
@@ -1401,11 +1604,20 @@ class _Builder:
         pair_of_old: dict[str, tuple[str, TripInfo, TripInfo]] = {}
         pair_of_new: dict[str, tuple[str, TripInfo, TripInfo]] = {}
         for o, nw in self.delta.exact_pairs:
+            if o.trip_id in skip_old or nw.trip_id in skip_new:
+                continue
             status = "unchanged" if o.trip_id == nw.trip_id else "id_changed"
             pair_of_old[o.trip_id] = (status, o, nw)
             pair_of_new[nw.trip_id] = (status, o, nw)
         for o, nw in self.delta.modified:
+            if o.trip_id in skip_old or nw.trip_id in skip_new:
+                continue
             status = "retimed" if o.base_seq == nw.base_seq else "rerouted"
+            pair_of_old[o.trip_id] = (status, o, nw)
+            pair_of_new[nw.trip_id] = (status, o, nw)
+        # SD5b: content セルの表示用再ペア (代表世界同士。内容同一の保証下)
+        for o, nw in repairs:
+            status = "unchanged" if o.trip_id == nw.trip_id else "id_changed"
             pair_of_old[o.trip_id] = (status, o, nw)
             pair_of_new[nw.trip_id] = (status, o, nw)
 
@@ -1413,12 +1625,14 @@ class _Builder:
         buckets: dict[tuple, dict] = defaultdict(lambda: {"old": [], "new": []})
         for t in old_trips:
             s = locate(t, "old")
-            if s:
-                buckets[(s["direction_group"], s["leg"], t.day_type)]["old"].append(t)
+            dl = self._dlabel("o", t)
+            if s and dl != _DUP:
+                buckets[(s["direction_group"], s["leg"], dl)]["old"].append(t)
         for t in new_trips:
             s = locate(t, "new")
-            if s:
-                buckets[(s["direction_group"], s["leg"], t.day_type)]["new"].append(t)
+            dl = self._dlabel("n", t)
+            if s and dl != _DUP:
+                buckets[(s["direction_group"], s["leg"], dl)]["new"].append(t)
 
         dg_label = {}
         for g in dgroups:
