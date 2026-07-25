@@ -29,9 +29,15 @@
   $: if (selectedDay === null && dayTabs.length) selectedDay = dayTabs[0].day_type;
   function tabLabel(d) {
     const name = dayJa(d.day_type) + addedTo(d);
-    if (d.old === d.new) return `${name} ${d.new}${tt("trips_count")}`;
+    // SD5c 案C: 混成世界 (日により運行構成が異なる) は「のべ」を冠して
+    // 1日あたりと断定しない
+    const num = (n, mixed) => (mixed ? tt("gross_trips", n) : `${n}${tt("trips_count")}`);
+    if (d.old === d.new && !d.mixed_old && !d.mixed_new)
+      return `${name} ${d.new}${tt("trips_count")}`;
+    if (d.old === d.new)
+      return `${name} ${num(d.new, d.mixed_old || d.mixed_new)}`;
     const sym = d.new > d.old ? "▲" : "▼"; // 記号+数値が第1チャネル (原則5)
-    return `${name} ${d.old}${tt("trips_count")}→${d.new}${tt("trips_count")}${sym}`;
+    return `${name} ${num(d.old, d.mixed_old)}→${num(d.new, d.mixed_new)}${sym}`;
   }
   // M10: 増便/限定型の注記 (dow の曜日集合を包含する day_type が同居する場合)
   function addedTo(d) {
@@ -210,6 +216,14 @@
         {/if}
         {#if cellMeta.signal === "content"}({tt("cell_same_content")}){/if}
         {#if cellMeta.signal === "flow"}({tt("cell_flow")}){/if}
+        {#if cellMeta.mixed_old || cellMeta.mixed_new}
+          <br>{tt("cell_mixed")}
+          {#if (cellMeta.shared_dates_old ?? []).length || (cellMeta.shared_dates_new ?? []).length}
+            {tt("cell_mixed_shared",
+                [...new Set([...(cellMeta.shared_dates_old ?? []), ...(cellMeta.shared_dates_new ?? [])])]
+                  .map((s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`).join("、"))}
+          {/if}
+        {/if}
       </p>
     {/if}
 

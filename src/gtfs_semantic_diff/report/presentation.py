@@ -661,8 +661,22 @@ class _Builder:
                             "report", "note_runs_max", default=8)
                         ro, ro_more = date_runs_year_split(od, runs_max)
                         rn, rn_more = date_runs_year_split(nd, runs_max)
+                        by_id_o = self.wc.old.by_id()
+                        by_id_n = self.wc.new.by_id()
+                        mo = [by_id_o[w] for w in
+                              (o_pats[i].world_ids if i is not None else ())
+                              if w in by_id_o]
+                        mn = [by_id_n[w] for w in
+                              (n_pats[j].world_ids if j is not None else ())
+                              if w in by_id_n]
                         cell_meta[ck] = {
                             "_rank": rank,
+                            "mixed_old": any(w.mixed for w in mo),
+                            "mixed_new": any(w.mixed for w in mn),
+                            "shared_dates_old": sorted(
+                                {d for w in mo for d in w.shared_dates})[:10],
+                            "shared_dates_new": sorted(
+                                {d for w in mn for d in w.shared_dates})[:10],
                             "signal": sg or ("old_only" if i is not None
                                              else "new_only"),
                             "dates_old": list(od[:dates_max]),
@@ -988,6 +1002,15 @@ class _Builder:
                     "presentation 整合エラー: %s %s ヘッダ %d→%d / ④ %d→%d",
                     group, d, n_old, n_new, got[0], got[1],
                 )
+        # SD5c 案C: 混成世界セルのタブは「のべ便数」表記 (断定しない)
+        for entry in day_totals:
+            meta = self.group_day_cells.get(group, {}).get(entry["day_type"])
+            if meta:
+                if meta.get("mixed_old"):
+                    entry["mixed_old"] = True
+                if meta.get("mixed_new"):
+                    entry["mixed_new"] = True
+
         # M10: 増便/限定型の注記。dow_* の曜日集合を包含する day_type の便が
         # **同じ世代で共存**する場合のみ「◯◯に追加」— 最小の上位集合
         # (同点は R16 順)。旧=平日 → 新=月水 のような運行日の変更

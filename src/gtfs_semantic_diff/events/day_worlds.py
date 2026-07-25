@@ -59,12 +59,20 @@ def effective_dates_by_service(snapshot) -> dict[str, list[str]]:
 
 @dataclass(frozen=True)
 class DayWorld:
-    """1つの運行日世界。dates は実効日 (昇順)。"""
+    """1つの運行日世界。dates は実効日 (昇順)。
+
+    mixed (SD5c 案C): 構成 service の実効日集合が「同一でも入れ子でもない」
+    部分重なり融合 (立川の年末/正月が迷い共有日 2/28 で融合した型)。
+    この世界の便数合算は「1日あたり」でなく「のべ」— 表示は断定をやめて
+    のべ表記に切り替える。shared_dates は融合の橋になった共有日 (検品情報)。
+    入れ子 (平日+学期通学の共走) は従来どおり合算し mixed にしない。"""
 
     day_type: str
     world_id: str  # "weekday#1" 等 (ラベル内初日順の連番、決定的)
     services: tuple[str, ...]
     dates: tuple[str, ...]
+    mixed: bool = False
+    shared_dates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -120,9 +128,21 @@ def build_day_worlds(snapshot) -> DayWorlds:
         for i, g in enumerate(comps, start=1):
             wid = f"{label}#{i}"
             wdates = tuple(sorted({d for s in g for d in dates.get(s, ())}))
+            # SD5c 案C: 部分重なり融合の検出 (入れ子=共走 attach は除外)
+            date_sets = sorted(
+                {frozenset(dates.get(s, ())) for s in g
+                 if dates.get(s)}, key=len)
+            mixed = (len(date_sets) > 1 and not all(
+                a <= b for a, b in zip(date_sets, date_sets[1:])))
+            shared: tuple[str, ...] = ()
+            if mixed:
+                from collections import Counter as _C
+                cnt = _C(d for s in g for d in set(dates.get(s, ())))
+                shared = tuple(sorted(d for d, n in cnt.items() if n > 1))[:10]
             worlds.append(DayWorld(
                 day_type=label, world_id=wid,
                 services=tuple(sorted(g)), dates=wdates,
+                mixed=mixed, shared_dates=shared,
             ))
             for s in g:
                 by_service[s] = wid

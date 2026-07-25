@@ -157,3 +157,49 @@ def test_match_patterns_two_signals(tmp_path, config):
     olds = [r[0] for r in m if r[0] is not None]
     news = [r[1] for r in m if r[1] is not None]
     assert len(olds) == len(set(olds)) and len(news) == len(set(news))
+
+
+def test_partial_overlap_world_flagged_mixed(tmp_path, config):
+    """SD5c 案C: 部分重なり融合 (立川型) は mixed=True + 共有日を記録。"""
+    snap = _snap(
+        tmp_path, config,
+        "NENMATSU,1,1,1,1,1,1,1,20260228,20270331\n"
+        "SHOGATSU,1,1,1,1,1,1,1,20260228,20270331\n",
+        calendar_dates=(
+            # 両者とも 2/28 (期間初日) を削除し忘れた形: 実効日が
+            # NENMATSU={2/28,12/30}, SHOGATSU={2/28,12/31} で部分重なり
+            "".join(f"NENMATSU,{d},2\n" for d in _all_days_except(
+                ("20260228", "20261230")))
+            + "".join(f"SHOGATSU,{d},2\n" for d in _all_days_except(
+                ("20260228", "20261231")))
+        ),
+    )
+    w = build_day_worlds(snap)
+    worlds = [x for x in w.worlds if x.day_type == "irregular"]
+    assert len(worlds) == 1  # 迷い日 2/28 で融合 (データの主張に忠実)
+    assert worlds[0].mixed is True
+    assert worlds[0].shared_dates == ("20260228",)
+
+
+def test_nested_coruns_not_mixed(tmp_path, config):
+    """入れ子の共走 (平日フル + 学期のみ) は mixed にしない (合算は正当)。"""
+    snap = _snap(tmp_path, config,
+                 "WD,1,1,1,1,1,0,0,20260401,20270331\n"
+                 "SCHOOL,1,1,1,1,1,0,0,20260401,20260718\n")
+    w = build_day_worlds(snap)
+    worlds = [x for x in w.worlds if x.day_type == "weekday"]
+    assert len(worlds) == 1
+    assert worlds[0].mixed is False
+
+
+def _all_days_except(keep):
+    import datetime
+    out = []
+    d = datetime.date(2026, 2, 28)
+    end = datetime.date(2027, 3, 31)
+    while d <= end:
+        t = d.strftime("%Y%m%d")
+        if t not in keep:
+            out.append(t)
+        d += datetime.timedelta(days=1)
+    return out
