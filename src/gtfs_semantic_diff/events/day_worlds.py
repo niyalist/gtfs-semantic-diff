@@ -233,3 +233,27 @@ def match_patterns(old_pats: list, new_pats: list) -> list:
     result.sort(key=lambda r: (r[0] if r[0] is not None else 10**9,
                                r[1] if r[1] is not None else 10**9))
     return result
+
+
+@dataclass(frozen=True)
+class WorldContext:
+    """パイプラインからルール・レポートへ渡す SD5 成果物一式。"""
+
+    old: DayWorlds
+    new: DayWorlds
+    old_patterns: dict  # (family, direction, day_type) → [WorldPattern]
+    new_patterns: dict
+    matches: dict  # 同キー → match_patterns の結果
+
+
+def build_world_context(old_snap, new_snap, old_trips, new_trips) -> WorldContext:
+    """世界分解 → パターン束ね → 世代間対応 (2信号) を一括計算する。"""
+    old_w = build_day_worlds(old_snap)
+    new_w = build_day_worlds(new_snap)
+    old_p = group_patterns(old_trips.values(), old_w)
+    new_p = group_patterns(new_trips.values(), new_w)
+    matches = {}
+    for key in sorted(set(old_p) | set(new_p), key=str):
+        matches[key] = match_patterns(old_p.get(key, []), new_p.get(key, []))
+    return WorldContext(old=old_w, new=new_w, old_patterns=old_p,
+                        new_patterns=new_p, matches=matches)

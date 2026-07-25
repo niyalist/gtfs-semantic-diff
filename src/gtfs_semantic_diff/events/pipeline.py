@@ -282,6 +282,11 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
         new_family_block=new_family_block,
     )
 
+    # SD5: 運行日世界 (scope 適用後の便世界で計算 — 同居除外と整合)
+    from .day_worlds import build_world_context
+
+    world_ctx = build_world_context(old, new, old_trips_all, new_trips_all)
+
     ctx = RuleContext(
         old=old,
         new=new,
@@ -291,6 +296,7 @@ def compare_snapshots_with_artifacts(old: GtfsSnapshot, new: GtfsSnapshot, confi
         index=index,
         ledger=ledger,
         trip_delta=trip_delta,
+        day_worlds=world_ctx,
         time_bands=TimeBands(
             config.get("events", "frequency", "time_bands", default=[])
         ),

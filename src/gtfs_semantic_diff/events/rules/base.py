@@ -39,6 +39,9 @@ class RuleContext:
     _next_id: int = 1
     # SD2: 窓内区間対比較の解決結果 (None = 全便比較 = 従来挙動)
     window_scope: WindowScope | None = None
+    # SD5: 運行日世界 (day_worlds.DayWorlds の旧/新ペアとパターン対応)。
+    # None = 未計算 (単体テスト等)。ルールは None を1世界系と同義に扱う
+    day_worlds: object | None = None
 
     def emit(
         self,
