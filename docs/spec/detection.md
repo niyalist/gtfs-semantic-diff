@@ -319,8 +319,17 @@ trip が丸ごと入れ替わる形のパターン変化は C群 (SERVICE_*) 側
 プールは removed / added のうち **A群が主消費済みでない trip** (廃止路線の便を減便と
 二重計上しない)。
 
+**SD5 (運行日世界、events/day_worlds.py — service_days.md §9.1)**: day_type
+ラベル内で実効運行日集合の重なりで結ばれる service 連結成分 = 世界。ラベルが
+複数世界を持つ場合 (四半期分割・互いに素な特定日等)、C群の集計・比較は
+パターン対応 (内容一致 or 実効日一致の完全一致2信号、(family×direction) 粒度)
+のセル単位で行い、本数は世界毎 (= 1日あたり) に数える。内容同一パターンの
+日付替えは SERVICE_DAYS_CHANGED。全ラベル1世界のフィードは従来計算と同一
+(退化保証 — 桑名ペアでバイト一致確認)。
+
 | イベント | 検出条件 | 備考 |
 |---|---|---|
+| SERVICE_DAYS_CHANGED | 内容同一パターンの世代間対応で実効日集合のみ変化 (SD5、v0.2.4) | quantification: dates_old/new (上限 `[events.service_days] dates_list_max`)・trips_per_day。増分側の trip 行を claim |
 | SERVICE_REDUCED | ビンの本数 旧 > 新 | `major_bands` (7-9, 16-19時) では severity=major |
 | SERVICE_INCREASED | ビンの本数 旧 < 新 | minor |
 | TIMETABLE_SHIFTED (uniform=false) | ビン本数同数だが便の入れ替えあり (時刻変更) | info |

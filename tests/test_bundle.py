@@ -55,8 +55,8 @@ def test_bundle_structure(tmp_path, config):
     write_html(bundle, "<x>__GTFS_SEMDIFF_DATA__</x>", out)
     assert out.read_text(encoding="utf-8") == html
 
-    # カタログは全43タイプ ja/en (v0.2.3: GENERATION_SCOPE 追加)
-    assert len(bundle["catalog"]) == 43
+    # カタログは全44タイプ ja/en (v0.2.4: SERVICE_DAYS_CHANGED 追加)
+    assert len(bundle["catalog"]) == 44
     assert bundle["catalog"]["SERVICE_REDUCED"]["en"] == "Service reduced"
 
     # レポート表題用の事業者名 (agency.txt 由来)

@@ -29,6 +29,11 @@ evidence_sample_max = 20
 # 検証モードの (ファイル, 差分種類) 毎のサンプル行数
 file_diff_sample_max = 100
 
+[events.service_days]
+# SD5: SERVICE_DAYS_CHANGED の quantification に載せる日付リストの上限
+# (超過分は件数のみ)
+dates_list_max = 30
+
 [events.windows]
 # SD2 (窓内区間対比較): 期限切れ/持ち越し世代の service を比較対象外にする
 # 条件のひとつ「路線 (family ブロック) の後継カバー率」の下限。1.0 = 全路線に

@@ -66,39 +66,62 @@ def _band_events(ctx: RuleContext) -> None:
 
     # グループ別総数・(グループ, ビン) 別本数・始発時刻列は1パスで事前集計する。
     # グループ毎に全 trip を再走査すると O(グループ数 × trip数) となり、
-    # 大規模フィードでルール段が非線形化する (IN-1)
+    # 大規模フィードでルール段が非線形化する (IN-1)。
+    # SD5: 複数世界ラベルは世界 ID 付きでも集計する (キー末尾に world)
+    wc = ctx.day_worlds
     group_totals: tuple[Counter, Counter] = (Counter(), Counter())
     band_counts: tuple[Counter, Counter] = (Counter(), Counter())
     deps: tuple[dict[tuple, list[int]], dict[tuple, list[int]]] = (
         defaultdict(list),
         defaultdict(list),
     )
+    world_totals: tuple[Counter, Counter] = (Counter(), Counter())
+    world_band: tuple[Counter, Counter] = (Counter(), Counter())
+    world_deps: tuple[dict[tuple, list[int]], dict[tuple, list[int]]] = (
+        defaultdict(list),
+        defaultdict(list),
+    )
+
+    def _world_of(side: int, t: TripInfo) -> str:
+        if wc is None:
+            return ""
+        return (wc.new if side else wc.old).world_of(t.service_id)
+
     for side, trips in enumerate((ctx.trip_delta.old_trips, ctx.trip_delta.new_trips)):
         for t in trips.values():
             g = _group_key(t)
+            band = ctx.time_bands.band_of(t.first_departure)
             group_totals[side][g] += 1
-            band_counts[side][(g, ctx.time_bands.band_of(t.first_departure))] += 1
-            if (s := parse_gtfs_time(t.first_departure)) is not None:
-                deps[side][g].append(s)
+            band_counts[side][(g, band)] += 1
+            sec = parse_gtfs_time(t.first_departure)
+            if sec is not None:
+                deps[side][g].append(sec)
+            if wc is not None and t.day_type in (
+                (wc.new if side else wc.old).multi_labels
+            ):
+                w = _world_of(side, t)
+                world_totals[side][(g, w)] += 1
+                world_band[side][(g, w, band)] += 1
+                if sec is not None:
+                    world_deps[side][(g, w)].append(sec)
 
-    for group in sorted(pools, key=str):
+    def _emit_band_events(group, old_key, new_key,
+                          old_total, new_total, removed_pool, added_pool,
+                          old_deps_list, new_deps_list):
+        """1比較セル分のビン別イベント (従来ロジックをセルに射影)。"""
         family, direction, day_type = group
-        # グループ全体の本数 (増減の分母表示用)
-        old_total = group_totals[0][group]
-        new_total = group_totals[1][group]
         for band in ctx.time_bands.labels():
-            pool = pools[group].get(band)
-            if pool is None:
-                continue
-            removed, added = pool["removed"], pool["added"]
+            removed = [t for t in removed_pool
+                       if ctx.time_bands.band_of(t.first_departure) == band]
+            added = [t for t in added_pool
+                     if ctx.time_bands.band_of(t.first_departure) == band]
             if not removed and not added:
                 continue
             evidence = ctx.index.trip_cascade_ids(
                 [t.trip_id for t in removed]
             ) + ctx.index.trip_cascade_ids([t.trip_id for t in added])
-            # 旧世代/新世代のこのビンの本数
-            old_n = band_counts[0][(group, band)]
-            new_n = band_counts[1][(group, band)]
+            old_n = old_key(band)
+            new_n = new_key(band)
             subject = {
                 "route_family": family,
                 "direction": direction,
@@ -127,7 +150,6 @@ def _band_events(ctx: RuleContext) -> None:
                     quantification=quantification,
                 )
             else:
-                # 本数同数・時刻入れ替え
                 ctx.emit(
                     "TIMETABLE_SHIFTED",
                     subject=subject,
@@ -135,8 +157,94 @@ def _band_events(ctx: RuleContext) -> None:
                     quantification={**quantification, "uniform": False,
                                     "trips_changed": len(removed)},
                 )
+        _first_last_event(ctx, group, threshold_min, old_deps_list, new_deps_list)
 
-        _first_last_event(ctx, group, threshold_min, deps[0][group], deps[1][group])
+    dates_max = ctx.config.get("events", "service_days", "dates_list_max",
+                               default=30)
+
+    for group in sorted(pools, key=str):
+        family, direction, day_type = group
+        multi = wc is not None and (
+            day_type in wc.old.multi_labels or day_type in wc.new.multi_labels
+        )
+        all_removed = [t for band in pools[group].values()
+                       for t in band["removed"]]
+        all_added = [t for band in pools[group].values() for t in band["added"]]
+        if not multi:
+            # 1世界ラベル: 従来どおり (完全に同じ計算 = 退化保証)
+            _emit_band_events(
+                group,
+                lambda band, g=group: band_counts[0][(g, band)],
+                lambda band, g=group: band_counts[1][(g, band)],
+                group_totals[0][group], group_totals[1][group],
+                all_removed, all_added,
+                deps[0][group], deps[1][group],
+            )
+            continue
+
+        # SD5: パターン対応に沿ってセル毎に比較する
+        old_pats = wc.old_patterns.get(group, [])
+        new_pats = wc.new_patterns.get(group, [])
+        matches = wc.matches.get(group, [])
+        content_cells: dict[int, list[int]] = {}
+        other_cells: list[tuple[int | None, int | None]] = []
+        for oi, nj, signal in matches:
+            if signal == "content":
+                content_cells.setdefault(oi, []).append(nj)
+            else:
+                other_cells.append((oi, nj))
+
+        def _cell_trips(trips_list, side, wids):
+            return [t for t in trips_list if _world_of(side, t) in wids]
+
+        for oi in sorted(content_cells):
+            # 内容同一パターンの対応 — 日付だけが違えば「運行日の変更」。
+            # 見かけの増便/減便 (PRT の 38→76) はここで正しい説明になる
+            njs = content_cells[oi]
+            op = old_pats[oi]
+            o_wids = set(op.world_ids)
+            n_wids = {w for j in njs for w in new_pats[j].world_ids}
+            dates_new = sorted({d for j in njs for d in new_pats[j].dates})
+            removed = _cell_trips(all_removed, 0, o_wids)
+            added = _cell_trips(all_added, 1, n_wids)
+            if list(op.dates) == dates_new or (not removed and not added):
+                continue
+            evidence = ctx.index.trip_cascade_ids(
+                [t.trip_id for t in removed]
+            ) + ctx.index.trip_cascade_ids([t.trip_id for t in added])
+            ctx.emit(
+                "SERVICE_DAYS_CHANGED",
+                subject={"route_family": family, "direction": direction,
+                         "day_type": day_type},
+                evidence=evidence,
+                quantification={
+                    "trips_per_day": op.trips_per_day,
+                    "dates_old": list(op.dates[:dates_max]),
+                    "dates_new": dates_new[:dates_max],
+                    "dates_old_total": len(op.dates),
+                    "dates_new_total": len(dates_new),
+                },
+            )
+
+        for oi, nj in other_cells:
+            o_wids = set(old_pats[oi].world_ids) if oi is not None else set()
+            n_wids = set(new_pats[nj].world_ids) if nj is not None else set()
+            o_deps = sorted(
+                s for w in o_wids for s in world_deps[0][(group, w)])
+            n_deps = sorted(
+                s for w in n_wids for s in world_deps[1][(group, w)])
+            _emit_band_events(
+                group,
+                lambda band, g=group, ws=o_wids: sum(
+                    world_band[0][(g, w, band)] for w in ws),
+                lambda band, g=group, ws=n_wids: sum(
+                    world_band[1][(g, w, band)] for w in ws),
+                sum(world_totals[0][(group, w)] for w in o_wids),
+                sum(world_totals[1][(group, w)] for w in n_wids),
+                _cell_trips(all_removed, 0, o_wids),
+                _cell_trips(all_added, 1, n_wids),
+                o_deps, n_deps,
+            )
 
 
 def _already_claimed(ctx: RuleContext, t: TripInfo) -> bool:

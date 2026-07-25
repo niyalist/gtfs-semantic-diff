@@ -46,6 +46,8 @@ _DEFS = [
     ("TIME_BAND_VARIANT", "時間帯限定経路の変更", "Time-of-day route variant changed", "B", SEVERITY_MINOR),
     ("SHAPE_CHANGED", "経路形状変更", "Route shape changed", "B", SEVERITY_MINOR),
     # C. 便数・時刻レベル
+    ("SERVICE_DAYS_CHANGED", "運行日の変更", "Operating dates changed", "C",
+     SEVERITY_MINOR),
     ("SERVICE_REDUCED", "減便", "Service reduced", "C", SEVERITY_MINOR),
     ("SERVICE_INCREASED", "増便", "Service increased", "C", SEVERITY_MINOR),
     ("TRIPS_TRUNCATED", "一部便の区間短縮", "Some trips short-turned", "C", SEVERITY_MAJOR),

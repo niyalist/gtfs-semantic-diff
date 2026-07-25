@@ -470,3 +470,38 @@ def test_daytype_restructured(tmp_path, config):
     assert len(restructured) == 1
     assert restructured[0].new_ref["day_types"] == ["saturday", "weekday"]
     assert_fully_explained(event_set)
+
+
+def test_service_days_changed_disjoint_special_days(tmp_path, config):
+    """SD5: 内容同一の特定日が別日付に載った場合は増便でなく「運行日の変更」。
+
+    PRT 型 (docs/verification/day_pattern_survey.md): 旧 6/10 の特定日ダイヤが
+    新では 7/4 と 9/7 の2 service (別 trip 行・内容同一) になる。
+    """
+    th = ("TH{s},10:00:00,10:00:00,S1,1\nTH{s},10:05:00,10:05:00,S2,2\n"
+          "TH{s},10:10:00,10:10:00,S3,3\n")
+    old_files = {
+        "calendar_dates.txt": "service_id,date,exception_type\nH,20260610,1\n",
+        "trips.txt": MINIMAL_FEED["trips.txt"] + "R1,H,THa\n",
+        "stop_times.txt": MINIMAL_FEED["stop_times.txt"] + th.format(s="a"),
+    }
+    new_files = {
+        "calendar_dates.txt": ("service_id,date,exception_type\n"
+                               "H1,20260704,1\nH2,20260907,1\n"),
+        "trips.txt": MINIMAL_FEED["trips.txt"] + "R1,H1,THb\nR1,H2,THc\n",
+        "stop_times.txt": (MINIMAL_FEED["stop_times.txt"]
+                           + th.format(s="b") + th.format(s="c")),
+    }
+    event_set, _ = run_compare(tmp_path, config,
+                               old_files=old_files, new_files=new_files)
+    changed = events_of(event_set, "SERVICE_DAYS_CHANGED")
+    assert len(changed) == 1
+    q = changed[0].quantification
+    assert q["dates_old"] == ["20260610"]
+    assert q["dates_new"] == ["20260704", "20260907"]
+    assert q["trips_per_day"] == 1
+    assert changed[0].subject["day_type"] == "irregular"
+    # 見かけの増便 (旧1便 → 新2便の合算) は出ない
+    assert not [e for e in events_of(event_set, "SERVICE_INCREASED")
+                if e.subject.get("day_type") == "irregular"]
+    assert_fully_explained(event_set)

@@ -1,4 +1,4 @@
-# ChangeEvent オントロジー v0.2.3
+# ChangeEvent オントロジー v0.2.4
 
 ## イベントの構造
 
