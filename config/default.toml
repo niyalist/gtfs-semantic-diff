@@ -12,6 +12,16 @@ short_service_max_days = 10
 # calendar_dates で削除し祝日だけ残す型、実測 0.06) を検出する。期間分割された
 # 正規ダイヤ (STM 四半期等、実測 0.9〜1.0) は落とさない (service_days.md §2.1)
 min_flag_day_ratio = 0.5
+# 曜日プロファイル検出 (day_types.md §4、2026-07-26): calendar_dates 列挙のみの
+# service でも規則的な週次運行を dow_XXXXXXX / weekday / weekend / daily に
+# 分類する (根室交通「特別ダイヤ１」= 毎週水曜 → weekday 誤分類の解消)。
+# dow_on: span 内出現率がこれ以上の曜日を「活性」とみなす
+dow_on = 0.6
+# 活性曜日外の日 (祝日振替等のはみ出し) の許容比率。超えたら検出せず多数決へ
+dow_stray_max = 0.1
+# 全曜日活性 (=毎日) と断定するための最小出現率 (保守的閾値 — 歯抜けの
+# 「ほぼ毎日」を毎日にしない。2026-07-26 ユーザー決定)
+dow_daily_min_cov = 0.9
 
 [report]
 # SD3: 第1部「特定日・運行日なしの内訳」に載せる実効運行日リストの上限件数

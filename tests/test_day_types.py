@@ -193,3 +193,72 @@ def test_day_set_of():
     assert day_set_of("dow_1010000") < day_set_of("weekday")  # 増便型の包含判定
     assert day_set_of("irregular") is None
     assert day_set_of("inactive") is None
+
+
+def _weekly(service_id, start, weeks, dows):
+    """start (date) から weeks 週分、dows (月=0..日=6) の日付行を作る。"""
+    import datetime
+
+    rows = []
+    d = start
+    for _ in range(weeks * 7):
+        if d.weekday() in dows:
+            rows.append((service_id, d.strftime("%Y%m%d"), "1"))
+        d += datetime.timedelta(days=1)
+    return rows
+
+
+def test_dates_dow_detection_weekly_wednesday():
+    """day_types.md §4: 毎週水曜の列挙は dow_0010000 (根室 特別ダイヤ１型)。
+
+    フラグで書けば水曜・列挙で書けば平日、という表現依存の解消。"""
+    import datetime
+
+    dates = dates_df(_weekly("WED", datetime.date(2026, 4, 1), 20, {2}))
+    result = normalize_day_types(None, dates, 0.8)
+    assert result == {"WED": "dow_0010000"}
+
+
+def test_dates_dow_detection_mon_thu():
+    """曜日集合 (月・木) も検出する (黒部市 石田・愛本線型)。"""
+    import datetime
+
+    dates = dates_df(_weekly("MT", datetime.date(2026, 4, 1), 12, {0, 3}))
+    result = normalize_day_types(None, dates, 0.8)
+    assert result == {"MT": "dow_1001000"}
+
+
+def test_dates_seasonal_daily():
+    """季節運行でも期間内毎日 (被覆1.0) なら daily (上高地型)。"""
+    import datetime
+
+    dates = dates_df(_weekly("SEA", datetime.date(2026, 7, 1), 5,
+                             {0, 1, 2, 3, 4, 5, 6}))
+    result = normalize_day_types(None, dates, 0.8)
+    assert result == {"SEA": "daily"}
+
+
+def test_dates_sparse_daily_stays_irregular():
+    """歯抜けの「ほぼ毎日」(全曜日 cov≈0.75) は daily と断定しない
+    (dow_daily_min_cov の保守的閾値 — 2026-07-26 ユーザー決定)。"""
+    import datetime
+
+    rows = []
+    d = datetime.date(2026, 7, 1)
+    for i in range(60):
+        if i % 4 != 3:  # 4日に1日休む
+            rows.append(("SPA", d.strftime("%Y%m%d"), "1"))
+        d += datetime.timedelta(days=1)
+    dates = dates_df(rows)
+    result = normalize_day_types(None, dates, 0.8)
+    assert result == {"SPA": "irregular"}
+
+
+def test_dates_dow_detection_respects_short_guard():
+    """短期間 (short_service_max_days 以下) は曜日が揃っていても特定日のまま。"""
+    import datetime
+
+    dates = dates_df(_weekly("SHORT", datetime.date(2026, 4, 1), 8, {2}))
+    assert len(dates) == 8  # 水曜8日 ≤ 10
+    result = normalize_day_types(None, dates, 0.8)
+    assert result == {"SHORT": "irregular"}

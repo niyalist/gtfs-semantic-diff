@@ -40,7 +40,9 @@ N:M 成分 → RENAMED/MERGED/SPLIT/RESTRUCTURED、ページは新世代背骨+�
 lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
 M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特定日」の実態は
 83%が規則的な曜日指定運行)、運行日ゼロは inactive、特定日の内訳 (置き換え/追加)
-を第1部に表示 — docs/design/day_types.md。
+を第1部に表示 — docs/design/day_types.md。2026-07-26: calendar_dates 列挙にも
+曜日プロファイル検出を適用 (同 §4 — 根室「毎週水曜」の weekday 誤分類解消、
+daily 断定は保守的閾値 0.9)。
 route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
 仕様は docs/design/route_group.md と detection.md §2.5。
 HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・全量同梱) /

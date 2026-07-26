@@ -31,8 +31,9 @@ from gtfs_semantic_diff.load.day_types import (  # noqa: E402
     _classify_day_flags,
 )
 
-DOW_ON = 0.6      # この出現率以上の曜日を活性とみなす
-STRAY_MAX = 0.1   # 活性曜日外の日の許容率 (祝日振替等)
+DOW_ON = 0.6        # この出現率以上の曜日を活性とみなす
+STRAY_MAX = 0.1     # 活性曜日外の日の許容率 (祝日振替等)
+DAILY_MIN = 0.9     # 全曜日活性 (=daily) と断定する最小出現率 (保守的閾値)
 
 
 def dow_label(dates: list[str]) -> tuple[str | None, dict]:
@@ -57,6 +58,8 @@ def dow_label(dates: list[str]) -> tuple[str | None, dict]:
     stray = sum(1 for x in days if not active[x.weekday()]) / len(days)
     if stray > STRAY_MAX:
         return None, {"stray": round(stray, 2)}
+    if all(active) and min(cov) < DAILY_MIN:
+        return None, {"daily_min": round(min(cov), 2)}
     return _classify_day_flags(active), {
         "cov": [round(c, 2) for c in cov], "stray": round(stray, 2)}
 

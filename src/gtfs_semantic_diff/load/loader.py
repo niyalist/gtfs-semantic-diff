@@ -135,6 +135,13 @@ def load_snapshot(
         min_flag_day_ratio=config.get(
             "load", "day_types", "min_flag_day_ratio", default=0.5
         ),
+        dow_on=config.get("load", "day_types", "dow_on", default=0.6),
+        dow_stray_max=config.get(
+            "load", "day_types", "dow_stray_max", default=0.1
+        ),
+        dow_daily_min_cov=config.get(
+            "load", "day_types", "dow_daily_min_cov", default=0.9
+        ),
     )
 
     snapshot = GtfsSnapshot(meta=meta, tables=tables, day_types=day_types)

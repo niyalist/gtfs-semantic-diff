@@ -388,12 +388,16 @@ def test_special_dates_runs_server_side(tmp_path, config):
     files["calendar.txt"] = MINIMAL_FEED["calendar.txt"] + (
         "SP,0,0,0,0,0,0,0,20260401,20270331\n"
     )
-    # 4/1〜6/9 の連続70日 (cap 30 を超える) を calendar_dates で追加
+    # 3週間運行 / 3週間休止 × 4 = 84日 (cap 30 超・4ラン)。連続70日にしないのは
+    # dow 検出 (day_types.md §4) で daily になり特定日でなくなるため —
+    # 曜日被覆 0.5 のブロック運行は特定日のまま
     import datetime
 
     dates = [
-        (datetime.date(2026, 4, 1) + datetime.timedelta(days=i)).strftime("%Y%m%d")
-        for i in range(70)
+        (datetime.date(2026, 4, 1) + datetime.timedelta(days=b * 42 + i)
+         ).strftime("%Y%m%d")
+        for b in range(4)
+        for i in range(21)
     ]
     files["calendar_dates.txt"] = (
         "service_id,date,exception_type\n"
@@ -413,10 +417,13 @@ def test_special_dates_runs_server_side(tmp_path, config):
         p for p in bundle["presentation"]["route_pages"] if "special_dates" in p
     )
     sd = page["special_dates"]
-    assert sd["new_total"] == 70
+    assert sd["new_total"] == 84
     assert len(sd["new"]) == 30  # 互換のための cap 済みリスト
-    # runs は全70日を1本のラン (4/1〜6/9) で代表する
-    assert sd["runs_new"] == [["20260401", "20260609"]]
+    # runs は cap 前の全84日を4本のランで代表する (cap 後圧縮なら 30 日で切れる)
+    assert sd["runs_new"] == [
+        ["20260401", "20260421"], ["20260513", "20260602"],
+        ["20260624", "20260714"], ["20260805", "20260825"],
+    ]
     assert sd["runs_new_more"] == 0
 
 

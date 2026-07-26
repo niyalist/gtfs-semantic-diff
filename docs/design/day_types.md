@@ -76,7 +76,15 @@
   意味は不変 — irregular の範囲だけが狭くなる)
 - detection.md §0/§2.4、presentation.md R16/R18 改訂
 
-## 4. 追補 (2026-07-26 調査・提案・未実装): calendar_dates 専用 service の dow 検出
+## 4. 追補 (2026-07-26 調査 → 同日実装): calendar_dates 専用 service の dow 検出
+
+**実装済み (2026.7.26.4)**: `_detect_dow_from_dates` + `_classify_dates` 統合、
+閾値は config [load.day_types] `dow_on=0.6` / `dow_stray_max=0.1` /
+`dow_daily_min_cov=0.9` (daily 断定の保守的閾値 — ユーザー決定)。合成テスト5件
+(水曜周次・月木・季節毎日・歯抜け毎日の棄却・short ガード)。保守的閾値の確定値:
+国内はラベル変更 **18 service** (weekday→dow_* 11 + 被覆1.0の季節毎日 7)、
+歯抜け毎日3件 (被覆0.75) は特定日のまま。根室 end-to-end で
+「平日①〜④」→「平日/水曜」を確認 (explained 1.0000)。detection.md §0 同期済み。
 
 ### 4.1 発端 — 根室交通 落石線の「平日①〜④」
 

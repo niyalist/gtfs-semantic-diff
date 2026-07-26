@@ -96,21 +96,75 @@ def _classify_day_flags(flags: tuple[bool, ...]) -> str:
     return DOW_PREFIX + "".join("1" if f else "0" for f in flags)
 
 
-def _classify_dates(dates: list[str], majority: float, short_max_days: int) -> str:
+def _detect_dow_from_dates(
+    days: list[datetime.date], dow_on: float, stray_max: float, daily_min_cov: float,
+) -> str | None:
+    """運行日リストから曜日プロファイルを検出する (day_types.md §4)。
+
+    calendar フラグなら dow_0010000 になる「毎週水曜」が、calendar_dates の
+    列挙で書かれると 3ビン多数決で weekday になる — 表現の違いがラベルの
+    違いになる非対称の解消 (根室交通 特別ダイヤ１の実例)。
+
+    - span 内の各曜日について出現率 cov = 運行日数 / span 内のその曜日数
+    - cov >= dow_on の曜日を活性とし、活性曜日外の日 (祝日振替等の
+      はみ出し) が stray_max 以下なら、活性曜日集合をフラグと同じ写像
+      (_classify_day_flags) でラベル化する
+    - 全曜日が活性 (= daily) の場合のみ、さらに最小 cov >= daily_min_cov を
+      要求する (保守的閾値 — 歯抜けの「ほぼ毎日」を毎日と断定しない。
+      2026-07-26 ユーザー決定)
+    - 検出できなければ None (呼び出し側が 3ビン多数決へフォールバック)
+    """
+    if not days:
+        return None
+    lo, hi = min(days), max(days)
+    total = [0] * 7
+    d = lo
+    one = datetime.timedelta(days=1)
+    while d <= hi:
+        total[d.weekday()] += 1
+        d += one
+    hit = [0] * 7
+    for x in days:
+        hit[x.weekday()] += 1
+    cov = [h / t if t else 0.0 for h, t in zip(hit, total)]
+    active = tuple(c >= dow_on for c in cov)
+    if not any(active):
+        return None
+    stray = sum(1 for x in days if not active[x.weekday()]) / len(days)
+    if stray > stray_max:
+        return None
+    if all(active) and min(cov) < daily_min_cov:
+        return None
+    return _classify_day_flags(active)
+
+
+def _classify_dates(
+    dates: list[str], majority: float, short_max_days: int,
+    dow_on: float = 0.6, dow_stray_max: float = 0.1,
+    dow_daily_min_cov: float = 0.9,
+) -> str:
     """calendar_dates の運行日リスト (YYYYMMDD) から day_type を判定する。
 
-    運行日数が short_max_days 以下なら曜日分布に関わらず特定日 (irregular) とする
-    (年末年始・お盆等の短期間専用ダイヤが平日等の時刻表に混ざるのを防ぐ)。
-    それ以外は曜日分布の多数決。"""
-    weekday_bins = {DAY_TYPE_WEEKDAY: 0, DAY_TYPE_SATURDAY: 0, DAY_TYPE_SUNDAY_HOLIDAY: 0}
-    valid = 0
+    1. 運行日数が short_max_days 以下なら曜日分布に関わらず特定日 (irregular)
+       (年末年始・お盆等の短期間専用ダイヤが平日等の時刻表に混ざるのを防ぐ)
+    2. 曜日プロファイル検出 (_detect_dow_from_dates) — 規則的な週次運行は
+       フラグ表現と同じラベル (weekday / weekend / daily / dow_XXXXXXX) に
+    3. 検出できなければ従来の曜日分布多数決 (平日/土/日の3ビン)"""
+    days: list[datetime.date] = []
     for text in dates:
         try:
-            d = datetime.datetime.strptime(text.strip(), "%Y%m%d").date()
+            days.append(datetime.datetime.strptime(text.strip(), "%Y%m%d").date())
         except ValueError:
             logger.warning("calendar_dates: 解析できない日付を無視: %r", text)
-            continue
-        valid += 1
+    days = sorted(set(days))
+    valid = len(days)
+    if valid == 0 or valid <= short_max_days:
+        return DAY_TYPE_IRREGULAR
+    detected = _detect_dow_from_dates(days, dow_on, dow_stray_max, dow_daily_min_cov)
+    if detected is not None:
+        return detected
+    weekday_bins = {DAY_TYPE_WEEKDAY: 0, DAY_TYPE_SATURDAY: 0, DAY_TYPE_SUNDAY_HOLIDAY: 0}
+    for d in days:
         wd = d.weekday()  # 月=0 ... 日=6
         if wd <= 4:
             weekday_bins[DAY_TYPE_WEEKDAY] += 1
@@ -118,8 +172,6 @@ def _classify_dates(dates: list[str], majority: float, short_max_days: int) -> s
             weekday_bins[DAY_TYPE_SATURDAY] += 1
         else:
             weekday_bins[DAY_TYPE_SUNDAY_HOLIDAY] += 1
-    if valid == 0 or valid <= short_max_days:
-        return DAY_TYPE_IRREGULAR
     best_type, best_count = max(weekday_bins.items(), key=lambda kv: kv[1])
     if best_count / valid >= majority:
         return best_type
@@ -226,6 +278,9 @@ def normalize_day_types(
     short_service_max_days: int = 10,
     feed_window: tuple[str, str] | None = None,
     min_flag_day_ratio: float = 0.5,
+    dow_on: float = 0.6,
+    dow_stray_max: float = 0.1,
+    dow_daily_min_cov: float = 0.9,
 ) -> dict[str, str]:
     """service_id → day_type の辞書を返す。
 
@@ -287,6 +342,8 @@ def normalize_day_types(
                 result[str(service_id)] = _classify_dates(
                     group["date"].tolist(), calendar_dates_majority,
                     short_service_max_days,
+                    dow_on=dow_on, dow_stray_max=dow_stray_max,
+                    dow_daily_min_cov=dow_daily_min_cov,
                 )
         else:
             logger.warning("calendar_dates.txt に必須カラムがありません")
