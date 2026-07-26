@@ -132,7 +132,8 @@ https://diff.gtfs.jp/r/nemurokotsu__nemurobus__b830a268__31577a0e.html で
 - **国際**: OVapi (オランダ国家) は cd 専用 5,062 service 中 **2,500 が変更**
   (irregular→daily 331、weekday→dow_1111000 254 など) — cd 列挙が標準の
   国際フィードでの効果が大きい (I トラックの布石)。Rome 18件。
-  STM・PRT はフラグ運用のため **0件** (影響なし)。
+  STM・PRT・swiss はフラグ運用、LA Metro・TriMet・MBTA は short/検出不能のみで
+  いずれも **0件** (影響なし — 全国際8フィードの実測)。
 
 ### 4.4 論点 (実装前の判断事項)
 
