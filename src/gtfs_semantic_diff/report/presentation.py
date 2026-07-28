@@ -381,6 +381,22 @@ def sheet_labels(sheets: list[list[tuple]]) -> list[str | None]:
     return labels
 
 
+def _loop_leg_label(group_label: str, terminal: str,
+                    mine: list[str], other: list[str]) -> str:
+    """循環の向き (leg) の表示名: 「◯◯ 循環（△△先回り）」。
+
+    △△ = 自回りの代表停車列が相手回りと最初に食い違う停留所 —
+    分冊ラベル (sheet_labels) と同じ規則で、B層 (向き) と D層 (分冊) が
+    同じ語彙を共有する (G3、orientation.md §5)。起終点 (terminal) 自身は
+    候補から除く — 逆回りの起点が別停留所の循環で「桑名駅西口 循環
+    （桑名駅西口先回り）」のような冗長ラベルになるのを防ぐ。
+    相違が見つからない縮退では群ラベルのみ返す (呼び出し側で連番)。"""
+    for a, b in zip(mine, other):
+        if a != b and a != terminal:
+            return f"{group_label}（{a}先回り）"
+    return group_label
+
+
 # --- 停留所軸の併合 (R17) ---
 
 
@@ -1268,34 +1284,59 @@ class _Builder:
                                s["earliest_departure"], s["system_id"]),
             )
             loop = canon["first_stop"] == canon["last_stop"]
+            # G3 (orientation.md §5): 起点=終点 (循環) でも向きを問う —
+            # 双方向路線と**同一の判定器 (order_agreement)・同一の閾値**で
+            # 逆回り系統を reverse の leg に分ける。旧実装は循環を無条件に
+            # forward へ畳み、③④地図の分割が面ごとにばらけていた
+            # (京都 201〜208: ④は左右回り混在の1枚、③は識別不能な2行、地図1色)
             for s in group_systems:
-                if loop:
-                    s["leg"] = "forward"
-                else:
-                    agree, _ = order_agreement(s["stops"], canon["stops"])
-                    s["leg"] = (
-                        "reverse"
-                        if agree is not None and agree <= self.reversed_max
-                        else "forward"
-                    )
+                agree, _ = order_agreement(s["stops"], canon["stops"])
+                s["leg"] = (
+                    "reverse"
+                    if agree is not None and agree <= self.reversed_max
+                    else "forward"
+                )
+            has_reverse = any(s["leg"] == "reverse" for s in group_systems)
             if loop:
                 kind, label = "loop", f"{canon['first_stop']} 循環"
-            elif any(s["leg"] == "reverse" for s in group_systems):
+            elif has_reverse:
                 kind = "bidirectional"
                 label = f"{canon['first_stop']} ⇄ {canon['last_stop']}"
             else:
                 kind, label = "one_way", f"{canon['first_stop']} → {canon['last_stop']}"
+            if loop and has_reverse:
+                # 向き (B層) の名前: 起点→終点は循環では無意味 (A→A) なので、
+                # 分冊と同じ「◯◯先回り」命名 — 各回りの代表停車列同士の
+                # 最初の相違停留所。B/C/D で同じ語彙を共有する (kyoto_review G3)
+                rev_canon = min(
+                    (s for s in group_systems if s["leg"] == "reverse"),
+                    key=lambda s: (-(s["trips_new"] + s["trips_old"]),
+                                   s["earliest_departure"], s["system_id"]),
+                )
+                leg_labels = {
+                    "forward": _loop_leg_label(
+                        label, canon["first_stop"],
+                        canon["stops"], rev_canon["stops"]),
+                    "reverse": _loop_leg_label(
+                        label, canon["first_stop"],
+                        rev_canon["stops"], canon["stops"]),
+                }
+                if leg_labels["forward"] == leg_labels["reverse"]:
+                    leg_labels["reverse"] += "（2）"
+            else:
+                # ④時刻表の表題・③本数表の方向行に共通で使う「起点 → 終点」
+                # 形式 (dg ラベル「A ⇄ B」との対応が読み取れるように
+                # 「◯◯方面」をやめた)。片回りのみの循環は従来どおり
+                leg_labels = {
+                    "forward": label if loop else
+                    f"{canon['first_stop']} → {canon['last_stop']}",
+                    "reverse": f"{canon['last_stop']} → {canon['first_stop']}",
+                }
             dgroups.append({
                 "id": "",  # 後で採番
                 "kind": kind,
                 "label": label,
-                # ④時刻表の表題・③本数表の方向行に共通で使う「起点 → 終点」形式
-                # (dg ラベル「A ⇄ B」との対応が読み取れるように「◯◯方面」をやめた)
-                "leg_labels": {
-                    "forward": label if loop else
-                    f"{canon['first_stop']} → {canon['last_stop']}",
-                    "reverse": f"{canon['last_stop']} → {canon['first_stop']}",
-                },
+                "leg_labels": leg_labels,
                 "systems": sorted(group_systems,
                                   key=lambda s: (-s["trips_new"] - s["trips_old"],
                                                  s["system_id"])),

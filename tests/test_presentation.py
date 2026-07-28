@@ -1278,3 +1278,62 @@ def test_display_pairs_respect_cell_assignment(tmp_path, config):
     # ページ内の保存則: 全便がちょうど1回
     assert sum(o for o, _ in totals.values()) == 2
     assert sum(n for _, n in totals.values()) == 2
+
+
+def test_loop_orientation_splits_legs(tmp_path, config):
+    """G3 (orientation.md §5): 循環の逆回り系統は reverse の leg に分かれ、
+    ①③④が同じ分割 (「◯◯先回り」ラベル) を共有する。
+
+    旧実装は起点=終点の路線を無条件に forward へ畳み、④が左右回り混在の
+    1枚になっていた (京都 201〜208 の実例)。"""
+    from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+    from gtfs_semantic_diff.load import load_snapshot
+    from gtfs_semantic_diff.report.bundle import build_bundle
+
+    from .conftest import MINIMAL_FEED, make_gtfs_zip
+
+    files = dict(MINIMAL_FEED)
+    # 12停の循環 (逆回りの順序一致率 ≈ 2/12 ≤ reversed_max)。小さすぎる輪は
+    # パターン類似度で1クラスタに束なり分割対象にならない (それは正当)
+    n = 12
+    # 停留所名は末尾数字だと基底名正規化 (乗り場番号除去) で同名に潰れるため
+    # かな接尾にする
+    kana = "あいうえおかきくけこさ"
+    files["stops.txt"] = (
+        "stop_id,stop_name,stop_lat,stop_lon\n"
+        + "S1,駅前,36.0000,139.0000\n"
+        + "".join(f"S{i},停{kana[i - 2]},36.0{i:02d}0,139.0{i:02d}0\n"
+                  for i in range(2, n + 1))
+    )
+    # 右回り T1 (駅前→停2→…→停12→駅前) × 左回り T2 (逆順)
+    files["trips.txt"] = "route_id,service_id,trip_id\nR1,WD,T1\nR1,WD,T2\n"
+    fwd = [1] + list(range(2, n + 1)) + [1]
+    rev = [1] + list(range(n, 1, -1)) + [1]
+    files["stop_times.txt"] = (
+        "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+        + "".join(f"T1,08:{i:02d}:00,08:{i:02d}:00,S{s},{i + 1}\n"
+                  for i, s in enumerate(fwd))
+        + "".join(f"T2,09:{i:02d}:00,09:{i:02d}:00,S{s},{i + 1}\n"
+                  for i, s in enumerate(rev))
+    )
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="o.zip"),
+                        config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=files, name="n.zip"),
+                        config=config)
+    es, rd, ident, td = compare_snapshots_with_artifacts(old, new, config)
+    b = build_bundle(old, new, config, es, rd, ident, td, core=True)
+    page = b["presentation"]["route_pages"][0]
+    dg = page["overview"]["direction_groups"][0]
+    assert dg["kind"] == "loop"
+    # ① 向きごとの leg (地図の線・停車列もこの単位)
+    leg_labels = sorted(lg["label"] for lg in dg["legs"])
+    assert leg_labels == ["駅前 循環（停あ先回り）", "駅前 循環（停さ先回り）"]
+    # ④ 向きごとに1表ずつ、ラベルは leg と同一語彙
+    tt_labels = sorted(t["label"] for t in page["timetables"])
+    assert tt_labels == leg_labels
+    assert all(t["trips_old"] == t["trips_new"] == 1 for t in page["timetables"])
+    # ③ にも同じラベルの leg 行が出る
+    band_leg_labels = sorted(r["label"] for r in page["band_matrix"]["rows"]
+                             if r["kind"] == "leg")
+    assert band_leg_labels == leg_labels
+    assert b["presentation"]["self_check"] == []
