@@ -1337,3 +1337,24 @@ def test_loop_orientation_splits_legs(tmp_path, config):
                              if r["kind"] == "leg")
     assert band_leg_labels == leg_labels
     assert b["presentation"]["self_check"] == []
+
+
+def test_natural_sort_key():
+    """G4: 路線名の自然順 — 桁数・全角・漢字接頭辞+数字 (上31型)・枝番。"""
+    from gtfs_semantic_diff.report.presentation import natural_sort_key as k
+
+    # 桁数混在は数値順 (文字列比較の 1,10,105,2,21,3 を解消)
+    names = ["市バス10", "市バス2", "市バス105", "市バス1", "市バス21", "市バス3"]
+    assert sorted(names, key=k) == [
+        "市バス1", "市バス2", "市バス3", "市バス10", "市バス21", "市バス105"]
+    # 全角数字も NFKC で同じ数値 (９ が １０６ の後ろに来ない)
+    assert sorted(["市バス１０６", "市バス９"], key=k) == ["市バス９", "市バス１０６"]
+    # 上31型: 接頭辞の系統がまとまり、その中で番号順。数字だけの抽出はしない
+    toei = ["里48", "上31", "王57", "上23", "王40", "上58"]
+    assert sorted(toei, key=k) == ["上23", "上31", "上58", "王40", "王57", "里48"]
+    # 枝番・括弧派生は親番号の直後
+    assert sorted(["上31-2", "上32", "上31"], key=k) == ["上31", "上31-2", "上32"]
+    assert sorted(["市バス20(菱川→淀)", "市バス9", "市バス20(南横大路→淀)"],
+                  key=k)[0] == "市バス9"
+    # 数値同点 (001 vs 1) も決定的
+    assert sorted(["A001", "A1"], key=k) == sorted(["A1", "A001"], key=k)

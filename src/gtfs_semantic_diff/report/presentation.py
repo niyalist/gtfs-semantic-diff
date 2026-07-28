@@ -71,6 +71,35 @@ def date_runs_year_split(dates, max_runs: int):
     return runs[:max_runs], max(0, len(runs) - max_runs)
 
 
+_NAT_TOKEN = None  # 遅延コンパイル (import 時コストの回避)
+
+
+def natural_sort_key(name: str) -> tuple:
+    """G4 (kyoto_review.md §4): 路線名の自然順ソートキー。
+
+    NFKC 正規化 (全角数字→半角。Unicode 標準変換で言語特化ではない) の上で
+    「文字列部分と数字部分の交互トークン」に分解し、数字は数値として比較する。
+    - 桁数混在: 1 < 2 < 10 < 105 (文字列比較の 1,10,105,2 を解消)
+    - 漢字接頭辞+数字 (上31 型): 接頭辞が第1トークンなので系統はまとまり、
+      その中で番号が数値順。数字だけの抽出はしない
+    - 意味の解釈 (特/快速等の語彙表・読み仮名) はしない — 接頭辞同士の順は
+      文字コード順 (決定的であることを優先)
+    数値同点 (001 vs 1) は元文字列でタイブレーク (決定性)。"""
+    import re
+    import unicodedata
+
+    global _NAT_TOKEN
+    if _NAT_TOKEN is None:
+        _NAT_TOKEN = re.compile(r"\d+|\D+")
+    key = []
+    for tok in _NAT_TOKEN.findall(unicodedata.normalize("NFKC", name)):
+        if tok.isdigit():
+            key.append((0, int(tok), ""))
+        else:
+            key.append((1, 0, tok))
+    return (tuple(key), name)
+
+
 def base_day(day_type: str) -> str:
     """SD5b: 表示セルラベル "saturday@2" の基底 day_type。"""
     return day_type.partition("@")[0]
@@ -801,9 +830,11 @@ class _Builder:
             page = self._build_page(group)
             if page:
                 pages.append(page)
-        # 変化のあるページを先に (Lev.1 > その他の変化 > 変化なし)、次に名前順
+        # 変化のあるページを先に (Lev.1 > その他の変化 > 変化なし)、
+        # ブロック内は路線名の自然順 (G4 — 全角/桁数で番号順が崩れない)
         pages.sort(key=lambda p: (0 if p["summary"]["level1"] else
-                                  (1 if p["has_changes"] else 2), p["route_group"]))
+                                  (1 if p["has_changes"] else 2),
+                                  natural_sort_key(p["route_group"])))
         return {
             "day_type_order": DAY_ORDER,
             "route_pages": pages,

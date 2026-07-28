@@ -165,11 +165,13 @@ def _route_chapters(
 
     lines.append("## 2. 路線別詳細")
     lines.append("")
+    from .presentation import natural_sort_key
+
     order = sorted(
         by_group,
         key=lambda g: (
             0 if any(e["severity"] == "major" for e in by_group[g]) else 1,
-            g,
+            natural_sort_key(g),  # G4: HTML と同じ自然順
         ),
     )
     for i, group in enumerate(order, 1):
