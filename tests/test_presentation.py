@@ -1220,3 +1220,61 @@ def test_same_named_stops_use_own_route_coordinates(tmp_path, config):
     # route_group はこの合成データでは route_short_name ("1"/"2")
     assert coords["1"] == (36.0050, 139.0000)  # 駅前線: 自路線の学校前 (X1)
     assert coords["2"] == (36.2050, 139.2000)  # 海岸線: 自路線の学校前 (X2)
+
+
+def test_display_pairs_respect_cell_assignment(tmp_path, config):
+    """G2 (kyoto_review.md §2): セル跨ぎの便対応は表示上分解される。
+
+    旧: 特定日1 service (08時便+09時便)。新: 別々の日付の2 service に分割
+    (特定日①=08時便 / ②=09時便)。v1 は 09時便同士を対にするが、その対は
+    セル (①↔②) を跨ぐため④の列としては成立せず、①に廃止列・②に新設列と
+    して現れる — ヘッダ・③・④が同じ割付で一致する (京都 市バス106 の実例)。"""
+    from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
+    from gtfs_semantic_diff.load import load_snapshot
+    from gtfs_semantic_diff.report.bundle import build_bundle
+
+    from .conftest import MINIMAL_FEED, make_gtfs_zip
+
+    old_files = dict(MINIMAL_FEED)
+    old_files["calendar.txt"] = (
+        "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
+        "start_date,end_date\n"
+        "SP,0,0,0,0,0,0,0,20260401,20270331\n"
+    )
+    old_files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\nSP,20260704,1\n")
+    old_files["trips.txt"] = "route_id,service_id,trip_id\nR1,SP,T1\nR1,SP,T2\n"
+
+    new_files = dict(old_files)
+    new_files["calendar.txt"] = (
+        "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,"
+        "start_date,end_date\n"
+        "SPA,0,0,0,0,0,0,0,20260401,20270331\n"
+        "SPB,0,0,0,0,0,0,0,20260401,20270331\n"
+    )
+    new_files["calendar_dates.txt"] = (
+        "service_id,date,exception_type\nSPA,20260705,1\nSPB,20260706,1\n")
+    new_files["trips.txt"] = "route_id,service_id,trip_id\nR1,SPA,T1\nR1,SPB,T2\n"
+
+    old = load_snapshot(make_gtfs_zip(tmp_path, files=old_files, name="o.zip"),
+                        config=config)
+    new = load_snapshot(make_gtfs_zip(tmp_path, files=new_files, name="n.zip"),
+                        config=config)
+    es, rd, ident, td = compare_snapshots_with_artifacts(old, new, config)
+    b = build_bundle(old, new, config, es, rd, ident, td, core=True)
+    pres = b["presentation"]
+    page = pres["route_pages"][0]
+    totals = {d["day_type"]: (d["old"], d["new"]) for d in page["day_totals"]}
+    # 割付: 旧世界は片方のセルに flow 対応、もう片方は新設セル
+    assert sorted(totals.values()) == [(0, 1), (2, 1)]
+    # ④の列数がヘッダと一致 (跨ぎ対は分解され、廃止列が自セルに残る)
+    tt = {}
+    for t in page["timetables"]:
+        o, n = tt.get(t["day_type"], (0, 0))
+        tt[t["day_type"]] = (o + t["trips_old"], n + t["trips_new"])
+    assert tt == totals
+    # 表示整合セルフチェックは全零 (G2 の完了判定)
+    assert pres["self_check"] == []
+    # ページ内の保存則: 全便がちょうど1回
+    assert sum(o for o, _ in totals.values()) == 2
+    assert sum(n for _, n in totals.values()) == 2

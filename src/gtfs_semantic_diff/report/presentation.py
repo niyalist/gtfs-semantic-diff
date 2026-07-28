@@ -932,38 +932,21 @@ class _Builder:
         # 便の対応付けはコア (trip matching v2) が担い、表示層の後付けペアリングは
         # 廃止した (docs/design/trip_matching.md)
         # SD5b: 表示正規形 — 対応・増減を双子写像で代表世界に写し、
-        # 同じ代表便への重複写像は先勝ちで畳む (1世界系では恒等 = 従来どおり)
-        disp_pairs: list = []  # (source, o2, n2)
-        used_o: set = set()
-        used_n: set = set()
-        for source, pairs_src in (("exact", self.delta.exact_pairs),
-                                  ("modified", self.delta.modified)):
-            for o, nw in pairs_src:
-                if (self.f2g.get(nw.family) != group
-                        and self.f2g.get(o.family) != group):
-                    continue
-                o2, n2 = self._norm("o", o), self._norm("n", nw)
-                if o2.trip_id in used_o or n2.trip_id in used_n:
-                    continue
-                used_o.add(o2.trip_id)
-                used_n.add(n2.trip_id)
-                disp_pairs.append((source, o2, n2))
-        disp_removed: list = []
-        for t in self.delta.removed:
-            if self.f2g.get(t.family) != group:
-                continue
-            t2 = self._norm("o", t)
-            if t2.trip_id not in used_o:
-                used_o.add(t2.trip_id)
-                disp_removed.append(t2)
-        disp_added: list = []
-        for t in self.delta.added:
-            if self.f2g.get(t.family) != group:
-                continue
-            t2 = self._norm("n", t)
-            if t2.trip_id not in used_n:
-                used_n.add(t2.trip_id)
-                disp_added.append(t2)
+        # 同じ代表便への重複写像は先勝ちで畳む (1世界系では恒等 = 従来どおり)。
+        #
+        # G2 (2026-07-28, kyoto_review.md §2): 表示正規形は次の2つの規則で
+        # ヘッダ・③と同じ割付に整合する:
+        #   (1) 対の成立条件 — 両端が**このページに割り付き、かつ同一表示セル**
+        #       にある場合のみ対として表示する。ページ跨ぎ・セル跨ぎの対応
+        #       (コアの検出としては正しい「便の移動」) は表示上分解する
+        #   (2) 閉包 — ページの表示 trip のうち対に入らなかったものが、
+        #       過不足なく廃止/新設列になる。ページ内の便の保存則
+        #       (各便がちょうど1回現れる) を構成的に保証する
+        # コアの対応・イベント・台帳は不変。旧実装は (1) が OR 条件 (片端でも
+        # 当ページなら採用) で跨ぎ対の列が相手側の面に現れ、(2) がなく
+        # delta.removed/added 由来のため分解された片端の受け皿が無かった
+        # (京都 106 のヘッダ 10→5 vs ④ 5→5、市バス20 の新設ページに旧列)
+
         # 表示 trip 集合 (元の並び順を保存 — 1世界系で従来と同一の列順)
         display_old: list = []
         seen: set = set()
@@ -979,6 +962,27 @@ class _Builder:
             if t2.trip_id not in seen and self._dlabel("n", t2) != _DUP:
                 seen.add(t2.trip_id)
                 display_new.append(t2)
+
+        disp_pairs: list = []  # (source, o2, n2)
+        used_o: set = set()
+        used_n: set = set()
+        for source, pairs_src in (("exact", self.delta.exact_pairs),
+                                  ("modified", self.delta.modified)):
+            for o, nw in pairs_src:
+                if (self.f2g.get(o.family) != group
+                        or self.f2g.get(nw.family) != group):
+                    continue  # 規則(1): ページ跨ぎの対は表示上分解
+                o2, n2 = self._norm("o", o), self._norm("n", nw)
+                if self._dlabel("o", o2) != self._dlabel("n", n2):
+                    continue  # 規則(1): セル跨ぎの対は表示上分解
+                if o2.trip_id in used_o or n2.trip_id in used_n:
+                    continue
+                used_o.add(o2.trip_id)
+                used_n.add(n2.trip_id)
+                disp_pairs.append((source, o2, n2))
+        # 規則(2): 閉包
+        disp_removed = [t for t in display_old if t.trip_id not in used_o]
+        disp_added = [t for t in display_new if t.trip_id not in used_n]
         band_matrix = self._band_matrix(dgroups, display_old, display_new)
         timetables = self._timetables(dgroups, display_old, display_new,
                                       disp_pairs)
@@ -1875,10 +1879,11 @@ class _Builder:
                 label_counts: Counter = Counter()
                 trips_old = trips_new = 0
                 for status, o, nw in specs:
-                    # SD5b: セル跨ぎ対応 (相手が別タブの世界セル) の相手側は
-                    # このタブの便数に数えない (1世界系では恒等)
-                    trips_old += o is not None and self._dlabel("o", o) == day
-                    trips_new += nw is not None and self._dlabel("n", nw) == day
+                    # G2: 対の両端が同一セルにあることは表示正規形が保証する
+                    # (跨ぎ対は閉包で廃止/新設列に分解済み)。系統 (leg) 移動の
+                    # 対は移動先の表に旧時刻ごと現れ、ここで両側を数える
+                    trips_old += o is not None
+                    trips_new += nw is not None
                     if status in ("added", "removed"):
                         label_counts[status] += 1
                     elif status in ("retimed", "rerouted"):

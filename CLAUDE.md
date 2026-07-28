@@ -41,7 +41,11 @@ lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
 2026-07-28: confidence 完全同点のタイブレークを同点証拠階層 (向き→名称類似→
 未使用優先→辞書順) に統一 — docs/design/orientation.md。京都のラケット
 (連続運行対) の偽新設を解消、朝日町・名古屋等は同点0件で出力不変。
-京都レビューの残課題 G2〜G4 は docs/verification/kyoto_review.md。
+同日 G2 (PI-6): 表示対の成立条件を「同一ページ・同一セル」に制約し、
+残余を閉包で廃止/新設列に — ヘッダ・③・④・delta の便数が全面一致し、
+self_check が京都・立川含め全零 (跨ぎ対のないフィードはバイト不変)。
+京都レビューの残課題 G3 (循環の分割統一、設計は orientation.md §5)・G4
+(ソート) は docs/verification/kyoto_review.md。
 M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特定日」の実態は
 83%が規則的な曜日指定運行)、運行日ゼロは inactive、特定日の内訳 (置き換え/追加)
 を第1部に表示 — docs/design/day_types.md。2026-07-26: calendar_dates 列挙にも
