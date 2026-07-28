@@ -544,15 +544,27 @@ class _Builder:
 
         old_page, new_page = page_family_maps(identity)
         self.f2g = {**old_page, **new_page}
-        # 旧名称注記: 対応成分 (非降格) の旧 family 名を新側 group に紐づける
+        # 旧名称注記 (2026-07-28 改: 帰属を成分押印から割付基準に)。
+        # 旧名称 = **便がこのページに割り付いた**旧 family のみ — 便数と同じ
+        # 粒度で付ける (N:M 成分の全ページに全旧名を押印すると、京都 20系の
+        # ように「旧データが二重計上では?」と読める)。成分内の他の旧名は
+        # 「同じ再編の関連」(related) として別掲し、N:M の関係情報は失わない。
+        # 統合 (N:1) は全旧 family が唯一の新ページに割り付くため定義から
+        # 従来と同一 (朝日町不変。実測: 全9フィードで変化は京都の
+        # restructured 4ページのみ)
         self.former_by_group: dict[str, set[str]] = defaultdict(set)
+        self.related_by_group: dict[str, set[str]] = defaultdict(set)
         for comp in identity.family_components:
             if comp["demoted"]:
                 continue
             renamed = set(comp["old"]) - set(comp["new"])
             for nf in comp["new"]:
                 group = identity.new_family_to_group.get(nf, nf)
-                self.former_by_group[group] |= renamed
+                for of in renamed:
+                    if old_page.get(of, of) == group:
+                        self.former_by_group[group].add(of)
+                    else:
+                        self.related_by_group[group].add(of)
         # 類似候補注記 (受理未満・降格): 廃止/新設ページの相互参照
         from ..identity.route_family import METHOD_CANDIDATE
         from ..model.matchgraph import ENTITY_ROUTE_FAMILY
@@ -1133,8 +1145,11 @@ class _Builder:
             if covers:
                 entry["added_to"] = min(covers)[2]
 
-        # M9: 旧名称 (対応した family) と、廃止/新設ページの類似候補注記
+        # M9: 旧名称 (このページに便が割り付いた旧 family) と、同じ再編の
+        # 関連 (成分内の他ページへ行った旧名 — 分割/再編の出自注記)、
+        # 廃止/新設ページの類似候補注記
         former_names = sorted(self.former_by_group.get(group, ()))
+        related_names = sorted(self.related_by_group.get(group, ()))
         similar = []
         if summary["level1"]:
             source = (self.cand_old_group if summary["level1"]["kind"] == "removed"
@@ -1162,7 +1177,7 @@ class _Builder:
                     "exact_candidates": exact,
                 })
 
-        return {
+        page_out = {
             "route_group": group,
             "families": sorted({t.family for t in old_trips + new_trips}),
             "former_names": former_names,
@@ -1184,6 +1199,11 @@ class _Builder:
             "band_matrix": band_matrix,
             "timetables": timetables,
         }
+        if related_names:
+            # 同じ再編の関連 (便は各自のページに)。空のときはキー自体を
+            # 出さない — 関連のないフィードのバンドルをバイト不変に保つ
+            page_out["related_names"] = related_names
+        return page_out
 
     # --- 運行系統 (新旧クラスタの統合ビュー) ---
 

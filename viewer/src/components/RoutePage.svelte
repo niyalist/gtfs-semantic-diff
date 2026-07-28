@@ -154,6 +154,10 @@
     {#if page.former_names?.length}
       <p class="meta">{tt("former_names")}: {page.former_names.join("、")}</p>
     {/if}
+    {#if page.related_names?.length}
+      <!-- 同じ再編成分の旧路線 (便は各自の対応先ページに)。旧名称と区別する -->
+      <p class="meta">{tt("related_names")}: {page.related_names.join("、")}</p>
+    {/if}
     {#if page.similar_candidates?.length}
       <p class="meta">
         {tt("similar_candidates")}:
