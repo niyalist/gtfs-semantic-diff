@@ -61,6 +61,9 @@ class IdentityResult:
     # {"old": [...], "new": [...], "shape": renamed|merged|split|restructured,
     #  "similarity": float, "demoted": bool}
     family_components: list[dict] = field(default_factory=list)
+    # 同点証拠階層 (orientation.md §3) 用: family → 代表停車列 (最長パターン)
+    old_family_seq: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    new_family_seq: dict[str, tuple[str, ...]] = field(default_factory=dict)
     graph: MatchGraph = field(default_factory=MatchGraph)
 
 
@@ -109,11 +112,26 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
         new_family_stops=new_family_stops,
         stop_translation=translation,
     )
+    # 同点証拠階層 (orientation.md §3.1) の代表停車列: family の最長パターン
+    # (同長は列の辞書順で決定的に)。集合 Jaccard が潰す方向情報の回復用
+    def rep_seqs(patterns) -> dict[str, tuple[str, ...]]:
+        rep: dict[str, tuple[str, ...]] = {}
+        for p in patterns:
+            cur = rep.get(p.family)
+            cand = tuple(p.base_names)
+            if cur is None or (len(cand), cand) > (len(cur), cur):
+                rep[p.family] = cand
+        return rep
+
+    old_family_seq = rep_seqs(old_patterns)
+    new_family_seq = rep_seqs(new_patterns)
+
     max_groups = config.get(
         "identity", "route_family", "max_component_groups", default=6
     )
     family_components, family_edges = classify_family_components(
-        family_edges, old_f2g, new_f2g, max_groups
+        family_edges, old_f2g, new_f2g, max_groups,
+        old_seqs=old_family_seq, new_seqs=new_family_seq,
     )
 
     old_pcs = cluster_patterns(old_patterns, config)
@@ -147,6 +165,8 @@ def build_identity(old: GtfsSnapshot, new: GtfsSnapshot, config: Config) -> Iden
         old_family_to_group=old_f2g,
         new_family_to_group=new_f2g,
         family_components=family_components,
+        old_family_seq=old_family_seq,
+        new_family_seq=new_family_seq,
         graph=graph,
     )
 
@@ -184,23 +204,37 @@ def page_family_maps(identity: IdentityResult) -> tuple[dict, dict]:
     """レポートのページ用: family → ページ group 名 (新世代を背骨に)。
 
     - 新 family → 自身の新 group (ページ数は新世代の group 数で抑えられる)
-    - 旧 family → 最良の受理エッジ (confidence 最大、同点は新 family 名の
-      辞書順) の相手が属する新 group。受理エッジが無ければ自身の旧 group
+    - 旧 family → 最良の受理エッジ (confidence 最大、**同点は同点証拠階層**
+      rank_tied_new — 向き→名称類似→未使用優先→辞書順、orientation.md §3)
+      の相手が属する新 group。受理エッジが無ければ自身の旧 group
       (廃止ページ)。1:N 分割でも旧 family の trips は1ページにのみ載る
-      (もう一方の新ページには注記だけ、route_identity_review.md §3.3.1)
+      (もう一方の新ページには注記だけ、route_identity_review.md §3.3.1)。
+      旧タイブレーク (辞書順のみ) は連続運行対で旧2 family を同一ページに
+      吸わせていた (京都 20系、2026-07-28 改訂)
     """
+    from .route_family import rank_tied_new
+
     o_f2g, n_f2g = identity.old_family_to_group, identity.new_family_to_group
-    best: dict[str, tuple[float, str]] = {}
+    by_old: dict[str, list] = {}
     for e in identity.graph.for_type(ENTITY_ROUTE_FAMILY):
-        if e.method not in (METHOD_NAME, METHOD_CONTENT):
-            continue
-        cur = best.get(e.old_id)
-        if cur is None or e.confidence > cur[0] or (
-            e.confidence == cur[0] and e.new_id < cur[1]
-        ):
-            best[e.old_id] = (e.confidence, e.new_id)
+        if e.method in (METHOD_NAME, METHOD_CONTENT):
+            by_old.setdefault(e.old_id, []).append(e)
+    best: dict[str, str] = {}
+    used_new: set[str] = set()
+    for old_id in sorted(
+        by_old, key=lambda f: (-max(e.confidence for e in by_old[f]), f)
+    ):
+        es = by_old[old_id]
+        mx = max(e.confidence for e in es)
+        tied = sorted({e.new_id for e in es if e.confidence == mx})
+        pick = rank_tied_new(
+            old_id, tied, identity.old_family_seq.get(old_id, ()),
+            identity.new_family_seq, used_new,
+        )[0]
+        best[old_id] = pick
+        used_new.add(pick)
     old_map = {
-        f: (n_f2g.get(best[f][1], best[f][1]) if f in best else g)
+        f: (n_f2g.get(best[f], best[f]) if f in best else g)
         for f, g in o_f2g.items()
     }
     return old_map, dict(n_f2g)

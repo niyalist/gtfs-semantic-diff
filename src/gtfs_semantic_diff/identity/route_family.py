@@ -203,6 +203,62 @@ def build_stop_translation(
     return {ob: nb for ob, (_, nb) in best.items() if nb != ob}
 
 
+def sequence_agreement(a: tuple[str, ...], b: tuple[str, ...]) -> float:
+    """代表停車列2本の「向きの一致度」= 共通停留所の相対順序一致率。
+
+    同方向 ≈ 1.0、逆方向 ≈ 0.0、共通2停未満は中立 0.5。
+    集合 Jaccard (主測度) が潰した方向情報を系列から回復する同点証拠
+    (docs/design/orientation.md §3.1)。重複名 (同名停留所への連続停車等) は
+    初出位置で代表させる。presentation の order agreement と同じ意味論だが、
+    層の依存方向 (identity → report 不可) のため純関数としてここに持つ。
+    """
+    pos_a: dict[str, int] = {}
+    for i, s in enumerate(a):
+        pos_a.setdefault(s, i)
+    pos_b: dict[str, int] = {}
+    for i, s in enumerate(b):
+        pos_b.setdefault(s, i)
+    common = sorted(pos_a.keys() & pos_b.keys(), key=lambda s: pos_a[s])
+    if len(common) < 2:
+        return 0.5
+    agree = total = 0
+    for i in range(len(common)):
+        for j in range(i + 1, len(common)):
+            total += 1
+            if pos_b[common[i]] < pos_b[common[j]]:
+                agree += 1
+    return agree / total
+
+
+def rank_tied_new(
+    old_id: str,
+    candidates: list[str],
+    old_seq: tuple[str, ...],
+    new_seqs: dict[str, tuple[str, ...]],
+    used_new: set[str],
+) -> list[str]:
+    """confidence 完全同点の新 family 候補の優先順 (同点証拠階層の比較器)。
+
+    docs/design/orientation.md §3 — 適用は同点候補に限る (非同点の選択は
+    呼び出し側が confidence で決めており、本比較器は一切関与しない):
+      1. 向きの一致度 (往路↔往路 が 往路↔復路 に勝つ)
+      2. 名称類似 (弱い事前 — 系統番号入替での交差改称を防ぐ)
+      3. 未使用の新 family を優先 (説明の最大化 — 同点の範囲でのみ
+         「新設」を減らす)
+      4. 辞書順 (決定性の確保のみ)
+    段階1間引きとページ割付の両方がこの1つの比較器を共有する。
+    """
+    import difflib
+
+    def key(nid: str):
+        seq_score = round(sequence_agreement(old_seq, new_seqs.get(nid, ())), 4)
+        name_score = round(
+            difflib.SequenceMatcher(None, old_id, nid).ratio(), 4)
+        return (-seq_score, -name_score, nid in used_new, nid)
+
+    return sorted(candidates, key=key)
+
+
 def _components_of(edge_list: list[MatchEdge]) -> list[dict]:
     """(名称+内容) エッジ列の連結成分。{old, new, content(エッジ列)} の list。"""
     parent: dict[str, str] = {}
@@ -233,6 +289,8 @@ def classify_family_components(
     old_f2g: dict[str, str],
     new_f2g: dict[str, str],
     max_groups: int,
+    old_seqs: dict[str, tuple[str, ...]] | None = None,
+    new_seqs: dict[str, tuple[str, ...]] | None = None,
 ) -> tuple[list[dict], list[MatchEdge]]:
     """受理エッジの連結成分を分類し、大きすぎる成分を段階的に降格する。
 
@@ -242,12 +300,17 @@ def classify_family_components(
     成分の関与 route_group 数が max_groups を超えたときの降格は2段階
     (破滅回避、route_identity_review.md §3.3.1):
     1. **best-match 骨格への間引き**: 各旧 family の最良内容エッジ
-       (confidence 最大、同点は新 family 名の辞書順) だけを残して再分解。
+       (confidence 最大、**同点は同点証拠階層** — 向きの一致度→名称類似→
+       未使用優先→辞書順、docs/design/orientation.md §3) だけを残して再分解。
        コリドー共有による連鎖 (実例: 朝日町 宮崎境線↔市振線) を断ち、
-       明白な対応 (類似度 1.0 等) を巻き添えにしない
+       明白な対応 (類似度 1.0 等) を巻き添えにしない。旧タイブレーク
+       (辞書順のみ) は連続運行対 (京都のラケット) で旧2 family を同一の
+       新 family に吸わせ、片割れを偽の新設に落としていた (2026-07-28 改訂)
     2. それでも上限を超える部分成分は内容エッジを METHOD_CANDIDATE に全降格
        (ページ統合も RENAMED 系イベントもせず、相互参照の注記だけが残る)
     """
+    old_seqs = old_seqs or {}
+    new_seqs = new_seqs or {}
 
     def group_count(m: dict) -> int:
         groups = {old_f2g.get(f, f) for f in m["old"]} | {
@@ -266,10 +329,25 @@ def classify_family_components(
         if group_count(m) <= max_groups:
             accepted.append(m)
             continue
-        # 段階1: best-match 骨格に間引いて再分解
+        # 段階1: best-match 骨格に間引いて再分解。confidence 同点は
+        # 同点証拠階層 (rank_tied_new) で破る。非同点の選択は従来と同一
+        by_old: dict[str, list[MatchEdge]] = {}
+        for e in m["content"]:
+            by_old.setdefault(e.old_id, []).append(e)
         best: dict[str, MatchEdge] = {}
-        for e in sorted(m["content"], key=lambda e: (-e.confidence, e.new_id)):
-            best.setdefault(e.old_id, e)
+        used_new: set[str] = set()
+        for old_id in sorted(
+            by_old, key=lambda f: (-max(e.confidence for e in by_old[f]), f)
+        ):
+            es = by_old[old_id]
+            mx = max(e.confidence for e in es)
+            tied = sorted({e.new_id for e in es if e.confidence == mx})
+            pick = rank_tied_new(
+                old_id, tied, old_seqs.get(old_id, ()), new_seqs, used_new
+            )[0]
+            best[old_id] = next(
+                e for e in es if e.confidence == mx and e.new_id == pick)
+            used_new.add(pick)
         kept = set((e.old_id, e.new_id) for e in best.values())
         demoted_edges |= {
             (e.old_id, e.new_id) for e in m["content"]

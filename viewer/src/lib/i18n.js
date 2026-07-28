@@ -188,6 +188,8 @@ const DICT = {
     selfcheck_ok: "違反なし (曜日別便数と④時刻表の列数は全路線・全区分で一致)",
     selfcheck_line: (h, t) => `ヘッダ ${h}便 / ④時刻表 ${t}便 — 不一致`,
     selfcheck_mixed: "(混成世界 — ヘッダは「のべ」・④は対応整列のため、差は設計上の既知差)",
+    selfcheck_counterpart: (kind, names) =>
+      `${kind}扱いだが完全一致級の対応相手の痕跡がある (${names}) — 世代間対応の取りこぼしの疑い`,
     cell_same_content: "内容同一 — 運行日の変更",
     cell_flow: "便対応で接続 — 時刻等の変更として説明",
     cell_dates_more: (n) => `ほか (全${n}日)`,
@@ -389,6 +391,8 @@ const DICT = {
     selfcheck_ok: "No violations (per-day counts match timetable columns for every route and day type)",
     selfcheck_line: (h, t) => `header ${h} / timetable ${t} — mismatch`,
     selfcheck_mixed: "(mixed worlds — header shows gross totals while the timetable is aligned by pairing; known by design)",
+    selfcheck_counterpart: (kind, names) =>
+      `flagged ${kind} yet exact-match counterparts exist (${names}) — likely a missed correspondence`,
     cell_same_content: "same content — operating dates changed",
     cell_flow: "linked by trip matching — explained as time changes",
     cell_dates_more: (n) => `and more (${n} days total)`,

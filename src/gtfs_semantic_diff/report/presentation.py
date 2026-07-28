@@ -1095,6 +1095,22 @@ class _Builder:
                     similar.append({"name": name, "similarity": conf})
             similar = similar[:3]
 
+        # 対応の取りこぼしの煙感知器 (orientation.md §4): 新設ページに旧名称や
+        # 完全一致級 (類似度1.0) の候補が付くのは自己矛盾 — family 対応が
+        # 前身を取り逃がしている (京都 20系・西系で実際に起きたクラス)。
+        # 廃止側も対称に検知する
+        if summary["level1"]:
+            exact = [c["name"] for c in similar if c["similarity"] >= 1.0]
+            kind = summary["level1"]["kind"]
+            if (kind == "added" and (former_names or exact)) or (
+                    kind == "removed" and exact):
+                self.self_check.append({
+                    "check": "level1_with_counterpart",
+                    "route_group": group, "kind": kind,
+                    "former_names": list(former_names),
+                    "exact_candidates": exact,
+                })
+
         return {
             "route_group": group,
             "families": sorted({t.family for t in old_trips + new_trips}),

@@ -205,3 +205,107 @@ def test_pattern_cluster_separates_dissimilar(tmp_path, config):
     # 自己比較なので全エンティティが完全対応
     stats = identity_stats(result)
     assert stats["pattern_cluster"]["match_rate_old"] == 1.0
+
+
+# --- 同点証拠階層 (orientation.md §3、2026-07-28) ---
+
+
+def _edge(old, new, conf):
+    from gtfs_semantic_diff.model import MatchEdge
+    from gtfs_semantic_diff.model.matchgraph import ENTITY_ROUTE_FAMILY
+
+    return MatchEdge(entity_type=ENTITY_ROUTE_FAMILY, old_id=old, new_id=new,
+                     confidence=conf, method="stops_translated")
+
+
+def test_sequence_agreement_orientation():
+    from gtfs_semantic_diff.identity.route_family import sequence_agreement
+
+    fwd = ("A", "B", "C", "D")
+    assert sequence_agreement(fwd, fwd) == 1.0
+    assert sequence_agreement(fwd, tuple(reversed(fwd))) == 0.0
+    assert sequence_agreement(fwd, ("X", "Y")) == 0.5  # 共通2停未満は中立
+
+
+def test_rank_tied_new_orientation_wins():
+    """層2: 集合が同一でも、向き (系列の順序) が一致する候補が勝つ。
+
+    ラケット (往路/復路が別 family) の類似度1.0同点を正しく割る。"""
+    from gtfs_semantic_diff.identity.route_family import rank_tied_new
+
+    fwd = ("A", "B", "C", "D")
+    rev = tuple(reversed(fwd))
+    ranked = rank_tied_new("旧往路", ["新復路", "新往路"], fwd,
+                           {"新往路": fwd, "新復路": rev}, set())
+    assert ranked[0] == "新往路"
+
+
+def test_rank_tied_new_name_layer():
+    """層3: 向きで割れないとき、名称類似が交差改称を防ぐ。"""
+    from gtfs_semantic_diff.identity.route_family import rank_tied_new
+
+    seq = ("A", "B", "C")
+    ranked = rank_tied_new("西３Ｄ復路", ["特西４Ｄ復路新", "西３Ｄ復路新"], seq,
+                          {"特西４Ｄ復路新": seq, "西３Ｄ復路新": seq}, set())
+    assert ranked[0] == "西３Ｄ復路新"
+
+
+def test_rank_tied_new_prefers_unused():
+    """層4: 向きも名称も同点なら、未使用の新 family を優先 (説明の最大化)。"""
+    from gtfs_semantic_diff.identity.route_family import rank_tied_new
+
+    ranked = rank_tied_new("X", ["N1", "N2"], (), {}, {"N1"})
+    assert ranked[0] == "N2"
+    # 未使用がなければ辞書順 (決定性)
+    ranked = rank_tied_new("X", ["N1", "N2"], (), {}, {"N1", "N2"})
+    assert ranked[0] == "N1"
+
+
+def test_component_pruning_tie_splits_racket_pair():
+    """段階1間引き: 類似度1.0×4 の 2×2 (ラケット対) は向きで 1:1+1:1 に割れる。
+
+    旧タイブレーク (辞書順) は旧2 family を同一の新 family に吸わせ、
+    片割れを偽の新設に落としていた (京都 西系の実例)。"""
+    from gtfs_semantic_diff.identity.route_family import (
+        classify_family_components)
+
+    fwd = ("A", "B", "C", "D")
+    rev = tuple(reversed(fwd))
+    edges = [
+        _edge("旧往路", "新往路", 1.0), _edge("旧往路", "新復路", 1.0),
+        _edge("旧復路", "新往路", 1.0), _edge("旧復路", "新復路", 1.0),
+    ]
+    # 各 family を別 group にして max_groups=1 で間引きを強制発動
+    f2g = {f: f for f in ("旧往路", "旧復路", "新往路", "新復路")}
+    comps, _ = classify_family_components(
+        edges, f2g, f2g, max_groups=1,
+        old_seqs={"旧往路": fwd, "旧復路": rev},
+        new_seqs={"新往路": fwd, "新復路": rev},
+    )
+    shapes = sorted((tuple(c["old"]), tuple(c["new"]), c["shape"]) for c in comps)
+    assert shapes == [
+        (("旧往路",), ("新往路",), "renamed"),
+        (("旧復路",), ("新復路",), "renamed"),
+    ]
+
+
+def test_page_maps_tie_rescues_unmatched_new(tmp_path, config):
+    """ページ割付: 同点タイで旧2 family が同一ページに吸われない。"""
+    from gtfs_semantic_diff.identity import IdentityResult
+    from gtfs_semantic_diff.identity.builder import page_family_maps
+    from gtfs_semantic_diff.model import MatchGraph
+
+    fwd = ("A", "B", "C", "D")
+    rev = tuple(reversed(fwd))
+    ident = IdentityResult(
+        old_family_to_group={"旧往路": "旧往路", "旧復路": "旧復路"},
+        new_family_to_group={"新往路": "新往路", "新復路": "新復路"},
+        old_family_seq={"旧往路": fwd, "旧復路": rev},
+        new_family_seq={"新往路": fwd, "新復路": rev},
+        graph=MatchGraph(edges=[
+            _edge("旧往路", "新往路", 1.0), _edge("旧往路", "新復路", 1.0),
+            _edge("旧復路", "新往路", 1.0), _edge("旧復路", "新復路", 1.0),
+        ]),
+    )
+    old_map, _ = page_family_maps(ident)
+    assert old_map == {"旧往路": "新往路", "旧復路": "新復路"}

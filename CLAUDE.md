@@ -38,6 +38,10 @@ M8 (trip matching v2): 便対応は内容主導のコスト最小割当 (ID は�
 M9 (route identity v2): family 世代間対応も内容主導 (停留所翻訳+集合 Jaccard、
 N:M 成分 → RENAMED/MERGED/SPLIT/RESTRUCTURED、ページは新世代背骨+旧名称注記、
 lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
+2026-07-28: confidence 完全同点のタイブレークを同点証拠階層 (向き→名称類似→
+未使用優先→辞書順) に統一 — docs/design/orientation.md。京都のラケット
+(連続運行対) の偽新設を解消、朝日町・名古屋等は同点0件で出力不変。
+京都レビューの残課題 G2〜G4 は docs/verification/kyoto_review.md。
 M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特定日」の実態は
 83%が規則的な曜日指定運行)、運行日ゼロは inactive、特定日の内訳 (置き換え/追加)
 を第1部に表示 — docs/design/day_types.md。2026-07-26: calendar_dates 列挙にも

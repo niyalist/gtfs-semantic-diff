@@ -181,9 +181,16 @@
         <ul>
           {#each presentation.self_check as c}
             <li>
-              <strong>▲ {c.route_group}</strong> / {dayName(c.day_type, $lang)}:
-              {tt("selfcheck_line", c.header.join("→"), c.timetable.join("→"))}
-              {#if c.mixed}<span class="meta">{tt("selfcheck_mixed")}</span>{/if}
+              {#if c.check === "level1_with_counterpart"}
+                <strong>▲ {c.route_group}</strong>:
+                {tt("selfcheck_counterpart",
+                    c.kind === "added" ? tt("chip_new") : tt("chip_removed"),
+                    [...(c.former_names ?? []), ...(c.exact_candidates ?? [])].join("、"))}
+              {:else}
+                <strong>▲ {c.route_group}</strong> / {dayName(c.day_type, $lang)}:
+                {tt("selfcheck_line", c.header.join("→"), c.timetable.join("→"))}
+                {#if c.mixed}<span class="meta">{tt("selfcheck_mixed")}</span>{/if}
+              {/if}
             </li>
           {/each}
         </ul>
