@@ -113,11 +113,16 @@
                   <td></td>
                 {:else}
                   {@const c = cls(mo.y, mo.m, d)}
+                  <!-- 塗り・枠は td でなく内側の固定幅ボックス (.d) に付ける。
+                       border-collapse の表で td に枠を引くと隣接セルとの辺の
+                       解決で欠けて逆L字になる (2026-07-29 実地レビュー) -->
                   <td class={c}>
-                    {#if c === "old"}<s>{d}</s>
-                    {:else if c === "new"}<u>{d}</u>
-                    {:else}{d}{/if}
-                  </td><!-- oldout は枠線のみ (取り消しなし = 上書きではない) -->
+                    <span class="d">
+                      {#if c === "old"}<s>{d}</s>
+                      {:else if c === "new"}<u>{d}</u>
+                      {:else}{d}{/if}
+                    </span>
+                  </td>
                 {/if}
               {/each}
             </tr>
@@ -159,21 +164,24 @@
     padding: 0 0.12rem; text-align: center;
   }
   .cal-month td {
-    font-size: 0.62rem; text-align: center; padding: 0.05rem 0.12rem;
+    font-size: 0.62rem; text-align: center; padding: 0.05rem 0.04rem;
     font-variant-numeric: tabular-nums; line-height: 1.35;
-    border: 1px solid transparent;
+  }
+  /* 日付ボックス: 固定幅・角丸。塗り/枠はここに付くので必ず四辺が閉じる */
+  .cal-month .d, .chip {
+    display: inline-block; min-width: 1.55em; padding: 0 0.08em;
+    border: 1px solid transparent; border-radius: 2px;
+    box-sizing: border-box; text-align: center;
   }
   /* 両方 = 塗りつぶし (継続)。色は補強 — 形の区別は素の数字 vs 取消/下線 */
-  td.both, .chip.both { background: #1a4f8b; color: #fff; border-radius: 2px; }
-  /* 旧のみ = 取り消し線 (この日はなくなった)。④の廃止と同じ語彙 */
-  td.old, .chip.old { background: #e2e2e2; color: #444; border-radius: 2px; }
+  td.both .d, .chip.both { background: #1a4f8b; color: #fff; }
+  /* 旧のみ = 取り消し線 (上書きで消えた日)。④の廃止と同じ語彙 */
+  td.old .d, .chip.old { background: #e2e2e2; color: #444; }
   /* 新のみ = 下線 (新たな運行日)。④の新設と同じ語彙 */
-  td.new, .chip.new { background: #0b6e4f; color: #fff; border-radius: 2px; }
+  td.new .d, .chip.new { background: #0b6e4f; color: #fff; }
   /* 旧世代のみが記録する日 (新世代データの範囲外) = 枠線のみ。
      取り消し線を付けない = 「上書きで消えた」ではないことの記号区別 */
-  td.oldout, .chip.oldout {
-    border: 1px solid #8a929e; color: #444; border-radius: 2px;
-  }
+  td.oldout .d, .chip.oldout { border-color: #8a929e; color: #444; }
   .cal-legend { margin: 0.15rem 0 0.2rem; font-size: 0.72rem; color: var(--fg-soft); }
   .chip { display: inline-block; padding: 0 0.3em; font-size: 0.62rem; }
 </style>
