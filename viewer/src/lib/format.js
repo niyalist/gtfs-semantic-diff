@@ -130,13 +130,23 @@ export function countText(tt, d) {
 
 // PI-3 (ui_quality.md S2): 日付ラン表示の一元実装。runs はサーバー側
 // date_runs_year_split の出力 ([[a,b],…] — 年境のみ分割済み)。
-// total を渡すと「(全N日)」を付ける
-export function runsText(runs, more, total, lang) {
+// total を渡すと「(全N日)」を付ける。
+// withYear: 先頭のランと年が変わったランに年を前置 (2026-07-29 — 特定日の
+// 列挙は年まで示す。ランは年境分割済みなので1ラン1年が保証される)
+export function runsText(runs, more, total, lang, { withYear = false } = {}) {
   const md = (s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
   const dash = lang === "en" ? "–" : "〜";
-  let out = (runs ?? [])
-    .map(([a, b]) => (a === b ? md(a) : `${md(a)}${dash}${md(b)}`))
-    .join(lang === "en" ? ", " : "、");
+  let prevYear = null;
+  const parts = (runs ?? []).map(([a, b]) => {
+    let head = md(a);
+    if (withYear) {
+      const y = a.slice(0, 4);
+      if (y !== prevYear) head = `${+y}/${head}`;
+      prevYear = y;
+    }
+    return a === b ? head : `${head}${dash}${md(b)}`;
+  });
+  let out = parts.join(lang === "en" ? ", " : "、");
   if (more) out += lang === "en" ? ` +${more}` : ` ほか${more}区間`;
   if (total != null) out += ` (${lang === "en" ? `${total} days` : `全${total}日`})`;
   return out;

@@ -1,6 +1,11 @@
 <script>
   import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
   import { countText, runsText } from "../lib/format.js";
+  import DateCalendar from "./DateCalendar.svelte";
+
+  // 特定日の運行日がこの日数以上ならカレンダー描画に切り替える
+  // (2026-07-29 ユーザー仕様「10日以上くらい」。列挙はカレンダーがあれば不要)
+  const CAL_MIN_DAYS = 10;
   import LevSummary from "./LevSummary.svelte";
   import BandMatrix from "./BandMatrix.svelte";
   import DiffTimetable from "./DiffTimetable.svelte";
@@ -53,7 +58,14 @@
       const r = formatDateRuns(m[`dates_${side}`] ?? [], $lang);
       return r.text + (r.more ? ($lang === "en" ? ` +${r.more}` : ` ほか${r.more}区間`) : "");
     }
-    return runsText(runs, m[`runs_${side}_more`], total, $lang);
+    return runsText(runs, m[`runs_${side}_more`], total, $lang, { withYear: true });
+  }
+  // カレンダー描画: 日数が閾値以上で、かつランが全区間そろっている
+  // (more>0 の旧版バンドルは列挙にフォールバック)
+  function calMode(m) {
+    if (!m || !m.runs_old && !m.runs_new) return false;
+    if (m.runs_old_more || m.runs_new_more) return false;
+    return Math.max(m.dates_old_total || 0, m.dates_new_total || 0) >= CAL_MIN_DAYS;
   }
   // SD3 改: 「特定日」タブの具体日付 (新旧同一なら1行に畳む)。
   // 同一判定は cap 前の全日付を代表する runs+total で行う (ui_quality.md B1 —
@@ -70,7 +82,8 @@
     if (runs) {
       // PI-3: サーバー側で全日付から圧縮したラン (cap 後圧縮の誤誘導なし)
       return tt("fo_special_rundates",
-                runsText(runs, sd[`runs_${side}_more`], null, $lang), total, 0);
+                runsText(runs, sd[`runs_${side}_more`], null, $lang,
+                         { withYear: true }), total, 0);
     }
     // 旧版バンドル互換 (schema_version 0)
     const r = formatDateRuns(sd[side], $lang);
@@ -204,43 +217,79 @@
       </div>
     {/if}
 
-    <!-- SD5b: 複数世界セルのタブでは、そのセルの運行日と対応の性質を示す -->
+    <!-- SD5b: 複数世界セルのタブでは、そのセルの運行日と対応の性質を示す。
+         日数が CAL_MIN_DAYS 以上ならコンパクトカレンダー (列挙は出さない) -->
     {#if cellMeta}
-      <p class="special-dates">
-        {#if cellMeta.dates_old_total}
-          {tt("old_gen")}: {cellDates(cellMeta, "old")}
-        {/if}
-        {#if cellMeta.dates_old_total && cellMeta.dates_new_total}&nbsp;→&nbsp;{/if}
-        {#if cellMeta.dates_new_total}
-          {tt("new_gen")}: {cellDates(cellMeta, "new")}
-        {/if}
-        {#if cellMeta.signal === "content"}({tt("cell_same_content")}){/if}
-        {#if cellMeta.signal === "flow"}({tt("cell_flow")}){/if}
-        {#if cellMeta.mixed_old || cellMeta.mixed_new}
-          <br>{tt("cell_mixed")}
-          {#if (cellMeta.shared_dates_old ?? []).length || (cellMeta.shared_dates_new ?? []).length}
-            {tt("cell_mixed_shared",
-                [...new Set([...(cellMeta.shared_dates_old ?? []), ...(cellMeta.shared_dates_new ?? [])])]
-                  .map((s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`).join("、"))}
+      <div class="special-dates">
+        <p class="sd-line">
+          {#if calMode(cellMeta)}
+            {#if cellMeta.dates_old_total}
+              {tt("old_gen")}: {tt("total_days", cellMeta.dates_old_total)}
+            {/if}
+            {#if cellMeta.dates_old_total && cellMeta.dates_new_total}&nbsp;→&nbsp;{/if}
+            {#if cellMeta.dates_new_total}
+              {tt("new_gen")}: {tt("total_days", cellMeta.dates_new_total)}
+            {/if}
+          {:else}
+            {#if cellMeta.dates_old_total}
+              {tt("old_gen")}: {cellDates(cellMeta, "old")}
+            {/if}
+            {#if cellMeta.dates_old_total && cellMeta.dates_new_total}&nbsp;→&nbsp;{/if}
+            {#if cellMeta.dates_new_total}
+              {tt("new_gen")}: {cellDates(cellMeta, "new")}
+            {/if}
           {/if}
+          {#if cellMeta.signal === "content"}({tt("cell_same_content")}){/if}
+          {#if cellMeta.signal === "flow"}({tt("cell_flow")}){/if}
+          {#if cellMeta.mixed_old || cellMeta.mixed_new}
+            <br>{tt("cell_mixed")}
+            {#if (cellMeta.shared_dates_old ?? []).length || (cellMeta.shared_dates_new ?? []).length}
+              {tt("cell_mixed_shared",
+                  [...new Set([...(cellMeta.shared_dates_old ?? []), ...(cellMeta.shared_dates_new ?? [])])]
+                    .map((s) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`).join("、"))}
+            {/if}
+          {/if}
+        </p>
+        {#if calMode(cellMeta)}
+          <DateCalendar oldRuns={cellMeta.runs_old ?? []} newRuns={cellMeta.runs_new ?? []} />
         {/if}
-      </p>
+      </div>
     {/if}
 
-    <!-- SD3 改: 「特定日」タブでは、その場でどの日付を指すのかを解説する -->
+    <!-- SD3 改: 「特定日」タブでは、その場でどの日付を指すのかを解説する。
+         日数が CAL_MIN_DAYS 以上ならカレンダー (セル注記と同じ規則) -->
     {#if selectedDay === "irregular" && page.special_dates && !cellMeta}
-      <p class="special-dates">
-        {#if sameSpecial}
-          {tt("rp_special_dates", specialRun(page.special_dates.new.length ? "new" : "old"))}
-        {:else}
-          {#if page.special_dates.old_total}
-            {tt("old_gen")}: {specialRun("old")}{page.special_dates.new_total ? " / " : ""}
+      {@const sd = page.special_dates}
+      {@const sdCal = calMode({
+        runs_old: sd.runs_old, runs_new: sd.runs_new,
+        runs_old_more: sd.runs_old_more, runs_new_more: sd.runs_new_more,
+        dates_old_total: sd.old_total, dates_new_total: sd.new_total,
+      })}
+      <div class="special-dates">
+        <p class="sd-line">
+          {#if sdCal}
+            {#if sd.old_total}
+              {tt("old_gen")}: {tt("total_days", sd.old_total)}
+            {/if}
+            {#if sd.old_total && sd.new_total}&nbsp;→&nbsp;{/if}
+            {#if sd.new_total}
+              {tt("new_gen")}: {tt("total_days", sd.new_total)}
+            {/if}
+          {:else if sameSpecial}
+            {tt("rp_special_dates", specialRun(sd.new.length ? "new" : "old"))}
+          {:else}
+            {#if sd.old_total}
+              {tt("old_gen")}: {specialRun("old")}{sd.new_total ? " / " : ""}
+            {/if}
+            {#if sd.new_total}
+              {tt("new_gen")}: {specialRun("new")}
+            {/if}
           {/if}
-          {#if page.special_dates.new_total}
-            {tt("new_gen")}: {specialRun("new")}
-          {/if}
+        </p>
+        {#if sdCal}
+          <DateCalendar oldRuns={sd.runs_old ?? []} newRuns={sd.runs_new ?? []} />
         {/if}
-      </p>
+      </div>
     {/if}
 
     <!-- ③ 時間帯別本数 -->
@@ -275,6 +324,7 @@
     padding: 0.2rem 0.6rem;
     border-left: 3px solid var(--fg-soft);
   }
+  .special-dates .sd-line { margin: 0 0 0.15rem; }
   .axis-grid {
     display: grid;
     grid-template-columns: max-content 1fr; /* ラベル列幅は最長ラベルで全行共有 */

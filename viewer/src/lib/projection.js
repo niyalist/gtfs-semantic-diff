@@ -22,9 +22,9 @@ export function projectPresentation(pres, language = "ja") {
     for (const [day, m] of Object.entries(p.day_cells ?? {})) {
       const parts = [];
       if (m.dates_old_total)
-        parts.push(`${tt("old_gen")}: ${runsText(m.runs_old, m.runs_old_more, m.dates_old_total, language)}`);
+        parts.push(`${tt("old_gen")}: ${runsText(m.runs_old, m.runs_old_more, m.dates_old_total, language, { withYear: true })}`);
       if (m.dates_new_total)
-        parts.push(`${tt("new_gen")}: ${runsText(m.runs_new, m.runs_new_more, m.dates_new_total, language)}`);
+        parts.push(`${tt("new_gen")}: ${runsText(m.runs_new, m.runs_new_more, m.dates_new_total, language, { withYear: true })}`);
       lines.push(
         `P3 ${p.route_group} [${dayName(day, language)}] ${parts.join(" → ")} (${m.signal})`
       );

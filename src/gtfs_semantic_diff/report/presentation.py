@@ -45,12 +45,13 @@ _DAILY_INDEX = DAY_ORDER.index("daily")
 _DUP = "__dup_world__"
 
 
-def date_runs_year_split(dates, max_runs: int):
+def date_runs_year_split(dates, max_runs: int | None):
     """YYYYMMDD 昇順リスト → 連続日ラン [[a,b],…]。
 
     連続していれば月を跨いでも繋げるが、**年境 (12/31|1/1) では必ず分割**する
     (2026-07-25 ユーザー指定 — 「3/1〜10/31」は1本、「12/30〜1/3」は
-    「12/30〜12/31」「1/1〜1/3」)。戻り値: (runs[:max_runs], あふれたラン数)。"""
+    「12/30〜12/31」「1/1〜1/3」)。戻り値: (runs[:max_runs], あふれたラン数)。
+    max_runs=None はキャップなし (全区間。カレンダー描画用 — 2026-07-29)。"""
     import datetime as _dt
 
     def d(t):
@@ -68,6 +69,8 @@ def date_runs_year_split(dates, max_runs: int):
         start = prev = t
     if start is not None:
         runs.append([start, prev])
+    if max_runs is None:
+        return runs, 0
     return runs[:max_runs], max(0, len(runs) - max_runs)
 
 
@@ -717,10 +720,11 @@ class _Builder:
                     ck = (od, nd)
                     rank = {"content": 3, "dates": 2, "flow": 1}.get(sg, 0)
                     if ck not in cell_meta or rank > cell_meta[ck]["_rank"]:
-                        runs_max = self.config.get(
-                            "report", "note_runs_max", default=8)
-                        ro, ro_more = date_runs_year_split(od, runs_max)
-                        rn, rn_more = date_runs_year_split(nd, runs_max)
+                        # 2026-07-29: ランはキャップなしの全区間。長い列挙は
+                        # ビューアがカレンダー描画に切り替えるため「ほかN区間」
+                        # で切らない (ラン数は日数で有界・JSON 影響は軽微)
+                        ro, ro_more = date_runs_year_split(od, None)
+                        rn, rn_more = date_runs_year_split(nd, None)
                         by_id_o = self.wc.old.by_id()
                         by_id_n = self.wc.new.by_id()
                         mo = [by_id_o[w] for w in

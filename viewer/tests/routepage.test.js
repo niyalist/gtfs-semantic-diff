@@ -12,12 +12,17 @@ describe("RoutePage 曜日タブ (SD5b セル)", () => {
       page: shinguPage(), index: "3.1", open: true,
     });
     const note = () => container.querySelector(".special-dates").textContent;
-    // 初期タブ = 毎日① (春夏)
-    expect(note()).toContain("3/1〜10/31 (全245日)");
-    // 毎日② へ切替 → 秋冬の日付 (年境分割) に変わること
+    const firstMonth = () =>
+      container.querySelector(".cal-month caption").textContent;
+    // 初期タブ = 毎日① (春夏)。245日 ≥ 10日なのでカレンダーモード
+    // (2026-07-29 仕様: 列挙の代わりに全日数+カレンダー)
+    expect(note()).toContain("全245日");
+    expect(firstMonth()).toBe("2025年3月");
+    // 毎日② へ切替 → 秋冬 (120日・11月始まり) に変わること
     await fireEvent.click(getByRole("tab", { name: /毎日②/ }));
-    expect(note()).toContain("11/1〜12/31、1/1〜2/28 (全120日)");
-    expect(note()).not.toContain("3/1〜10/31");
+    expect(note()).toContain("全120日");
+    expect(note()).not.toContain("全245日");
+    expect(firstMonth()).toBe("2025年11月");
   });
 
   test("mixed セルは折りたたみヘッダも「のべ」 (立川 A2 回帰)", () => {

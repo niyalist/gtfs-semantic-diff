@@ -72,16 +72,16 @@ def build_bundle(
         from .presentation import date_runs_year_split
 
         list_max = config.get("report", "special_dates_list_max", default=30)
-        runs_max = config.get("report", "note_runs_max", default=8)
         for p in presentation["route_pages"]:
             o = special_old.get(p["route_group"], [])
             n = special_new.get(p["route_group"], [])
             if o or n:
                 # PI-3: ラン圧縮はサーバー側で全日付から (cap 後圧縮は
                 # 「3/1〜3/30 ほか215」型の誤誘導になる — ui_quality.md A4)。
-                # 日付リストは互換のため cap 付きで残す
-                ro, ro_more = date_runs_year_split(o, runs_max)
-                rn, rn_more = date_runs_year_split(n, runs_max)
+                # 2026-07-29: ランはキャップなし (長い列挙はビューアが
+                # カレンダー描画)。日付リストは互換のため cap 付きで残す
+                ro, ro_more = date_runs_year_split(o, None)
+                rn, rn_more = date_runs_year_split(n, None)
                 p["special_dates"] = {
                     "old": o[:list_max], "new": n[:list_max],
                     "old_total": len(o), "new_total": len(n),
