@@ -2,13 +2,20 @@
   // 特定日運行日のコンパクトカレンダー (2026-07-29 ユーザー仕様)。
   // 月ごとに日曜始まり 7列×5-6行、横に最大6ヶ月で折返し。対象の全日付を含む
   // (「ほかN区間」の省略はしない)。1つのカレンダーに旧/新の両方を塗り、
-  // 旧のみ=取り消し線・新のみ=下線・両方=塗りつぶし — ④時刻表の差分表示と
-  // 同じ記号語彙 (取り消し=なくなる/下線=新設) を第1チャネルに、色は補強
-  // (色弱原則)。
+  // ④時刻表の差分表示と同じ記号語彙 (取り消し=なくなる/下線=新設) を
+  // 第1チャネルに、色は補強 (色弱原則)。
+  //
+  // 期間 (2026-07-29 追補): genWindows (新旧世代の有効期間) があれば、
+  // **旧世代の開始月から新世代の終了月まで**を必ず描く (重なりが無くても・
+  // 期間が空いても全体)。旧の日付は、新世代データの範囲内なら
+  // 「上書きされて消えた日 (取り消し線)」、範囲外なら「旧世代のみが記録する
+  // 日 (枠線のみ — 上書きではない)」に区別する — データ全体を通じた
+  // 特定日の意味が1枚で読めるようにする。
   import { lang, t } from "../lib/i18n.js";
 
   export let oldRuns = [];
   export let newRuns = [];
+  export let genWindows = null; // {old: [YYYYMMDD, YYYYMMDD], new: [...]} | null
 
   $: tt = $t;
   const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -41,14 +48,23 @@
     for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
     return weeks;
   }
-  $: months = (() => {
+  // 描画範囲: 世代の有効期間があればその合併 (旧の開始〜新の終了)、
+  // なければ運行日の範囲 (旧版バンドル互換)
+  $: span = (() => {
+    const o = genWindows?.old;
+    const n = genWindows?.new;
+    const starts = [o?.[0], n?.[0]].filter(Boolean).sort();
+    const ends = [o?.[1], n?.[1]].filter(Boolean).sort();
+    if (starts.length && ends.length) return [starts[0], ends[ends.length - 1]];
     const all = [...oldSet, ...newSet].sort();
-    if (!all.length) return [];
-    let y = +all[0].slice(0, 4);
-    let m = +all[0].slice(4, 6);
-    const last = all[all.length - 1];
-    const endY = +last.slice(0, 4);
-    const endM = +last.slice(4, 6);
+    return all.length ? [all[0], all[all.length - 1]] : null;
+  })();
+  $: months = (() => {
+    if (!span) return [];
+    let y = +span[0].slice(0, 4);
+    let m = +span[0].slice(4, 6);
+    const endY = +span[1].slice(0, 4);
+    const endM = +span[1].slice(4, 6);
     const out = [];
     while (y < endY || (y === endY && m <= endM)) {
       out.push({ y, m, weeks: buildWeeks(y, m) });
@@ -61,11 +77,24 @@
     const k = `${y}${String(m).padStart(2, "0")}${String(d).padStart(2, "0")}`;
     const o = oldSet.has(k);
     const n = newSet.has(k);
-    return o && n ? "both" : o ? "old" : n ? "new" : "";
+    if (o && n) return "both";
+    if (n) return "new";
+    if (o) {
+      // 新世代データの範囲内の旧日付 = 新データで上書きされて消えた日。
+      // 範囲外なら旧世代だけが記録する日 (上書きではない)。
+      // 窓情報がない旧版バンドルでは区別できないので従来どおり「消えた日」
+      const nw = genWindows?.new;
+      if (!nw?.[0] || !nw?.[1]) return "old";
+      return k >= nw[0] && k <= nw[1] ? "old" : "oldout";
+    }
+    return "";
   }
   function monthLabel(y, m) {
     return $lang === "en" ? `${MONTHS_EN[m - 1]} ${y}` : `${y}年${m}月`;
   }
+  const clsOf = (k) => cls(+k.slice(0, 4), +k.slice(4, 6), +k.slice(6, 8));
+  $: hasOldOut = [...oldSet].some((k) => clsOf(k) === "oldout") && genWindows;
+  $: hasOldIn = [...oldSet].some((k) => clsOf(k) === "old");
 </script>
 
 <div class="scroll-x">
@@ -88,7 +117,7 @@
                     {#if c === "old"}<s>{d}</s>
                     {:else if c === "new"}<u>{d}</u>
                     {:else}{d}{/if}
-                  </td>
+                  </td><!-- oldout は枠線のみ (取り消しなし = 上書きではない) -->
                 {/if}
               {/each}
             </tr>
@@ -101,13 +130,14 @@
 <p class="cal-legend">
   {#if oldSet.size && newSet.size}
     <span class="chip both">15</span> {tt("cal_both")}
-    ／ <span class="chip old"><s>15</s></span> {tt("cal_old_only")}
+    {#if hasOldIn}／ <span class="chip old"><s>15</s></span> {tt("cal_old_only")}{/if}
     ／ <span class="chip new"><u>15</u></span> {tt("cal_new_only")}
   {:else if oldSet.size}
-    <span class="chip old"><s>15</s></span> {tt("cal_old_side")}
+    {#if hasOldIn}<span class="chip old"><s>15</s></span> {tt("cal_old_side")}{/if}
   {:else}
     <span class="chip new"><u>15</u></span> {tt("cal_new_side")}
   {/if}
+  {#if hasOldOut}／ <span class="chip oldout">15</span> {tt("cal_old_outside")}{/if}
 </p>
 
 <style>
@@ -139,6 +169,11 @@
   td.old, .chip.old { background: #e2e2e2; color: #444; border-radius: 2px; }
   /* 新のみ = 下線 (新たな運行日)。④の新設と同じ語彙 */
   td.new, .chip.new { background: #0b6e4f; color: #fff; border-radius: 2px; }
+  /* 旧世代のみが記録する日 (新世代データの範囲外) = 枠線のみ。
+     取り消し線を付けない = 「上書きで消えた」ではないことの記号区別 */
+  td.oldout, .chip.oldout {
+    border: 1px solid #8a929e; color: #444; border-radius: 2px;
+  }
   .cal-legend { margin: 0.15rem 0 0.2rem; font-size: 0.72rem; color: var(--fg-soft); }
   .chip { display: inline-block; padding: 0 0.3em; font-size: 0.62rem; }
 </style>

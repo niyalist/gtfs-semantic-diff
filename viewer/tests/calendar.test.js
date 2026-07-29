@@ -73,3 +73,53 @@ describe("DateCalendar", () => {
     expect(tds[0].querySelector("s")).not.toBeNull();
   });
 });
+
+describe("DateCalendar 世代期間 (2026-07-29 追補)", () => {
+  // 北海道中央バス型: 旧 2025-12-01〜2026-05-31 / 新 2026-04-01〜2026-09-30
+  const genWindows = { old: ["20251201", "20260531"],
+                       new: ["20260401", "20260930"] };
+  const oldRuns = [["20260110", "20260111"],  // 新の範囲外 (1月)
+                   ["20260426", "20260426"],  // 新にもある
+                   ["20260503", "20260503"]]; // 新の範囲内だが新に無い
+  const newRuns = [["20260426", "20260426"], ["20260606", "20260607"]];
+
+  test("旧世代の開始月から新世代の終了月まで全期間を描く", () => {
+    const { container } = render(DateCalendar, { oldRuns, newRuns, genWindows });
+    const caps = [...container.querySelectorAll(".cal-month caption")]
+      .map((c) => c.textContent);
+    expect(caps.length).toBe(10); // 2025年12月〜2026年9月
+    expect(caps[0]).toBe("2025年12月");
+    expect(caps[caps.length - 1]).toBe("2026年9月");
+  });
+
+  test("上書きで消えた日=取り消し線 / 新の範囲外の旧記録=枠線のみ", () => {
+    const { container } = render(DateCalendar, { oldRuns, newRuns, genWindows });
+    const byDate = {};
+    container.querySelectorAll(".cal-month").forEach((mo) => {
+      const month = mo.querySelector("caption").textContent;
+      mo.querySelectorAll("td").forEach((td) => {
+        const d = td.textContent.trim();
+        if (d) byDate[`${month}-${d}`] = td;
+      });
+    });
+    // 1/10 は新世代データの範囲外 → oldout (枠線、取り消しなし)
+    expect(byDate["2026年1月-10"].className).toContain("oldout");
+    expect(byDate["2026年1月-10"].querySelector("s")).toBeNull();
+    // 5/3 は新の範囲内で新に無い → 上書きで消えた (取り消し線)
+    expect(byDate["2026年5月-3"].className).toContain("old");
+    expect(byDate["2026年5月-3"].querySelector("s")).not.toBeNull();
+    // 4/26 は両方
+    expect(byDate["2026年4月-26"].className).toContain("both");
+    // 凡例に「範囲外」の説明が出る
+    expect(container.querySelector(".cal-legend").textContent)
+      .toContain("範囲外");
+  });
+
+  test("genWindows なし (旧版バンドル) は運行日範囲で描画", () => {
+    const { container } = render(DateCalendar, { oldRuns, newRuns });
+    const caps = [...container.querySelectorAll(".cal-month caption")]
+      .map((c) => c.textContent);
+    expect(caps[0]).toBe("2026年1月");
+    expect(caps[caps.length - 1]).toBe("2026年6月");
+  });
+});

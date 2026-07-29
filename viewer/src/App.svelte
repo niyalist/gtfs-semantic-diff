@@ -37,6 +37,22 @@
      stopChanges.platform.length)
   );
   $: feedOverview = presentation?.feed_overview;
+  // 特定日カレンダーの描画範囲 (2026-07-29): 各世代の有効期間
+  // (feed_info、無ければ実データ窓)。旧の開始〜新の終了の全期間を描くために
+  // RoutePage へ渡す
+  $: genWindows = (() => {
+    const b = feedOverview?.data_briefs;
+    if (!b) return null;
+    const win = (x) => {
+      if (!x) return null;
+      const s = x.feed_start_date || x.window?.[0];
+      const e = x.feed_end_date || x.window?.[1];
+      return s && e ? [s, e] : null;
+    };
+    const o = win(b.old);
+    const n = win(b.new);
+    return o || n ? { old: o, new: n } : null;
+  })();
   const catalog = bundle?.catalog ?? {};
   $: catName = (type) => catalog[type]?.[$lang === "ja" ? "ja" : "en"] ?? type;
 
@@ -134,7 +150,7 @@
     </h2>
     {#key expandState}
       {#each changedPages as p, i (p.route_group)}
-        <RoutePage page={p} index={`3.${i + 1}`} open={isOpen(p)} />
+        <RoutePage page={p} index={`3.${i + 1}`} open={isOpen(p)} {genWindows} />
       {/each}
       {#if unchangedPages.length}
         <details class="chapter">
@@ -145,7 +161,7 @@
           <div class="body">
             <p class="note">{tt("unchanged_note")}</p>
             {#each unchangedPages as p, i (p.route_group)}
-              <RoutePage page={p} index={`3.${changedPages.length + i + 1}`} open={false} />
+              <RoutePage page={p} index={`3.${changedPages.length + i + 1}`} open={false} {genWindows} />
             {/each}
           </div>
         </details>

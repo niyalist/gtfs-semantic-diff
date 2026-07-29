@@ -14,6 +14,9 @@
   export let page;
   export let index; // 章番号
   export let open = false;
+  // 特定日カレンダーの描画範囲 (新旧世代の有効期間、App が bundle の
+  // data_briefs から算出)。旧版バンドルでは null → 運行日範囲で描画
+  export let genWindows = null;
 
   let showMap = false;
   $: tt = $t;
@@ -251,7 +254,7 @@
           {/if}
         </p>
         {#if calMode(cellMeta)}
-          <DateCalendar oldRuns={cellMeta.runs_old ?? []} newRuns={cellMeta.runs_new ?? []} />
+          <DateCalendar oldRuns={cellMeta.runs_old ?? []} newRuns={cellMeta.runs_new ?? []} {genWindows} />
         {/if}
       </div>
     {/if}
@@ -287,7 +290,7 @@
           {/if}
         </p>
         {#if sdCal}
-          <DateCalendar oldRuns={sd.runs_old ?? []} newRuns={sd.runs_new ?? []} />
+          <DateCalendar oldRuns={sd.runs_old ?? []} newRuns={sd.runs_new ?? []} {genWindows} />
         {/if}
       </div>
     {/if}
