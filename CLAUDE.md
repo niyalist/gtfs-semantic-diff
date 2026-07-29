@@ -80,6 +80,13 @@ RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)�
 表示不変条件 PI を presentation.md に凍結、self_check を検証モードに常設、
 vitest (viewer/tests、16件) を build_viewer.sh に組込、bundle.schema_version=1
 導入。監査と仕組み: docs/design/ui_quality.md。**
+**SP トラック (時刻表分冊ポリシー) 2026-07-30 完了: 掛川大須賀線レビュー発端。
+可読性基準を1つ (avg_gap ≤ 1.5) に統合 — 「1枚で基準内ならそのまま / 超えたら
+全分冊が基準内に収まる範囲で枚数最少 + 実行不能領域 (経路変更対の列内在飛び)
+は no-harm 併合」。旧二重基準 (トリガー1.5/併合0.5) の両方向の崖 (小バケット
+砕きすぎ・大バケット束ねすぎ) を解消。config は sheet_max_gap_per_trip に統合。
+10フィード 3,171 バケット検証、変化47署名すべて想定類型、錨 (徳島川内循環・
+立道) 不変 — docs/design/sheet_policy.md。注記方式 (1枚+経由記号) は不採用。**
 国際化 (I トラック): I1 (国際検証データセット) 完了、I2〜I5 (入力 UI 英語化、
 JSON 言語中立化、地図タイル、README.en) は未着手。Web 公開 (W3) は全フェーズ
 完了・運用中。

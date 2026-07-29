@@ -322,27 +322,48 @@ def _specs_alignments(specs: list[tuple]) -> int:
     return sum((s[1] is not None) + (s[2] is not None) for s in specs)
 
 
-def group_sheets(spec_groups: list[list[tuple]], max_cost: float) -> list[list[tuple]]:
-    """分冊 (sheet) の目的駆動グループ化。
+def group_sheets(spec_groups: list[list[tuple]], max_avg_gap: float) -> list[list[tuple]]:
+    """分冊 (sheet) のグループ化: 全分冊が可読性基準内に収まる範囲で枚数最少。
 
-    系統ごとの列候補グループを初期状態に、「併合したときの飛びの増加量 / 便数」
-    が最小の対から、増加量が max_cost 以下の間だけ貪欲に併合する (決定的)。
-    区間便 (包含) は増加量 0 で自然に併合され、経由違い・循環の逆回りは
-    増加量が大きく分冊のまま残る。
+    系統ごとの列候補グループを初期状態に、**併合後の表が基準内
+    (飛びラン/列 ≤ max_avg_gap) に収まる対**のうち「飛びの増加量 / 便数」が
+    最小のものから貪欲に併合する (決定的)。併合できる対がなくなったら終了 —
+    残った各分冊は「これ以上束ねると基準を超える」状態になる。
+    区間便 (包含) は増加量 0 で最優先に併合され、経由違い・循環の逆回りは
+    併合すると基準を超えるため分冊のまま残る。
+    可読性の定義はトリガー (1枚判定) と同一の1つだけ (sheet_policy.md §2)。
+
+    経路変更対 (新旧で停車列が違う便) は列の内部に飛びを持ち、どう分割しても
+    基準内に収められないことがある。この実行不能領域では **no-harm 併合**:
+    両群とも基準超のときに限り、併合後が両者の最大以下 (悪化しない) なら
+    束ねる — 分けても読みやすくならない群を無意味に砕かない。基準内の
+    分冊が基準超の群に汚染されることはない (片側だけ基準超の併合は
+    併合後が基準内に収まる場合しか許されない)。
     """
     groups = [list(g) for g in spec_groups if g]
     costs = [_specs_gap(g) for g in groups]
+
+    def avg(k: int) -> float:
+        return costs[k] / max(_specs_alignments(groups[k]), 1)
+
     while len(groups) > 1:
         best = None  # (cost, i, j, merged_gap)
         for i in range(len(groups)):
             for j in range(i + 1, len(groups)):
-                merged_gap = _specs_gap(groups[i] + groups[j])
+                merged = groups[i] + groups[j]
+                merged_gap = _specs_gap(merged)
+                merged_avg = merged_gap / max(_specs_alignments(merged), 1)
+                if merged_avg > max_avg_gap and not (
+                    avg(i) > max_avg_gap and avg(j) > max_avg_gap
+                    and merged_avg <= max(avg(i), avg(j))
+                ):
+                    continue
                 cost = (merged_gap - costs[i] - costs[j]) / (
                     len(groups[i]) + len(groups[j])
                 )
                 if best is None or cost < best[0]:
                     best = (cost, i, j, merged_gap)
-        if best is None or best[0] > max_cost:
+        if best is None:
             break
         _, i, j, merged_gap = best
         groups[i] = groups[i] + groups[j]
@@ -1911,11 +1932,8 @@ class _Builder:
                 dg_label[(g["id"], leg)] = label
 
         tables = []
-        max_sheet_cost = self.config.get(
-            "presentation", "sheet_merge_max_gap_per_trip", default=0.5
-        )
-        split_trigger = self.config.get(
-            "presentation", "sheet_split_trigger_gap_per_trip", default=1.5
+        max_avg_gap = self.config.get(
+            "presentation", "sheet_max_gap_per_trip", default=1.5
         )
         for (dg, leg, day) in sorted(buckets, key=lambda k: (k[0], k[1], day_sort_key(k[2]))):
             bucket = buckets[(dg, leg, day)]
@@ -1942,18 +1960,19 @@ class _Builder:
                 # 旧側の便がすべて別バケットへ対応付いた場合など。空テーブルは出さない
                 continue
 
-            # 分冊 (R17 改) はトップダウン: まず1枚で作り、読みにくい
-            # (飛び/便 > トリガー閾値) ときだけパターン単位から束ね直す。
-            # 読める表は分冊しない = 現状うまくいっている表は一切変わらない
+            # 分冊 (R17 改2) はトップダウン: まず1枚で作り、可読性基準
+            # (飛び/列 ≤ max_avg_gap) 内ならそのまま = 読める表は分冊しない。
+            # 超えたときだけパターン単位から、全分冊が同じ基準内に収まる
+            # 範囲で枚数最少になるよう束ね直す (sheet_policy.md)
             all_specs = [s for k in sorted(specs_by_pattern)
                          for s in specs_by_pattern[k]]
             avg_gap = _specs_gap(all_specs) / max(_specs_alignments(all_specs), 1)
-            if avg_gap <= split_trigger:
+            if avg_gap <= max_avg_gap:
                 sheets = [all_specs]
             else:
                 sheets = group_sheets(
                     [specs_by_pattern[k] for k in sorted(specs_by_pattern)],
-                    max_sheet_cost,
+                    max_avg_gap,
                 )
             sheets.sort(key=lambda sp: (-len(sp), _sheet_sort_key(sp)))
             labels = sheet_labels(sheets)

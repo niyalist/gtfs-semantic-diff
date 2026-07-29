@@ -460,6 +460,76 @@ def test_sheet_split_loop_variants(tmp_path, config):
     assert labels == ["市役所前先回り", "病院前先回り"]
 
 
+def test_sheet_merges_to_fewest_readable(tmp_path, config):
+    # R17 改2 (sheet_policy.md、掛川大須賀線型): 1枚では基準超だが、
+    # 近縁の2パターンを束ねれば基準内に収まる場合、旧規則 (併合上限
+    # 飛び増加/便 0.5) では3枚に砕けていたところを2枚 (最少可読) にする。
+    # A系: 中間の1停留所だけ違う2パターン (併合で各列1飛び = 基準内だが
+    # 増加/便は 0.5 超)。C系: 全域で互い違いに挟まるため誰とも束ねられない
+    feed = {
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,駅前,36.0000,139.0000\n"
+            "X,本町,36.0050,139.0050\n"
+            "A1,里山,36.0100,139.0100\n"
+            "Y,中央,36.0150,139.0150\n"
+            "A2,南台,36.0200,139.0200\n"
+            "B2,北台,36.0200,139.0250\n"
+            "Z,橋詰,36.0250,139.0250\n"
+            "S9,終点,36.0300,139.0300\n"
+            "C1,間一,36.0020,139.0020\nC2,間二,36.0120,139.0120\n"
+            "C3,間三,36.0220,139.0220\nC4,間四,36.0270,139.0270\n"
+        ),
+        "trips.txt": (
+            "route_id,service_id,trip_id\n"
+            "R1,WD,A1a\nR1,WD,A1b\nR1,WD,A2a\nR1,WD,A2b\nR1,WD,C1a\n"
+        ),
+        "stop_times.txt": _stop_times([
+            ("A1a", 7, ["S1", "X", "A1", "Y", "A2", "Z", "S9"]),
+            ("A1b", 8, ["S1", "X", "A1", "Y", "A2", "Z", "S9"]),
+            ("A2a", 9, ["S1", "X", "A1", "Y", "B2", "Z", "S9"]),
+            ("A2b", 10, ["S1", "X", "A1", "Y", "B2", "Z", "S9"]),
+            ("C1a", 11, ["S1", "C1", "X", "C2", "Y", "C3", "Z", "C4", "S9"]),
+        ]),
+    }
+    model, _ = build(tmp_path, config, old_files=feed, new_files=feed)
+    page = page_of(model, "1")
+    tables = page["timetables"]
+    assert len(tables) == 2  # 旧規則では3枚 (A系2枚 + C系1枚) だった
+    by_cols = sorted(tables, key=lambda tb: -len(tb["columns"]))
+    assert len(by_cols[0]["columns"]) == 4  # A系4便が1枚に束なる
+    assert len(by_cols[1]["columns"]) == 1  # C系は束ねると基準超 → 単独のまま
+
+
+def test_group_sheets_no_harm_merge_when_unreadable():
+    # R17 改2 (sheet_policy.md §3): 経路変更対 (旧列と新列で停車列が違う) は
+    # 列の内部に飛びを持ち、どう分割しても基準内に収められない。
+    # その場合、両群とも基準超なら「悪化しない併合」で束ねる (無意味に
+    # 砕かない)。一方、基準内の群は基準超の群と併合されない (汚染防止)
+    from types import SimpleNamespace as T
+    from gtfs_semantic_diff.report.presentation import group_sheets
+
+    def trip(tid, seq):
+        return T(trip_id=tid, base_seq=tuple(seq))
+
+    # 群1・群2: 新旧の停車列が互い違い (各列2飛び = 固有に avg 2.0)。
+    # 同じ形なので併合しても悪化しない (avg 2.0 のまま)
+    def gappy(prefix):
+        return [("modified",
+                 trip(f"{prefix}o{i}", ["S1", "X1", "S2", "X2", "S3"]),
+                 trip(f"{prefix}n{i}", ["S1", "Y1", "S2", "Y2", "S3"]))
+                for i in range(2)]
+
+    g1, g2 = gappy("a"), gappy("b")
+    # 群3: 別経路の綺麗な群 (avg 0)
+    g3 = [("unchanged", trip(f"co{i}", ["S1", "Z1", "Z2", "S3"]),
+           trip(f"cn{i}", ["S1", "Z1", "Z2", "S3"])) for i in range(4)]
+
+    sheets = group_sheets([g1, g2, g3], 1.5)
+    sizes = sorted(len(s) for s in sheets)
+    assert sizes == [4, 4]  # 基準超の2群は束なり、綺麗な群は separate のまま
+
+
 def test_sheet_keeps_contained_short_turn(tmp_path, config):
     # 区間便 (包含) は飛びを増やさない → 分冊されず1枚のまま
     feed = dict(SIX_STOPS)
