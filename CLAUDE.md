@@ -46,9 +46,12 @@ lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
 self_check が京都・立川含め全零 (跨ぎ対のないフィードはバイト不変)。
 同日 G3 (PI-7): 循環でも向きを双方向と同一判定器で分け、①③④・地図が
 「◯◯ 循環（△△先回り）」の同一分割を共有 (京都 205/206/208/北8・桑名で確認、
-片回り循環は不変)。同日 G4: 第3部の路線順を自然順 (NFKC+数字トークン数値比較、意味解釈なし) に。
-成分隣接は保留。残: STM group46 の mixed×双子畳み残余1件
-(docs/verification/kyoto_review.md)。
+片回り循環は不変)。同日 G4: 第3部の路線順を自然順に、旧名称の帰属を割付基準に (関連注記で
+N:M 保持)。京都レビュー対応は roadmap §G として完了。**STM/swiss 型
+(シーズン同居) への設計 — 世界分解の精密化 (案X)・agency/シーズンの比較
+スコープ (ワンクッション) — は検討記録を docs/design/scope_and_seasons.md に
+残して 2026-07-29 に先送り (roadmap §SC1〜SC3)。STM group46 の self_check
+2件はその露頭として既知。**
 M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特定日」の実態は
 83%が規則的な曜日指定運行)、運行日ゼロは inactive、特定日の内訳 (置き換え/追加)
 を第1部に表示 — docs/design/day_types.md。2026-07-26: calendar_dates 列挙にも
