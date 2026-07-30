@@ -10,5 +10,3 @@ infra/cdk.out/
 infra/outputs.json
 docs/ops/local_env.md
 
-# 論文原稿 (独立リポジトリ、公開リポジトリには含めない)
-paper/
