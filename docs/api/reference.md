@@ -27,8 +27,9 @@ gtfs-semantic-diff compare [OLD.zip NEW.zip] [オプション]
 | `--html-lite FILE` | 軽量 HTML (Web と同じ core バンドル) |
 | `--html-dir DIR` | アプリ+データ分割出力 (http 配信向け) |
 
-計画中 (RD4a): `--digest FILE.md` / `--digest-json FILE.json` /
-`--digest-route <ページ名>` — docs/design/ai_interface.md。
+| `--digest FILE.md` | AI 向けダイジェスト Markdown (L0。§7) |
+| `--digest-json FILE.json` | 同 JSON |
+| `--digest-route <ページ名>` | ダイジェストを1路線の詳細 (L1) に切り替える |
 
 ### fetch — 世代の取得確認
 
@@ -249,4 +250,54 @@ L0 の生差分全件。`{"rawdiffs": [{...}]}`。各要素:
 
 `/r/{pair}/v/{版}.json` はビューア (同版の HTML) 専用。schema_version を
 持つが、ビューアと同時にしか更新されない前提の内部形式。プログラム・AI は
-events.json / rawdiffs.json / digest (計画中) を使うこと。
+events.json / rawdiffs.json / digest を使うこと。
+
+## 7. digest (AI 向け要約層、digest_schema 1)
+
+CLI `--digest` (Markdown) / `--digest-json` (JSON)。同じ素材から生成され、
+**便数・件数は人間向けレポートと一致する** (数値一致不変条件)。
+設計: docs/design/ai_interface.md。
+
+### L0 (フィード全体、`scope: "feed"`)
+
+Markdown の見出し構造は固定 (スキーマの一部):
+`# 差分ダイジェスト` → `## 1. 比較の概要` / `## 2. 全体集計` /
+`## 3. イベント種別` / `## 4. 停留所の変化` / `## 5. 路線別の変化`
+(路線ごとに `###`) / `## 6. 路線に紐付かない変化` / `## 7. 検証 (説明台帳)`。
+ID は含まない (名前と数値のみ)。Markdown は変化のある路線を
+`digest_routes_max` (config、既定200) 件まで載せ、超過は件数を明示して
+JSON 版へ誘導する。
+
+JSON のトップキー:
+
+```jsonc
+{
+  "digest_schema": 1, "scope": "feed",
+  "meta": { /* tool/version/generated_at/feed (uid等)/agency_names */ },
+  "data": { "old": {...}, "new": {...}, "comparison_scope": ...,
+            "service_days_note": ... },
+  "totals": { "trips_by_day": [...], "pages": N, "pages_changed": N,
+              "accounting": {...}, "lev1_trip_ratio": ... },
+  "events_by_type": [{"type","name_ja","category","count"}],
+  "stop_changes": { "renamed": [{"old","new","routes"}], "added": [...],
+                    "removed": [...], "relocated": [...] },
+  "routes": [{"name", "day_totals", "changes", "former_names"?}],
+  "routes_unchanged": N,
+  "non_route": { "meta_events": [...], "others": [...] },
+  "verification": { /* accounting + technical_id_churn +
+                       unexplained_residual + self_check */ }
+}
+```
+
+`routes[].changes` の kind 語彙 (人間向けの一言ダイジェストと共通):
+`route_added` / `route_removed` / `systems` / `reroute` / `trips` /
+`retime` / `retime_minor` / `notes_only`。
+
+### L1 (1路線の詳細、`scope: "route"`、`--digest-route <ページ名>`)
+
+変化のある便は1便1レコード (`status` = added / removed / retimed /
+rerouted、新旧の始発時刻、**trip_id 旧新**、変化した停留所数、rerouted は
+停車追加/削除数)。無変化・ID のみ変更の便は件数に畳む。
+`stop_pattern_changes` に停車列の変化 (追加/取りやめ停留所と影響便数)。
+時刻の全量マトリクスは含まない — 全量が要る場合は events.json /
+rawdiffs.json へ。

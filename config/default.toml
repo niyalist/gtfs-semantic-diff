@@ -38,6 +38,9 @@ note_runs_max = 8
 evidence_sample_max = 20
 # 検証モードの (ファイル, 差分種類) 毎のサンプル行数
 file_diff_sample_max = 100
+# AI 向けダイジェスト (RD4a): Markdown 版に載せる「変化のある路線」の上限。
+# 超過分は件数を明示して JSON 版へ誘導する (silent truncation はしない)
+digest_routes_max = 200
 
 [events.service_days]
 # SD5: SERVICE_DAYS_CHANGED の quantification に載せる日付リストの上限

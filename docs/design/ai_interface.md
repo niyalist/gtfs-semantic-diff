@@ -103,11 +103,16 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
 
 ## 6. マイルストーン
 
-- **RD4a: digest 出力** — `--digest` / `--digest-json` / `--digest-route`。
-  数値一致不変条件。スキーマを docs/api/reference.md に文書化 (X1 併合)。
-  DoD: 検証フィードで生成・数値一致の機械検査、**EXP2 の判定シート
-  (公式告知68項目) の突合が HTML を開かず digest だけで再現できること**
-  (ユースケース (b) の受け入れ基準。論文の実験にもなる)。
+- **RD4a: digest 出力** 【実装 2026-07-30 (report/digest.py)】 —
+  `--digest` / `--digest-json` / `--digest-route`。
+  数値一致不変条件は tests/test_digest.py で機械検査 (accounting 透過・
+  イベント件数合計・便数の feed_overview 一致・L0 に trip_id が現れない・
+  L1 の便の保存則)。スキーマは docs/api/reference.md §7 (X1 併合)。
+  目視: 掛川 (経由変更・時刻変更が L1 で trip_id 付きレコード化)、
+  永井 (2025-10-01 改正の運賃改定・ココルンシティ乗り入れ・表町一丁目改称が
+  L0 だけで判読可能)。残 DoD: **EXP2 の判定シート (公式告知68項目) の突合が
+  HTML を開かず digest だけで再現できること** (ユースケース (b) の
+  受け入れ基準。論文の実験にもなる)。
 - **RD4b: Web 並置** — `r/{pair}/v/{版}.digest.md|json` を RD2 と同じ棚に。
   URL を LLM に渡すだけで使える状態。
 - **RD4c: MCP サーバー** — §5 のツール群。コストガード設計込み。

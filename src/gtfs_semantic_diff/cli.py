@@ -164,6 +164,12 @@ def fetch(ctx: click.Context, org: str, feed: str, old_rid: str, new_rid: str, f
 @click.option("--html-dir", "html_dir_out", type=click.Path(), default=None,
               help="分割出力先ディレクトリ (index.html + data.json、RD1b)。"
                    "http サーバー経由で閲覧する (file:// では fetch 不可)")
+@click.option("--digest", "digest_out", type=click.Path(), default=None,
+              help="AI 向けダイジェスト Markdown の出力先 (RD4a、docs/api/)")
+@click.option("--digest-json", "digest_json_out", type=click.Path(), default=None,
+              help="AI 向けダイジェスト JSON の出力先")
+@click.option("--digest-route", "digest_route", default=None,
+              help="ダイジェストを1路線の詳細 (L1) にする (route_group ページ名)")
 @click.pass_context
 def compare(
     ctx: click.Context,
@@ -178,6 +184,9 @@ def compare(
     html_out: str | None,
     html_lite_out: str | None,
     html_dir_out: str | None,
+    digest_out: str | None,
+    digest_json_out: str | None,
+    digest_route: str | None,
 ) -> None:
     """2世代の GTFS を比較し ChangeEvent JSON / Markdown / HTML レポートを出力する。
 
@@ -256,6 +265,35 @@ def compare(
                     out_dir / "data.json", "./data.json", gzip_data=False,
                 )
                 console.print(f"HTML レポート (分割): [cyan]{out_dir}/[/cyan]")
+    if digest_out or digest_json_out:
+        from .report.bundle import build_bundle
+        from .report.digest import (
+            build_digest, build_route_digest,
+            render_digest_md, render_route_digest_md,
+        )
+
+        bundle = build_bundle(
+            old_snap, new_snap, config, event_set, rawdiffs, identity,
+            trip_delta, core=True,
+        )
+        if digest_route:
+            try:
+                dig = build_route_digest(bundle, digest_route)
+            except KeyError as e:
+                raise click.ClickException(str(e)) from e
+            md = render_route_digest_md(dig)
+        else:
+            dig = build_digest(bundle)
+            routes_max = config.get("report", "digest_routes_max", default=200)
+            md = render_digest_md(dig, routes_max=routes_max)
+        if digest_out:
+            Path(digest_out).write_text(md, encoding="utf-8")
+            console.print(f"ダイジェスト (Markdown): [cyan]{digest_out}[/cyan]")
+        if digest_json_out:
+            Path(digest_json_out).write_text(
+                json.dumps(dig, ensure_ascii=False, indent=1), encoding="utf-8"
+            )
+            console.print(f"ダイジェスト (JSON): [cyan]{digest_json_out}[/cyan]")
 
 
 @main.command()

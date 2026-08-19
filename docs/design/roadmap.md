@@ -367,8 +367,10 @@ config ゲート + 別途議論)。
   X1 を併合 — API 文書は docs/api/ (README=案内、reference=仕様)】
   3層 (L0 digest / L1 路線詳細 / L2 events+rawdiffs)、ID は階層で出し分け、
   数値一致不変条件 (digest の数値 = presentation/accounting)。
-  - **RD4a: digest 出力** — `--digest` / `--digest-json` / `--digest-route`。
-    DoD: 数値一致の機械検査 + EXP2 判定シート68項目が digest だけで再現
+  - **RD4a: digest 出力** 【実装 2026-07-30 — report/digest.py、
+    `--digest` / `--digest-json` / `--digest-route`、数値一致は test_digest で
+    機械検査、掛川・永井で目視 (改正3点セットが digest のみで判読可)。
+    残 DoD: EXP2 判定シート68項目の digest だけでの再現 (論文実験と併走)】
   - **RD4b: Web 並置** — `v/{版}.digest.md|json` を RD2 の棚に
   - **RD4c: MCP サーバー** — find/run/get ツール群。コストガード連動が先行条件
 

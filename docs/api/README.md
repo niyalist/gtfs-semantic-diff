@@ -35,7 +35,7 @@
 
 | 層 | 中身 | 向く用途 | 大きさの目安 |
 |---|---|---|---|
-| digest (計画中: RD4a) | 全体要約+路線毎の要約行。ID なし | 翻訳・告知・突合。LLM に最初に渡すもの | 数十〜数百 KB |
+| digest | 全体要約+路線毎の要約行。ID なし | 翻訳・告知・突合。LLM に最初に渡すもの | 数十〜数百 KB |
 | events.json | ChangeEvent 全件+証拠+説明台帳 | エラーチェック、プログラム連携。**安定インタフェース** | 〜数十 MB |
 | rawdiffs.json | 生差分の全件 (L0) | 残差の精査、完全な検証 | 〜数百 MB |
 
@@ -52,12 +52,15 @@ HTML レポート (ビューア) は人間の閲覧用で、その内部デー�
 # gtfs-data.jp から世代を取って比較 (zip を直接渡すこともできる)
 gtfs-semantic-diff compare --org nagai-unyu --feed Nagaibus \
     --old prev_2 --new prev_1 \
-    -o events.json --report report.md --html report.html
+    --digest digest.md -o events.json --html report.html
 ```
 
+- `digest.md` — AI 向けダイジェスト (LLM にそのまま渡せる要約。`--digest-json` で JSON)
 - `events.json` — 機械可読の全イベント+説明台帳
-- `report.md` — Markdown レポート (人間可読)
 - `report.html` — 自己完結ビューア (ブラウザで開く)
+
+1路線を深掘りするなら `--digest-route "路線名" --digest route.md`
+(変化した便の一覧が trip_id 付きで出る)。
 
 ローカルの zip 2つを比較するなら `compare old.zip new.zip` (古い方が先)。
 
@@ -107,7 +110,7 @@ curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世�
    `display_name_ja` / `display_name_en`)。
 2. 数値は `quantification` から取る (便数、率、日数など)。**文章を生成する
    側は数値を再計算しない** — 事実は必ず出力から引く。
-3. digest (RD4a 実装後) はこの手順を1ファイルに前処理したもの。
+3. digest (`--digest`) はこの手順を1ファイルに前処理したもの。まずこれを使う。
 
 ### 突合 (公式告知との照合)
 
@@ -118,7 +121,7 @@ curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世�
 
 ## AI に渡すときの推奨
 
-- まず概要 (digest ができるまでは report.md) を渡し、深掘りが要るときだけ
+- まず digest (`--digest out.md`) を渡し、深掘りが要るときだけ
   events.json の該当部分を渡す。events.json 全体は大規模フィードで
   数十 MB になるので、`type` や `subject` でフィルタしてから渡すこと。
 - イベント型の意味は [reference.md](reference.md) の型カタログを併せて
