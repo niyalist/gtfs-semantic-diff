@@ -53,6 +53,16 @@ def events_key(pair: str, version: str) -> str:
     return f"r/{pair}/v/{version}.events.json"
 
 
+def digest_md_key(pair: str, version: str) -> str:
+    """AI 向けダイジェスト Markdown (RD4b)。版と並置・不変。"""
+    return f"r/{pair}/v/{version}.digest.md"
+
+
+def digest_json_key(pair: str, version: str) -> str:
+    """AI 向けダイジェスト JSON (RD4b)。版と並置・不変。"""
+    return f"r/{pair}/v/{version}.digest.json"
+
+
 def rawdiffs_key(pair: str, version: str) -> str:
     """生データ DL: RawDiff 全件 JSON (RD2)。不変。"""
     return f"r/{pair}/v/{version}.rawdiffs.json"

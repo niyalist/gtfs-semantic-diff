@@ -26,7 +26,6 @@ gtfs-semantic-diff compare [OLD.zip NEW.zip] [オプション]
 | `--html FILE` | 自己完結 HTML (全量同梱、ローカル閲覧向け) |
 | `--html-lite FILE` | 軽量 HTML (Web と同じ core バンドル) |
 | `--html-dir DIR` | アプリ+データ分割出力 (http 配信向け) |
-
 | `--digest FILE.md` | AI 向けダイジェスト Markdown (L0。§7) |
 | `--digest-json FILE.json` | 同 JSON |
 | `--digest-route <ページ名>` | ダイジェストを1路線の詳細 (L1) に切り替える |
@@ -81,10 +80,12 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 | `/r/{pair}/v/{版}.json` | ビューア用データ (bundle。安定 IF ではない) |
 | `/r/{pair}/v/{版}.events.json` | ChangeEventSet 全件 (gzip 配信) |
 | `/r/{pair}/v/{版}.rawdiffs.json` | 生差分全件 (gzip 配信) |
+| `/r/{pair}/v/{版}.digest.md` | AI 向けダイジェスト Markdown (L0。§7) |
+| `/r/{pair}/v/{版}.digest.json` | 同 JSON |
 
 版は生成したツールの CalVer (例: 2026.7.30.1)。一度書かれた版は不変。
 ツール更新後の初アクセスで新しい版が lazy に追加される。
-計画中 (RD4b): `v/{版}.digest.md` / `.digest.json` の並置。
+digest は 2026.7.30.2 以降に生成された版に並置される (それ以前の版にはない)。
 
 ### 認証・制限
 

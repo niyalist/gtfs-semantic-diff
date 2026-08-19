@@ -371,7 +371,8 @@ config ゲート + 別途議論)。
     `--digest` / `--digest-json` / `--digest-route`、数値一致は test_digest で
     機械検査、掛川・永井で目視 (改正3点セットが digest のみで判読可)。
     EXP2 68項目の digest 再現も完了 (2026-07-30、62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)】
-  - **RD4b: Web 並置** — `v/{版}.digest.md|json` を RD2 の棚に
+  - **RD4b: Web 並置** 【実装 2026-07-30】 — `v/{版}.digest.md|json` を
+    RD2 の棚に (worker が同一 bundle から生成・immutable、アップロード由来も)
   - **RD4c: MCP サーバー** — find/run/get ツール群。コストガード連動が先行条件
 
 ## SD: 運行日モデルの精緻化 【承認 2026-07-23、設計: docs/design/service_days.md。

@@ -723,8 +723,11 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         keys = {
             "events": f"{prefix}/{job_id}.events.json",
             "rawdiffs": f"{prefix}/{job_id}.rawdiffs.json",
+            "digest_md": f"{prefix}/{job_id}.digest.md",
+            "digest_json": f"{prefix}/{job_id}.digest.json",
         }
         _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+        _put_digest(bundle, keys, config, cache=cache)
         _put_json_file(keys["events"], events_path, cache=cache)
         _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=cache)
         write_html_split(bundle, template, html_path, data_path,
@@ -738,8 +741,11 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     keys = {
         "events": versioning.events_key(job_id, version),
         "rawdiffs": versioning.rawdiffs_key(job_id, version),
+        "digest_md": versioning.digest_md_key(job_id, version),
+        "digest_json": versioning.digest_json_key(job_id, version),
     }
     _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+    _put_digest(bundle, keys, config, cache=immutable)
     _put_json_file(keys["events"], events_path, cache=immutable)
     _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=immutable)
     write_html_split(bundle, template, html_path, data_path,
@@ -749,11 +755,42 @@ def _run_compare(job_id: str, job_input: dict) -> str:
 
 def _bake_raw_urls(bundle: dict, keys: dict, events_bytes: int,
                    rawdiffs_bytes: int) -> None:
-    """検証モードの生データ DL リンク (RD2) を meta に焼き込む。"""
+    """検証モードの生データ DL リンク (RD2) を meta に焼き込む。
+
+    digest の URL (RD4b) も併記する (ビューアはキー参照なので additive に安全。
+    digest.json 側にも meta 経由で L2 へのポインタが入る)。"""
     bundle["meta"]["raw_urls"] = {
         "events": {"url": "/" + keys["events"], "bytes": events_bytes},
         "rawdiffs": {"url": "/" + keys["rawdiffs"], "bytes": rawdiffs_bytes},
+        "digest_md": {"url": "/" + keys["digest_md"]},
+        "digest_json": {"url": "/" + keys["digest_json"]},
     }
+
+
+def _put_digest(bundle: dict, keys: dict, config, cache: str) -> None:
+    """AI 向けダイジェスト (RD4b) を版と並置する。
+
+    数値一致不変条件 (ai_interface.md §2): 同じ bundle から生成するため
+    ビューアと同じ数値になる。小さいので gzip せず素で置く
+    (curl / LLM エージェントがそのまま読める)。"""
+    from gtfs_semantic_diff.report.digest import build_digest, render_digest_md
+
+    dig = build_digest(bundle)
+    md = render_digest_md(
+        dig,
+        routes_max=config.get("report", "digest_routes_max", default=200),
+        stops_max=config.get("report", "digest_stops_max", default=50),
+    )
+    s3.put_object(
+        Bucket=RESULTS_BUCKET, Key=keys["digest_md"],
+        Body=md.encode("utf-8"),
+        ContentType="text/markdown; charset=utf-8", CacheControl=cache,
+    )
+    s3.put_object(
+        Bucket=RESULTS_BUCKET, Key=keys["digest_json"],
+        Body=json.dumps(dig, ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json; charset=utf-8", CacheControl=cache,
+    )
 
 
 def _snapshot_label_parts(snapshot) -> tuple[str, str]:

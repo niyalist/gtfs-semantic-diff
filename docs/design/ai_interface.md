@@ -114,8 +114,10 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
   62項目完全再現・6項目部分 (根拠の一部が L2)・判定逆転 0 —
   docs/verification/RD4a_exp2_digest.md。§4 停留所リストの上限
   (digest_stops_max) はこの検証での実害 (SUWA 261件) を受けた追補。
-- **RD4b: Web 並置** — `r/{pair}/v/{版}.digest.md|json` を RD2 と同じ棚に。
-  URL を LLM に渡すだけで使える状態。
+- **RD4b: Web 並置** 【実装 2026-07-30】 — `r/{pair}/v/{版}.digest.md|json`
+  を RD2 と同じ棚に (Lambda worker が同じ bundle から生成 = 数値一致、
+  gzip なしの素置き、immutable。アップロード由来も並置)。meta.raw_urls に
+  digest の URL も焼き込み (additive)。URL を LLM に渡すだけで使える。
 - **RD4c: MCP サーバー** — §5 のツール群。コストガード設計込み。
 
 ## 7. 決定事項・棄却案

@@ -79,6 +79,7 @@ curl https://diff.gtfs.jp/api/jobs/<pair>
 
 # 3) 成果物 (版付き・不変)
 #    レポート:      https://diff.gtfs.jp/r/<pair>.html
+#    ダイジェスト:   https://diff.gtfs.jp/r/<pair>/v/<版>.digest.md (LLM にはまずこれ)
 #    イベント JSON: https://diff.gtfs.jp/r/<pair>/v/<版>.events.json
 #    生差分 JSON:   https://diff.gtfs.jp/r/<pair>/v/<版>.rawdiffs.json
 ```
