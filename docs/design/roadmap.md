@@ -363,7 +363,7 @@ config ゲート + 別途議論)。
   検証モードに DL リンク (URL+非圧縮サイズは meta.raw_urls に焼き込み)。
   アップロード由来も並置・削除は対。残 DoD: デプロイ後の本番確認。
 - **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。
-- **RD4: AI digest** 【設計 2026-07-30 (docs/design/ai_interface.md)、
+- **RD4: AI digest** 【設計 2026-08-19 (docs/design/ai_interface.md)、
   X1 を併合 — API 文書は docs/api/ (README=案内、reference=仕様)】
   3層 (L0 digest / L1 路線詳細 / L2 events+rawdiffs)、ID は階層で出し分け、
   数値一致不変条件 (digest の数値 = presentation/accounting)。
@@ -373,7 +373,7 @@ config ゲート + 別途議論)。
     EXP2 68項目の digest 再現も完了 (2026-07-30、62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)】
   - **RD4b: Web 並置** 【実装 2026-07-30】 — `v/{版}.digest.md|json` を
     RD2 の棚に (worker が同一 bundle から生成・immutable、アップロード由来も)
-  - **RD4c-0: API 体系の背骨** 【実装 2026-07-30 (2026.7.30.4〜5)、本番検証済み】 —
+  - **RD4c-0: API 体系の背骨** 【実装 2026-08-19 (版名 2026.7.30.4〜5 — 日付は誤記、実生成日は 8/19)、本番検証済み】 —
     routes.digest.json (L1 全路線+時間帯別本数+route_id 軽注記)、ペア台帳の
     マニフェスト化 (artifacts{})、フィード台帳 feeds/{org}__{feed}.json、
     latest エイリアス一般化、digest.md 深掘り節、RID 指定ジョブ投入、
@@ -381,14 +381,14 @@ config ゲート + 別途議論)。
   - **RD4c-1: MCP サーバー** — find/run/get + map 系点引き。薄いアダプタ原則。
     着手時に最新 MCP 仕様・SDK を確認。検証は EXP2 エージェント版 A/B
 
-## IM: ID 対応の提供 (identity mapping) 【承認 2026-07-30、設計: ai_interface.md §5.1】
+## IM: ID 対応の提供 (identity mapping) 【承認 2026-08-19、設計: ai_interface.md §5.1】
 
 identity 層 (内容主導の新旧同定) を製品面に昇格し、「差分を乗り越える」
 外部システム (乗客データの経年結合・shapes 等整備資産の引き継ぎ) の
 バックエンドにする。N:M を潰さない・confidence と証拠参照を必ず付ける・
 判断は消費側に残す。
 
-- **IM1: mapping.json** 【実装 2026-07-30 (2026.7.30.5)、検証:
+- **IM1: mapping.json** 【実装 2026-08-19 (版名 2026.7.30.5 — 日付は誤記)、検証:
   docs/verification/IM1_mapping.md】 — stops/routes/trips/day_types の対応表。
   CLI `--mapping`、Web 並置+latest エイリアス、合成テスト (改称・churn・N:M)。
   実装教訓: MatchGraph の仮説エッジをそのまま出すと偽対応が混入する —

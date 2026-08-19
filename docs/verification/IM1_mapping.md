@@ -1,6 +1,6 @@
 # IM1 検証: mapping.json (ID 対応表)
 
-2026-07-30。IM1 (docs/design/ai_interface.md §5.1、実装:
+2026-08-19。IM1 (docs/design/ai_interface.md §5.1、実装:
 src/gtfs_semantic_diff/report/mapping.py) の検証記録。
 
 ## 検証項目と結果

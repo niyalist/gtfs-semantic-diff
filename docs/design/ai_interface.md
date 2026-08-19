@@ -1,6 +1,6 @@
 # AI 向けインタフェース (RD4) — 設計
 
-2026-07-30 起案。roadmap RD4 (AI digest) の具体設計。X1 (機械向けインタフェース
+2026-08-19 起案。roadmap RD4 (AI digest) の具体設計。X1 (機械向けインタフェース
 文書化) を本トラックに併合する (成果物: docs/api/)。
 方針の原点は docs/design/report_delivery.md §4 (「事実は digest、文章化は外部
 LLM。ツール本体に LLM は入れない (設計原則4)。digest → MCP の順に育てる」)。
@@ -83,7 +83,7 @@ digest.md は日本語先行 (国内利用が第一級)。JSON はキー英語�
 type_id (英語 ID) + display_name_ja/en の対 (既存 event_types と同じ構造) で、
 I トラック (JSON 言語中立化) と矛盾しない。
 
-## 5. API 体系 (2026-07-30 全面見直し — 外部システムのバックエンド化)
+## 5. API 体系 (2026-08-19 全面見直し — 外部システムのバックエンド化)
 
 ID 対応 (mapping) の追加を機に体系を再点検した。結論: 「版付き静的成果物+
 薄い動的層」の骨格は維持。欠落していたのは以下で、これを体系の背骨にする。
@@ -158,18 +158,18 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
 
 ## 7. マイルストーン
 
-- **RD4a: digest 出力** 【実装 2026-07-30 (report/digest.py)】 —
+- **RD4a: digest 出力** 【実装 2026-08-19 (report/digest.py)】 —
   `--digest` / `--digest-json` / `--digest-route`。
   数値一致不変条件は tests/test_digest.py で機械検査 (accounting 透過・
   イベント件数合計・便数の feed_overview 一致・L0 に trip_id が現れない・
   L1 の便の保存則)。スキーマは docs/api/reference.md §7 (X1 併合)。
   目視: 掛川 (経由変更・時刻変更が L1 で trip_id 付きレコード化)、
   永井 (2025-10-01 改正の運賃改定・ココルンシティ乗り入れ・表町一丁目改称が
-  L0 だけで判読可能)。EXP2 の判定シート68項目の再現検証も完了 (2026-07-30):
+  L0 だけで判読可能)。EXP2 の判定シート68項目の再現検証も完了 (2026-08-19):
   62項目完全再現・6項目部分 (根拠の一部が L2)・判定逆転 0 —
   docs/verification/RD4a_exp2_digest.md。§4 停留所リストの上限
   (digest_stops_max) はこの検証での実害 (SUWA 261件) を受けた追補。
-- **RD4b: Web 並置** 【実装 2026-07-30】 — `r/{pair}/v/{版}.digest.md|json`
+- **RD4b: Web 並置** 【実装 2026-08-19】 — `r/{pair}/v/{版}.digest.md|json`
   を RD2 と同じ棚に (Lambda worker が同じ bundle から生成 = 数値一致、
   gzip なしの素置き、immutable。アップロード由来も並置)。meta.raw_urls に
   digest の URL も焼き込み (additive)。URL を LLM に渡すだけで使える。
@@ -178,11 +178,11 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
   (.html を置換するだけの規則)、index.json versions[] に digest キー、
   /llms.txt (サイト全体の機械向け案内) — 「結果 URL を AI に投げる」
   フローで digest に到達できる。
-- **RD4c-0: routes.digest.json + 台帳強化** 【実装 2026-07-30、本番検証済み】 —
+- **RD4c-0: routes.digest.json + 台帳強化** 【実装 2026-08-19、本番検証済み】 —
   L1 全路線束ね (時間帯別本数・route_id 軽注記込み)、ペア台帳の
   マニフェスト化、フィード台帳、latest エイリアス一般化、digest.md
   深掘り節、RID 投入 (既存実装の文書化)、docs 配信、CORS (§5)。
-- **IM1: mapping.json** 【実装 2026-07-30。検証: docs/verification/
+- **IM1: mapping.json** 【実装 2026-08-19。検証: docs/verification/
   IM1_mapping.md — 永井で公式発表と完全一致、朝日町で N:1 保持】 —
   identity 層の直列化 (§5.1)。**採択された対応のみ** (同名継続+
   STOP_RENAMED 採択対+M9 成分。MatchGraph の仮説エッジは棄却済み対応を

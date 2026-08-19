@@ -75,9 +75,9 @@ evidence/生差分は件数+サンプル、網羅性は accounting の数値が�
 RD1b (アプリ HTML + データ JSON gzip の分離配信、URL 体系不変・後方互換) 完了。
 名古屋 137MB→初期転送 ~4MB、永井 1.2MB。残: RD2 (検証モードに生データ DL)、
 RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)。
-RD4 は 2026-07-30 設計完了 (docs/design/ai_interface.md — 3層 L0 digest/
+RD4 は 2026-08-19 設計完了 (docs/design/ai_interface.md — 3層 L0 digest/
 L1 路線詳細/L2 events+rawdiffs、数値一致不変条件、digest→Web並置→MCP の順)。
-**RD4a 実装済み (同日)**: report/digest.py、compare `--digest/--digest-json/
+**RD4a 実装済み (同日 8/19)**: report/digest.py、compare `--digest/--digest-json/
 --digest-route`。数値一致は test_digest で機械検査。EXP2 68項目の digest 再現検証済み
 (62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)。
 RD4b (Web 並置)・RD4c-0 (API 体系の背骨 — routes.digest.json =

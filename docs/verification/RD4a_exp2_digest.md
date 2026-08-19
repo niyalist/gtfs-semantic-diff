@@ -1,6 +1,6 @@
 # RD4a 検証: EXP2 判定シート68項目の digest だけでの再現
 
-2026-07-30。RD4a (AI 向け digest) の残 DoD —
+2026-08-19。RD4a (AI 向け digest) の残 DoD —
 「EXP2 (docs/verification/EXP2_announcements.md、公式告知との突合 12フィード
 68項目) の判定が、HTML レポートを開かず **digest (L0+L1) だけで**再現できるか」
 の検証記録。
