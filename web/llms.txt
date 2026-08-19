@@ -18,11 +18,20 @@ HTML ではなく **AI 向けダイジェスト (Markdown)** を読んでくだ�
 2.全体集計 (便数・被覆率) / 3.イベント種別 / 4.停留所の変化 /
 5.路線別の変化 / 6.路線に紐付かない変化 (運賃等) / 7.検証 (説明台帳)。
 
-深掘りが必要なとき (版付き・不変 URL):
+深掘りが必要なとき (版付き・不変 URL。一覧は台帳の artifacts に):
 
-- 版台帳: `/r/{pair}/index.json` (versions[].digest_md 等)
+- ペア台帳 (マニフェスト): `/r/{pair}/index.json` — versions[].artifacts が
+  全成果物の URL を列挙します。URL 規則の暗記は不要です。
+- フィード台帳: `/feeds/{org}__{feed}.json` — このフィードで計算済みの
+  ペア一覧 (経年分析はここから)
+- 路線詳細 (全路線・変化便の trip_id 付きレコード+時間帯別本数):
+  `/r/{pair}.routes.digest.json` (最新版) / 版付きは台帳参照
+- ID 対応表 (stop_id / route_id / trip_id の旧新対応。経年結合の基盤):
+  `/r/{pair}.mapping.json` — N:M は配列のまま、confidence 付き
 - 全イベント+証拠: `/r/{pair}/v/{版}.events.json` (gzip 配信)
 - 生差分全件: `/r/{pair}/v/{版}.rawdiffs.json` (gzip 配信)
+
+完全な仕様: /docs/README.md (案内) と /docs/reference.md (リファレンス)
 
 原則: 数値・事実はこれらの出力からのみ引用し、再計算・推測補完をしないこと。
 ダイジェストが「ほか N 件」と省略を明示している場合、全量は JSON 版にあります。

@@ -57,6 +57,8 @@ Content-Type: application/json
 ```
 
 - uid は gtfs-data.jp の世代のフル UUID (`gtfs_file_uid`)。短縮形は不可。
+- uid の代わりに `"old_rid": "prev_1", "new_rid": "current"` でも可
+  (サーバーで uid に解決。rid は世代進行でずれるため URL の正準キーには uid を使う)。
 - `GET /api/jobs/{pair}` → `{"status": "running" | "succeeded" | "failed", ...}`
 - pair ID の形式: `{org}__{feed}__{old_uid先頭8桁}__{new_uid先頭8桁}`
 - zip アップロード由来の比較は `POST /api/uploads` (Web UI が使う経路)。
@@ -75,7 +77,7 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 | URL | 中身 |
 |---|---|
 | `/r/{pair}.html` | レポート入口 (常に最新版へ) |
-| `/r/{pair}.digest.md` / `.digest.json` | **最新版ダイジェストのエイリアス** (.html を .digest.md に変えるだけ) |
+| `/r/{pair}.digest.md` / `.digest.json` / `.routes.digest.json` / `.mapping.json` | **最新版エイリアス** (.html を差し替えるだけ) |
 | `/r/{pair}/index.json` | 版台帳 (どの版があるか、latest) |
 | `/r/{pair}/v/{版}.html` | 特定版のレポート |
 | `/r/{pair}/v/{版}.json` | ビューア用データ (bundle。安定 IF ではない) |
@@ -83,13 +85,19 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 | `/r/{pair}/v/{版}.rawdiffs.json` | 生差分全件 (gzip 配信) |
 | `/r/{pair}/v/{版}.digest.md` | AI 向けダイジェスト Markdown (L0。§7) |
 | `/r/{pair}/v/{版}.digest.json` | 同 JSON |
+| `/r/{pair}/v/{版}.routes.digest.json` | 全路線の L1 詳細 (gzip 配信。§7) |
+| `/r/{pair}/v/{版}.mapping.json` | ID 対応表 (gzip 配信。§8) |
+| `/feeds/{org}__{feed}.json` | フィード台帳 (計算済みペア一覧・経年の入口) |
 
 版は生成したツールの CalVer (例: 2026.7.30.1)。一度書かれた版は不変。
 ツール更新後の初アクセスで新しい版が lazy に追加される。
 digest は 2026.7.30.2 以降に生成された版に並置される (それ以前の版にはない)。
-発見導線 (2026.7.30.3〜): レポート HTML の `<head>` に digest への
-`link rel="alternate"`、index.json の versions[] に digest_md / digest_json、
-サイトルートに機械向け案内 `/llms.txt`。
+発見導線: レポート HTML の `<head>` に digest への `link rel="alternate"`、
+サイトルートに機械向け案内 `/llms.txt`、本ドキュメントは `/docs/` で配信。
+**index.json の versions[].artifacts が全成果物のマニフェスト**
+(成果物名 → url・gzip・schema) — URL 規則の暗記は不要。
+routes.digest / mapping / フィード台帳 / artifacts / CORS は 2026.7.30.4 以降の版から。
+成果物 GET には CORS (全オリジン許可) が付き、ブラウザアプリから直接 fetch できる。
 
 ### 認証・制限
 
@@ -303,6 +311,55 @@ JSON のトップキー:
 変化のある便は1便1レコード (`status` = added / removed / retimed /
 rerouted、新旧の始発時刻、**trip_id 旧新**、変化した停留所数、rerouted は
 停車追加/削除数)。無変化・ID のみ変更の便は件数に畳む。
-`stop_pattern_changes` に停車列の変化 (追加/取りやめ停留所と影響便数)。
+`stop_pattern_changes` に停車列の変化 (追加/取りやめ停留所と影響便数)、
+`time_bands` に③相当の時間帯別本数 (時間帯ビン × [旧,新]、方向・曜日別)、
+`route_ids` に構成 family の route_id 旧/新リスト (軽注記) を含む。
 時刻の全量マトリクスは含まない — 全量が要る場合は events.json /
 rawdiffs.json へ。
+
+### 全路線版 (`scope: "routes"`、`--digest-routes` / `v/{版}.routes.digest.json`)
+
+L1 を route_group 名キーの1オブジェクトに束ねたもの:
+`{"digest_schema": 1, "scope": "routes", "meta": {...}, "routes": {"<ページ名>": <L1>}}`。
+Web 配信は gzip。
+
+## 8. mapping.json (ID 対応表、mapping_schema 1)
+
+CLI `--mapping` / Web `v/{版}.mapping.json` (gzip)。identity 層
+(内容主導・決定的な新旧同定) の直列化で、**世代を跨いだ ID の結合キー**を
+提供する — 乗客データの経年分析、shapes 等整備資産の世代引き継ぎ、
+設定移行のバックエンド。
+
+```jsonc
+{
+  "mapping_schema": 1,
+  "meta": { "feed": {...}, "tool_version": "..." },
+  "counts": { "stops": N, "routes": N, "trips": N, "trips_by_relation": {...} },
+  "stops": [{
+    "relation": "renamed",            // continued/renamed/added/removed
+    "old": {"name": "市役所前",  "stop_ids": ["S2"]},   // GTFS stop_id 群 (乗り場単位)
+    "new": {"name": "表町一丁目", "stop_ids": ["S2"]},
+    "confidence": 1.0, "method": "name_exact",
+    "moved_m": 12,                    // 代表点の移動距離 (m、動いたときのみ)
+    "events": ["evt_000003"]          // 関連 ChangeEvent (説明台帳への入口)
+  }],
+  "routes": [{
+    "relation": "merged",             // continued/renamed/merged/split/restructured/added/removed
+    "old": [{"name": "…", "route_ids": ["11","12"]}],   // N:M は配列のまま
+    "new": [{"name": "…", "route_ids": ["W1"]}],
+    "similarity": 0.82, "events": ["evt_000045"]
+  }],
+  "trips": [{ "relation": "id_churn", "old": "旧trip_id", "new": "新trip_id" }],
+  "day_types": [{ "old": "weekday", "new": "weekday", "confidence": 1.0 }]
+}
+```
+
+利用上の契約:
+
+- **N:M は 1:1 に潰していない**。統合・分割は配列の対応として渡すので、
+  結合時の按分などの判断は利用側で行うこと。
+- **同一視の最終判断は利用側にある**。moved_m・renamed・relation は事実の
+  提示であり、「移設120mを同一停留所と扱うか」は用途で決めること。
+- **ツール版が上がると対応結果は変わり得る** (identity アルゴリズムの改良)。
+  mapping は版付き・不変の成果物なので、パイプラインは版をピンして再現できる。
+  最新版エイリアス (`/r/{pair}.mapping.json`) は追従用。

@@ -267,6 +267,12 @@ class DeliveryStack(Stack):
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
                 compress=True,
+                # RD4c-0: 成果物 (digest/mapping/events 等) をブラウザアプリから
+                # 直接 fetch できるように CORS (GET のみの静的成果物なので全許可)。
+                # /api/* は API Gateway 側の CORS 設定が担うため対象外
+                response_headers_policy=(
+                    cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT
+                ),
             ),
             additional_behaviors={
                 "/api/*": cloudfront.BehaviorOptions(
@@ -348,6 +354,18 @@ class DeliveryStack(Stack):
                                 "/favicon.svg", "/favicon.ico",
                                 "/apple-touch-icon.png", "/ogp.png",
                                 "/llms.txt", "/robots.txt"],
+        )
+
+        # 外部開発者・AI 向けドキュメント (docs/api) を /docs/ に配信 (RD4c-0)
+        s3deploy.BucketDeployment(
+            self,
+            "ApiDocs",
+            sources=[s3deploy.Source.asset("../docs/api")],
+            destination_bucket=bucket,
+            destination_key_prefix="docs",
+            prune=False,
+            distribution=distribution,
+            distribution_paths=["/docs/*"],
         )
 
         # --- 運用ダッシュボード (S1: docs/design/admin.md)。暴走・障害はここで見る ---

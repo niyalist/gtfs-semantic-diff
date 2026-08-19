@@ -30,12 +30,18 @@
   反映されているか (またはデータにしかない変化がないか) を照合する。
 - **研究・分析**: 減便・路線再編・運行日区分の変化を、地域横断・時系列で
   集計する。運転手不足・交通空白などの研究の入力になる。
+- **差分を乗り越えるシステムの部品**: mapping.json (ID 対応表) を使うと、
+  世代を跨いで stop_id / route_id / trip_id を結合できる — 乗客データの
+  経年分析、shapes.txt 等の手作り資産の新世代への引き継ぎ、設定移行など、
+  「フィード更新でキーが変わる」問題を抱えるあらゆるシステムの土台になる。
 
 ## 出力の3層 — どれを使うか
 
 | 層 | 中身 | 向く用途 | 大きさの目安 |
 |---|---|---|---|
 | digest | 全体要約+路線毎の要約行。ID なし | 翻訳・告知・突合。LLM に最初に渡すもの | 数十〜数百 KB |
+| routes.digest.json | 全路線の詳細 (変化便レコード・時間帯別本数・trip_id 付き) | 路線の深掘り | 〜数 MB |
+| mapping.json | stop_id / route_id / trip_id の**旧新対応表** | 経年データ結合・資産引き継ぎのバックエンド | 〜数 MB |
 | events.json | ChangeEvent 全件+証拠+説明台帳 | エラーチェック、プログラム連携。**安定インタフェース** | 〜数十 MB |
 | rawdiffs.json | 生差分の全件 (L0) | 残差の精査、完全な検証 | 〜数百 MB |
 
@@ -83,6 +89,11 @@ curl https://diff.gtfs.jp/api/jobs/<pair>
 #    イベント JSON: https://diff.gtfs.jp/r/<pair>/v/<版>.events.json
 #    生差分 JSON:   https://diff.gtfs.jp/r/<pair>/v/<版>.rawdiffs.json
 ```
+
+uid の代わりに `"old_rid":"prev_1","new_rid":"current"` でも投入できます。
+計算済みペアの一覧は **フィード台帳** `https://diff.gtfs.jp/feeds/<org>__<feed>.json`、
+各ペアの全成果物 URL は **ペア台帳** `…/r/<pair>/index.json` の
+versions[].artifacts にあります (URL 規則の暗記は不要)。
 
 uid の探し方 (gtfs-data.jp の世代一覧):
 

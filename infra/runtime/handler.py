@@ -104,6 +104,20 @@ def _tool_version() -> str:
         return "0"
 
 
+def _get_json_key(key: str) -> dict | None:
+    """S3 の JSON を読む。未生成・失敗は None (台帳系の楽観読み取り)。"""
+    import botocore.exceptions
+
+    try:
+        obj = s3.get_object(Bucket=RESULTS_BUCKET, Key=key)
+        return json.loads(obj["Body"].read())
+    except s3.exceptions.NoSuchKey:
+        return None
+    except (botocore.exceptions.ClientError, ValueError) as e:
+        logger.warning("台帳読み取り失敗 (%s): %s", key, e)
+        return None
+
+
 def _get_index(pair: str) -> dict | None:
     """版台帳 index.json を読む。未生成なら None。
 
@@ -702,6 +716,18 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     rawdiffs_path = "/tmp/rawdiffs.json.gz"
     events_bytes = write_events_json_gz(event_set.to_dict(), events_path)
     rawdiffs_bytes = write_rawdiffs_json_gz(rawdiffs, rawdiffs_path)
+    # RD4c-0 / IM1: 全路線 L1 と ID 対応表 (identity を使うため解放前に生成)
+    from gtfs_semantic_diff.report.digest import build_routes_digest
+    from gtfs_semantic_diff.report.mapping import build_mapping
+
+    routes_digest_path = "/tmp/routes.digest.json.gz"
+    mapping_path = "/tmp/mapping.json.gz"
+    routes_bytes = _write_json_gz(
+        build_routes_digest(bundle, identity=identity), routes_digest_path)
+    mapping_bytes = _write_json_gz(
+        build_mapping(identity, trip_delta, event_set,
+                      meta={"feed": event_set.feed, "tool_version": _tool_version()}),
+        mapping_path)
     # バンドル構築後はスナップショット等を解放する。HTML 書き出し中に pandas
     # テーブル (GB 級) を抱えたままにすると 3008MB の Lambda を圧迫する (IN-3)
     del old, new, event_set, identity, trip_delta, rawdiffs
@@ -725,11 +751,16 @@ def _run_compare(job_id: str, job_input: dict) -> str:
             "rawdiffs": f"{prefix}/{job_id}.rawdiffs.json",
             "digest_md": f"{prefix}/{job_id}.digest.md",
             "digest_json": f"{prefix}/{job_id}.digest.json",
+            "routes_digest": f"{prefix}/{job_id}.routes.digest.json",
+            "mapping": f"{prefix}/{job_id}.mapping.json",
         }
-        _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+        _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes,
+                       routes_bytes, mapping_bytes)
         _put_digest(bundle, keys, config, cache=cache)
         _put_json_file(keys["events"], events_path, cache=cache)
         _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=cache)
+        _put_json_file(keys["routes_digest"], routes_digest_path, cache=cache)
+        _put_json_file(keys["mapping"], mapping_path, cache=cache)
         write_html_split(bundle, template, html_path, data_path,
                          data_url=f"/{prefix}/{job_id}.json",
                          head_links=_digest_head_links(keys))
@@ -744,11 +775,16 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         "rawdiffs": versioning.rawdiffs_key(job_id, version),
         "digest_md": versioning.digest_md_key(job_id, version),
         "digest_json": versioning.digest_json_key(job_id, version),
+        "routes_digest": versioning.routes_digest_key(job_id, version),
+        "mapping": versioning.mapping_key(job_id, version),
     }
-    _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes)
+    _bake_raw_urls(bundle, keys, events_bytes, rawdiffs_bytes,
+                   routes_bytes, mapping_bytes)
     _put_digest(bundle, keys, config, cache=immutable)
     _put_json_file(keys["events"], events_path, cache=immutable)
     _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=immutable)
+    _put_json_file(keys["routes_digest"], routes_digest_path, cache=immutable)
+    _put_json_file(keys["mapping"], mapping_path, cache=immutable)
     write_html_split(bundle, template, html_path, data_path,
                      data_url="/" + versioning.data_key(job_id, version),
                      head_links=_digest_head_links(keys))
@@ -768,17 +804,31 @@ def _digest_head_links(keys: dict) -> str:
     )
 
 
+def _write_json_gz(payload: dict, path: str) -> int:
+    """dict を gzip JSON でファイルへ。返り値は非圧縮バイト数。"""
+    import gzip
+
+    body = json.dumps(payload, ensure_ascii=False)
+    with gzip.open(path, "wt", encoding="utf-8", compresslevel=6) as f:
+        f.write(body)
+    return len(body.encode("utf-8"))
+
+
 def _bake_raw_urls(bundle: dict, keys: dict, events_bytes: int,
-                   rawdiffs_bytes: int) -> None:
+                   rawdiffs_bytes: int, routes_bytes: int = 0,
+                   mapping_bytes: int = 0) -> None:
     """検証モードの生データ DL リンク (RD2) を meta に焼き込む。
 
-    digest の URL (RD4b) も併記する (ビューアはキー参照なので additive に安全。
-    digest.json 側にも meta 経由で L2 へのポインタが入る)。"""
+    digest / routes_digest / mapping の URL (RD4b/RD4c-0/IM1) も併記する
+    (ビューアはキー参照なので additive に安全。digest.json 側にも meta 経由で
+    下位層へのポインタが入り、L0→L1→L2 を自走できる)。"""
     bundle["meta"]["raw_urls"] = {
         "events": {"url": "/" + keys["events"], "bytes": events_bytes},
         "rawdiffs": {"url": "/" + keys["rawdiffs"], "bytes": rawdiffs_bytes},
         "digest_md": {"url": "/" + keys["digest_md"]},
         "digest_json": {"url": "/" + keys["digest_json"]},
+        "routes_digest": {"url": "/" + keys["routes_digest"], "bytes": routes_bytes},
+        "mapping": {"url": "/" + keys["mapping"], "bytes": mapping_bytes},
     }
 
 
@@ -937,21 +987,43 @@ def _write_versioned(pair: str, html_path: str, data_path: str, version: str,
     # (ロールバック運用中に旧版が最新入口を巻き戻さないように)
     if index["latest"] == version:
         _put_html_file(versioning.entry_key(pair), html_path, cache="public, max-age=300")
-        # RD4b 追補: 最新版 digest のエイリアス (r/{pair}.digest.md|json)。
-        # 「.html を .digest.md に変えるだけ」の規則を成立させる
-        for src, dst, ctype in (
-            (versioning.digest_md_key(pair, version),
-             versioning.entry_digest_md_key(pair), "text/markdown; charset=utf-8"),
-            (versioning.digest_json_key(pair, version),
-             versioning.entry_digest_json_key(pair),
-             "application/json; charset=utf-8"),
-        ):
+        # RD4b/RD4c-0: 最新版エイリアス (r/{pair}.{suffix})。
+        # 「.html を .digest.md 等に変えるだけ」の規則を成立させる
+        aliases = versioning.entry_alias_keys(pair)
+        srcs = {
+            "digest_md": (versioning.digest_md_key(pair, version),
+                          "text/markdown; charset=utf-8", None),
+            "digest_json": (versioning.digest_json_key(pair, version),
+                            "application/json; charset=utf-8", None),
+            "routes_digest": (versioning.routes_digest_key(pair, version),
+                              "application/json; charset=utf-8", "gzip"),
+            "mapping": (versioning.mapping_key(pair, version),
+                        "application/json; charset=utf-8", "gzip"),
+        }
+        for name, (src, ctype, enc) in srcs.items():
+            extra = {"ContentEncoding": enc} if enc else {}
             s3.copy_object(
-                Bucket=RESULTS_BUCKET, Key=dst,
+                Bucket=RESULTS_BUCKET, Key=aliases[name],
                 CopySource={"Bucket": RESULTS_BUCKET, "Key": src},
                 MetadataDirective="REPLACE", ContentType=ctype,
-                CacheControl="public, max-age=300",
+                CacheControl="public, max-age=300", **extra,
             )
+    # RD4c-0: フィード台帳 (feeds/{org}__{feed}.json)。ペア台帳と同じ
+    # 楽観的 read-modify-write (同時実行は同内容上書きで無害)
+    if feed_info and feed_info.get("org") and feed_info.get("feed"):
+        lk = versioning.feed_ledger_key(feed_info["org"], feed_info["feed"])
+        ledger = _get_json_key(lk)
+        ledger = versioning.update_feed_ledger(
+            ledger, org=feed_info["org"], feed=feed_info["feed"], pair=pair,
+            feed_info=feed_info, version=index["latest"],
+            updated_at=generated_at,
+        )
+        s3.put_object(
+            Bucket=RESULTS_BUCKET, Key=lk,
+            Body=json.dumps(ledger, ensure_ascii=False).encode("utf-8"),
+            ContentType="application/json; charset=utf-8",
+            CacheControl="public, max-age=300",
+        )
     s3.put_object(
         Bucket=RESULTS_BUCKET,
         Key=versioning.index_key(pair),

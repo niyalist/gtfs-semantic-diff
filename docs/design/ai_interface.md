@@ -83,7 +83,62 @@ digest.md は日本語先行 (国内利用が第一級)。JSON はキー英語�
 type_id (英語 ID) + display_name_ja/en の対 (既存 event_types と同じ構造) で、
 I トラック (JSON 言語中立化) と矛盾しない。
 
-## 5. MCP (RD4c、将来)
+## 5. API 体系 (2026-07-30 全面見直し — 外部システムのバックエンド化)
+
+ID 対応 (mapping) の追加を機に体系を再点検した。結論: 「版付き静的成果物+
+薄い動的層」の骨格は維持。欠落していたのは以下で、これを体系の背骨にする。
+
+### 5.1 提供物の全体像 (層と契約)
+
+| 層 | 成果物 | 契約 |
+|---|---|---|
+| 安定 | events.json / digest.md・json (L0) / **routes.digest.json (L1 全路線)** / **mapping.json (ID 対応)** / 台帳・URL 規則 | schema 版付き、変更は追記的。docs/api が正 |
+| 内部 | bundle (`v/{版}.json`) | ビューア専用。予告なく変わる |
+| 動的 | /api/jobs・/api/gtfs (将来: MCP) | 薄い層。実体は静的成果物 |
+
+- **routes.digest.json**: 全路線の L1 を route_group 名キーの1オブジェクトに
+  束ねる (per-route URL は日本語名のエンコード地獄になるため不採用)。
+  L1 には③相当の**時間帯別本数** (band_matrix の aggregate/leg 行) と、
+  構成 family の **route_id 旧/新リスト** (軽注記) を含める — EXP2 部分再現
+  6件のうち時間帯系 (CHI-04 型) を解消する。
+- **mapping.json (IM トラック)**: identity 層 (MatchGraph + family_components +
+  TripDelta) の直接の直列化。stops (クラスタ対応 = platform_ids で GTFS
+  stop_id 群の旧新対応、改称・移設距離)、routes (family 対応 = route_ids
+  旧新、relation: continued/renamed/merged/split/restructured/added/removed、
+  confidence)、trips (exact/churn/modified/removed/added)、day_types。
+  **N:M は配列のまま渡し 1:1 に潰さない。confidence と関連イベントへの
+  参照を必ず付ける** (説明台帳の思想の ID 版)。判断 (移設200mを同一と
+  扱うか等) は消費側に残す。用途: 乗客データの経年結合、shapes 等の
+  整備資産の世代引き継ぎ、サイネージ設定移行。
+  注意: identity アルゴリズム改良でツール版が上がると対応結果も変わり得る
+  (版で再現可能・消費側は版をピン) — この契約を docs/api に明記する。
+
+### 5.2 発見と台帳 (URL 規則を「知識」から「データ」へ)
+
+```
+llms.txt → フィード台帳 → ペア台帳 (マニフェスト) → 各成果物
+```
+
+- **ペア台帳 = マニフェスト化**: index.json の versions[] に artifacts{}
+  (成果物名 → url・gzip・schema) を持たせ、拡張子規則の暗記を不要にする。
+- **フィード台帳 (新設)**: `feeds/{org}__{feed}.json` — このフィードで
+  計算済みのペア一覧 (uid・from_date・latest 版)。経年利用 (mapping の
+  隣接連鎖) と MCP find 系の入口。ジョブ完了時に read-modify-write
+  (ペア台帳と同じ楽観方式)。
+- **latest エイリアスの一般化**: `r/{pair}.digest.md|json` に加え
+  `.routes.digest.json` / `.mapping.json` も。
+- digest.md の末尾に深掘り節 (meta.raw_urls の実 URL) — L0→L1→L2 を自走可能に。
+
+### 5.3 周辺整備
+
+- **RID 指定のジョブ投入**: `{"org","feed","old_rid":"prev_1","new_rid":"current"}`
+  を受けサーバーで uid 解決 (フル uid 指定も従来どおり)。
+- **docs/api のサイト配信**: `/docs/README.md`・`/docs/reference.md`。
+  llms.txt から参照。
+- **成果物 GET に CORS**: ブラウザアプリ (shapes エディタ等) からの直接
+  fetch を許す。
+
+## 6. MCP (RD4c、将来)
 
 配信基盤 (RD1b/RD2) が既に版付き・immutable の機械可読 API になっているため、
 MCP サーバーはそれを取得する stateless な薄い層として実装できる。ツール構成案:
@@ -101,7 +156,7 @@ get_events(pair, type?, route?)                      # L2 のフィルタ取得
 MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツール応答の設計になる
 ため、実装順は files → Web 並置 → MCP とする。
 
-## 6. マイルストーン
+## 7. マイルストーン
 
 - **RD4a: digest 出力** 【実装 2026-07-30 (report/digest.py)】 —
   `--digest` / `--digest-json` / `--digest-route`。
@@ -123,9 +178,18 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
   (.html を置換するだけの規則)、index.json versions[] に digest キー、
   /llms.txt (サイト全体の機械向け案内) — 「結果 URL を AI に投げる」
   フローで digest に到達できる。
-- **RD4c: MCP サーバー** — §5 のツール群。コストガード設計込み。
+- **RD4c-0: routes.digest.json + 台帳強化** — L1 全路線束ね (時間帯別本数・
+  route_id 軽注記込み)、ペア台帳のマニフェスト化、フィード台帳、latest
+  エイリアス一般化、digest.md 深掘り節、RID 投入、docs 配信、CORS (§5)。
+- **IM1: mapping.json** — identity 層の直列化 (§5.1)。CLI `--mapping`、
+  Web 並置、合成テスト (改称・churn・N:M)、docs/api スキーマ。
+- **IM2/IM3 (後続)**: 消費者シミュレーション検証 (合成乗降データの世代跨ぎ
+  結合で件数保存を機械検査)・実フィード錨 (名古屋 鳴.ワイ→鳴.メグ、
+  朝日町 21→9 統合の N:1)。論文の応用節候補。
+- **RD4c-1: MCP サーバー** — §6 のツール群 (map_stop_id 等の点引きを追加)。
+  コストガード設計込み。着手時に最新の MCP 仕様・SDK を確認するのを DoD に含む。
 
-## 7. 決定事項・棄却案
+## 8. 決定事項・棄却案
 
 - L1 は「変化のみ全量+無変化は件数」(決定)。全便の時刻マトリクスは出さない
   (幅のある表は AI にも不向き。全量が要る用途は L2 が既に担う)。

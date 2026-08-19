@@ -308,8 +308,21 @@ def render_digest_md(d: dict, routes_max: int = 200,
       f" / UNEXPLAINED_RESIDUAL: {v['unexplained_residual']} 件")
     a(f"- self_check: {len(v.get('self_check') or [])} 件")
     a("")
-    a("詳細 (証拠・行レベル) は events.json / rawdiffs.json"
-      " (docs/api/reference.md)。")
+    ru = (d.get("meta") or {}).get("raw_urls") or {}
+    if ru:
+        # Web 生成時は実 URL 入りの深掘り節 (L0→L1→L2 を自走できる)
+        a("深掘り (このペアの実 URL):")
+        for key, label in (("routes_digest", "路線詳細 L1 全路線 (routes.digest.json)"),
+                           ("mapping", "ID 対応表 (mapping.json)"),
+                           ("events", "全イベント+証拠 L2 (events.json)"),
+                           ("rawdiffs", "生差分全件 L2 (rawdiffs.json)")):
+            if key in ru:
+                a(f"- {label}: {ru[key]['url']}")
+        a("")
+        a("仕様は /docs/reference.md (このサイト) を参照。")
+    else:
+        a("詳細 (証拠・行レベル) は events.json / rawdiffs.json"
+          " (docs/api/reference.md)。")
     return "\n".join(lines) + "\n"
 
 
@@ -323,15 +336,23 @@ def _first_time(times) -> str | None:
     return None
 
 
-def build_route_digest(bundle: dict, route_name: str) -> dict[str, Any]:
-    """L1: 1路線の詳細。変化便は全レコード、無変化・ID のみ変更は件数。"""
-    pres = bundle["presentation"]
-    page = next((p for p in pres["route_pages"]
-                 if p["route_group"] == route_name), None)
-    if page is None:
-        names = [p["route_group"] for p in pres["route_pages"]]
-        raise KeyError(f"route not found: {route_name!r}. available: {names}")
+def _route_ids_note(page: dict, identity) -> dict | None:
+    """構成 family の route_id 旧/新リスト (軽注記。本格的な対応は mapping.json)。"""
+    if identity is None:
+        return None
+    fams_new = page.get("families") or []
+    fams_old = set(fams_new) | set(page.get("former_names") or [])
+    new_ids = sorted({rid for f in fams_new
+                      if f in identity.new_families
+                      for rid in identity.new_families[f].route_ids})
+    old_ids = sorted({rid for f in fams_old
+                      if f in identity.old_families
+                      for rid in identity.old_families[f].route_ids})
+    return {"old": old_ids, "new": new_ids}
 
+
+def _route_detail(page: dict, identity=None) -> dict[str, Any]:
+    """1路線の L1 本体 (meta なし)。build_route_digest / build_routes_digest 共用。"""
     buckets = []
     for t in page.get("timetables", []):
         changed = []
@@ -369,14 +390,22 @@ def build_route_digest(bundle: dict, route_name: str) -> dict[str, Any]:
         })
 
     lv3 = page.get("summary", {}).get("level3") or []
-    return {
-        "digest_schema": 1,
-        "scope": "route",
-        "route_group": route_name,
-        "meta": dict(bundle["meta"]),
+    bm = page.get("band_matrix") or {}
+    detail: dict[str, Any] = {
         "former_names": page.get("former_names") or [],
         "day_totals": page["day_totals"],
         "changes": page["digest"],
+        # ③相当の時間帯別本数 (旧→新)。system 行は④ (timetable) と重複する
+        # ため aggregate / leg のみ (EXP2 CHI-04 型の「時間帯」ギャップの解消)
+        "time_bands": {
+            "bands": bm.get("bands", []),
+            "rows": [
+                {k: r[k] for k in ("kind", "day_type", "label", "cells",
+                                   "total", "changed") if k in r}
+                for r in bm.get("rows", [])
+                if r.get("kind") in ("aggregate", "leg")
+            ],
+        },
         "timetable": buckets,
         "stop_pattern_changes": [
             {"added_stops": u.get("added_stops", []),
@@ -387,6 +416,42 @@ def build_route_digest(bundle: dict, route_name: str) -> dict[str, Any]:
                          for s in u.get("systems", [])]}
             for u in lv3
         ],
+    }
+    ids = _route_ids_note(page, identity)
+    if ids is not None:
+        detail["route_ids"] = ids
+    return detail
+
+
+def build_route_digest(bundle: dict, route_name: str,
+                       identity=None) -> dict[str, Any]:
+    """L1: 1路線の詳細。変化便は全レコード、無変化・ID のみ変更は件数。"""
+    pres = bundle["presentation"]
+    page = next((p for p in pres["route_pages"]
+                 if p["route_group"] == route_name), None)
+    if page is None:
+        names = [p["route_group"] for p in pres["route_pages"]]
+        raise KeyError(f"route not found: {route_name!r}. available: {names}")
+    return {
+        "digest_schema": 1,
+        "scope": "route",
+        "route_group": route_name,
+        "meta": dict(bundle["meta"]),
+        **_route_detail(page, identity),
+    }
+
+
+def build_routes_digest(bundle: dict, identity=None) -> dict[str, Any]:
+    """全路線の L1 を route_group 名キーの1オブジェクトに束ねる
+    (`v/{版}.routes.digest.json`)。per-route URL は名前のエンコードが
+    不安定になるため採らない (ai_interface.md §5.1)。"""
+    pres = bundle["presentation"]
+    return {
+        "digest_schema": 1,
+        "scope": "routes",
+        "meta": dict(bundle["meta"]),
+        "routes": {p["route_group"]: _route_detail(p, identity)
+                   for p in pres["route_pages"]},
     }
 
 

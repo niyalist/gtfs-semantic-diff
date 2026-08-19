@@ -170,6 +170,10 @@ def fetch(ctx: click.Context, org: str, feed: str, old_rid: str, new_rid: str, f
               help="AI 向けダイジェスト JSON の出力先")
 @click.option("--digest-route", "digest_route", default=None,
               help="ダイジェストを1路線の詳細 (L1) にする (route_group ページ名)")
+@click.option("--digest-routes", "digest_routes_out", type=click.Path(), default=None,
+              help="全路線の L1 を束ねた routes.digest.json の出力先")
+@click.option("--mapping", "mapping_out", type=click.Path(), default=None,
+              help="ID 対応表 (mapping.json — stops/routes/trips の旧新対応) の出力先")
 @click.pass_context
 def compare(
     ctx: click.Context,
@@ -187,6 +191,8 @@ def compare(
     digest_out: str | None,
     digest_json_out: str | None,
     digest_route: str | None,
+    digest_routes_out: str | None,
+    mapping_out: str | None,
 ) -> None:
     """2世代の GTFS を比較し ChangeEvent JSON / Markdown / HTML レポートを出力する。
 
@@ -265,10 +271,10 @@ def compare(
                     out_dir / "data.json", "./data.json", gzip_data=False,
                 )
                 console.print(f"HTML レポート (分割): [cyan]{out_dir}/[/cyan]")
-    if digest_out or digest_json_out:
+    if digest_out or digest_json_out or digest_routes_out:
         from .report.bundle import build_bundle
         from .report.digest import (
-            build_digest, build_route_digest,
+            build_digest, build_route_digest, build_routes_digest,
             render_digest_md, render_route_digest_md,
         )
 
@@ -276,13 +282,19 @@ def compare(
             old_snap, new_snap, config, event_set, rawdiffs, identity,
             trip_delta, core=True,
         )
+        if digest_routes_out:
+            routes_dig = build_routes_digest(bundle, identity=identity)
+            Path(digest_routes_out).write_text(
+                json.dumps(routes_dig, ensure_ascii=False, indent=1),
+                encoding="utf-8")
+            console.print(f"路線詳細ダイジェスト: [cyan]{digest_routes_out}[/cyan]")
         if digest_route:
             try:
-                dig = build_route_digest(bundle, digest_route)
+                dig = build_route_digest(bundle, digest_route, identity=identity)
             except KeyError as e:
                 raise click.ClickException(str(e)) from e
             md = render_route_digest_md(dig)
-        else:
+        elif digest_out or digest_json_out:
             dig = build_digest(bundle)
             routes_max = config.get("report", "digest_routes_max", default=200)
             stops_max = config.get("report", "digest_stops_max", default=50)
@@ -296,6 +308,14 @@ def compare(
                 json.dumps(dig, ensure_ascii=False, indent=1), encoding="utf-8"
             )
             console.print(f"ダイジェスト (JSON): [cyan]{digest_json_out}[/cyan]")
+    if mapping_out:
+        from .report.mapping import build_mapping
+
+        mp = build_mapping(identity, trip_delta, event_set,
+                           meta={"feed": event_set.feed})
+        Path(mapping_out).write_text(
+            json.dumps(mp, ensure_ascii=False, indent=1), encoding="utf-8")
+        console.print(f"ID 対応表: [cyan]{mapping_out}[/cyan]")
 
 
 @main.command()
