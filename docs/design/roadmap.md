@@ -383,12 +383,13 @@ config ゲート + 別途議論)。
     - RD4c-1a: 骨格+読み取り系ツール (find/list/get/map_ids)、Streamable HTTP、
       contract test。**着手時に最新 MCP 仕様・SDK を確認するのが DoD の一部**。
       DoD: Claude から接続しエラーチェック・ID 対応のユースケースが対話で完了
-    - RD4c-1b: run_compare。**前提 = G1 実効ガード** (mcp.md §9 —
-      2026-08-19 の精査で、現行「コストガード」は Budgets 通知のみで拒否機構が
-      無いと判明。日次ジョブ数の DynamoDB カウンタ+429 を先に入れる)。
+    - RD4c-1b: run_compare。前提だった G1 は実装済み (下記)。
       DoD: コールドスタート課題が新規ペアで完走+超過時 429 の実測
-    - G2 (MCP 非依存の運用強化、随時): worker Lambda に reserved concurrency
-      (2〜4) — 非同期呼び出しの自動キューでバーストを直列化
+    - **G1/G2/G3 【実装 2026-08-19】**: G1 = 日次計算ジョブ数ガード
+      (DynamoDB 原子カウンタ、全体200/送信元別30、超過429+Retry-After、
+      fail-open。キャッシュヒットは消費しない)。G2 = worker reserved
+      concurrency 4。G3 = gtfs プロキシの Lambda 内 TTL キャッシュ (300s)。
+      経緯: 2026-08-19 の精査で「コストガード」が Budgets 通知のみと判明
   - **RD4c-2: EXP2 エージェント版 A/B** — MCP あり vs URL+llms.txt のみで
     公式告知68項目の突合を自律実行させ、判定一致率・呼び出し回数・迷子率を
     比較 (「MCP が何を上乗せしたか」の定量化。論文実験を兼ねる)

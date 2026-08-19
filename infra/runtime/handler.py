@@ -77,10 +77,11 @@ def _json_default(v):
     raise TypeError(f"not JSON serializable: {type(v)}")
 
 
-def _resp(status: int, body: dict) -> dict:
+def _resp(status: int, body: dict, headers: dict | None = None) -> dict:
     return {
         "statusCode": status,
-        "headers": {"content-type": "application/json; charset=utf-8"},
+        "headers": {"content-type": "application/json; charset=utf-8",
+                    **(headers or {})},
         "body": json.dumps(body, ensure_ascii=False, default=_json_default),
     }
 
@@ -93,6 +94,60 @@ def _safe_id(value: str) -> str:
     if not value or not _ID_RE.fullmatch(value):
         raise ValueError(f"invalid id component: {value!r}")
     return value
+
+
+# --- G1: 日次の計算ジョブ数ガード (mcp.md §9。2026-08-19 精査で
+# 「コストガード」が Budgets 通知のみと判明したことへの enforcement) ---
+
+DAILY_COMPUTE_LIMIT = int(os.environ.get("DAILY_COMPUTE_LIMIT", "200"))
+DAILY_COMPUTE_LIMIT_PER_SOURCE = int(
+    os.environ.get("DAILY_COMPUTE_LIMIT_PER_SOURCE", "30"))
+
+
+class QuotaExceeded(Exception):
+    pass
+
+
+def _source_id(event, user_id: str | None) -> str:
+    """送信元の識別子。ログインは user_id、匿名は client IP のハッシュ
+    (X-Forwarded-For の先頭。CloudFront 経由なので偽装耐性は限定的だが、
+    副上限のノイズ除け用途には足りる)。"""
+    if user_id:
+        return f"u:{user_id}"
+    xff = (event.get("headers") or {}).get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() or "unknown"
+    import hashlib
+
+    return "ip:" + hashlib.sha256(ip.encode()).hexdigest()[:12]
+
+
+def _consume_compute_quota(source: str) -> None:
+    """計算を実際に起動する直前でだけ呼ぶ (キャッシュヒット・重複起動は無料)。
+    DynamoDB の原子カウンタ (Jobs テーブル同居、TTL で自動掃除)。
+    カウンタ更新の失敗はガード超過とは別 (可用性優先で通す)。"""
+    day = time.strftime("%Y%m%d", time.gmtime())
+    expire = int(time.time()) + 3 * 86400
+    t = _jobs_table()
+
+    def bump(key: str) -> int:
+        r = t.update_item(
+            Key={"job_id": key},
+            UpdateExpression="ADD n :one SET expire_at = if_not_exists(expire_at, :exp)",
+            ExpressionAttributeValues={":one": 1, ":exp": expire},
+            ReturnValues="UPDATED_NEW",
+        )
+        return int(r["Attributes"]["n"])
+
+    try:
+        total = bump(f"quota#{day}")
+        by_src = bump(f"quota#{day}#{source}")
+    except Exception:  # noqa: BLE001 ガードの障害でサービスを止めない
+        logger.exception("quota counter failure (fail-open)")
+        return
+    if total > DAILY_COMPUTE_LIMIT or by_src > DAILY_COMPUTE_LIMIT_PER_SOURCE:
+        logger.warning("quota exceeded: total=%s source=%s (%s)",
+                       total, by_src, source)
+        raise QuotaExceeded()
 
 
 def _tool_version() -> str:
@@ -158,7 +213,8 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
         if method == "POST" and path == "/api/feedback":
             return _api_feedback(json.loads(event.get("body") or "{}"))
         if method == "POST" and path == "/api/jobs":
-            return _api_submit(json.loads(event.get("body") or "{}"))
+            return _api_submit(json.loads(event.get("body") or "{}"),
+                               source=_source_id(event, None))
         m = re.fullmatch(r"/api/jobs/([A-Za-z0-9._-]+)", path)
         if method == "GET" and m:
             return _api_status(m.group(1))
@@ -170,23 +226,44 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
         return _resp(500, {"error": "internal error"})
 
 
+# G3 (mcp.md §9): gtfs-data.jp プロキシの短 TTL キャッシュ。/api/* は
+# CloudFront キャッシュ無効のため、エージェントの高頻度な探索が毎回
+# 上流に直撃するのを防ぐ (コンテナ生存中のみのベストエフォート)
+_PROXY_CACHE: dict = {}
+_PROXY_TTL = int(os.environ.get("GTFS_PROXY_CACHE_TTL", "300"))
+
+
+def _proxy_cached(key: tuple, fn):
+    now = time.time()
+    hit = _PROXY_CACHE.get(key)
+    if hit and hit[0] > now:
+        return hit[1]
+    val = fn()
+    if len(_PROXY_CACHE) > 256:
+        _PROXY_CACHE.clear()
+    _PROXY_CACHE[key] = (now + _PROXY_TTL, val)
+    return val
+
+
 def _api_feeds(qs: dict) -> dict:
     from gtfs_semantic_diff.config import Config
     from gtfs_semantic_diff.load import GtfsDataRepository
 
-    repo = GtfsDataRepository(config=Config.load())
     pref = qs.get("pref")
     org = qs.get("org_id")
     if not pref and not org:
         return _bad("pref or org_id required")
-    feeds = repo.list_feeds(org_id=org, pref=int(pref) if pref else None)
-    return _resp(200, {
-        "feeds": [
+
+    def fetch():
+        repo = GtfsDataRepository(config=Config.load())
+        feeds = repo.list_feeds(org_id=org, pref=int(pref) if pref else None)
+        return [
             {"org_id": f.org_id, "feed_id": f.feed_id,
              "name": f.name, "org_name": f.org_name}
             for f in feeds
         ]
-    })
+
+    return _resp(200, {"feeds": _proxy_cached(("feeds", pref, org), fetch)})
 
 
 def _api_files(qs: dict) -> dict:
@@ -196,16 +273,18 @@ def _api_files(qs: dict) -> dict:
 
     org = _safe_id(qs.get("org", ""))
     feed = _safe_id(qs.get("feed", ""))
-    repo = GtfsDataRepository(config=Config.load())
-    files = sorted(repo.get_feed_files(org, feed, max_prev=MAX_PREV),
-                   key=lambda f: rid_order(f.rid))
-    return _resp(200, {
-        "files": [
+
+    def fetch():
+        repo = GtfsDataRepository(config=Config.load())
+        files = sorted(repo.get_feed_files(org, feed, max_prev=MAX_PREV),
+                       key=lambda f: rid_order(f.rid))
+        return [
             {"uid": f.uid, "rid": f.rid, "from_date": f.from_date,
              "to_date": f.to_date, "memo": f.memo}
             for f in files
         ]
-    })
+
+    return _resp(200, {"files": _proxy_cached(("files", org, feed), fetch)})
 
 
 # --- admin (W3 追補: docs/design/admin.md S2) ---
@@ -324,7 +403,8 @@ def _api_me(event, method: str, path: str, qs: dict) -> dict:
         return _api_me_zips(user_id)
     if method == "POST" and path == "/api/me/jobs":
         body = json.loads(event.get("body") or "{}")
-        return _api_submit(body, user_id=user_id)
+        return _api_submit(body, user_id=user_id,
+                           source=_source_id(event, user_id))
     if method == "DELETE" and path == "/api/me/history":
         return _api_me_history_delete(user_id, qs.get("sk", ""))
     if method == "DELETE" and path == "/api/me/zips":
@@ -491,7 +571,8 @@ def _resolve_uids(org: str, feed: str, old_rid: str, new_rid: str) -> tuple[str,
     return uids[0], uids[1]
 
 
-def _api_submit(body: dict, user_id: str | None = None) -> dict:
+def _api_submit(body: dict, user_id: str | None = None,
+                source: str = "unknown") -> dict:
     input_type = body.get("type")
     if input_type == "gtfs_data_jp":
         org = _safe_id(body.get("org", ""))
@@ -583,6 +664,14 @@ def _api_submit(body: dict, user_id: str | None = None) -> dict:
     else:
         return _bad("type must be gtfs_data_jp or upload")
 
+    # G1: ここから先だけが実計算 (キャッシュヒット・重複起動は上で return 済み)
+    try:
+        _consume_compute_quota(source)
+    except QuotaExceeded:
+        return _resp(429, {
+            "error": "計算ジョブの回数制限に達しました。時間をおいて再試行するか、"
+                     "まとまった処理は CLI をローカルでご利用ください",
+        }, headers={"retry-after": "3600"})
     now = int(time.time())
     _jobs_table().put_item(Item={
         "job_id": job_id,

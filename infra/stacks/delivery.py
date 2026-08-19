@@ -127,6 +127,9 @@ class DeliveryStack(Stack):
             "USERDATA_TABLE": userdata_table.table_name,
             "FEEDBACK_TABLE": feedback_table.table_name,
             "MAX_UPLOAD_BYTES": str(MAX_UPLOAD_BYTES),
+            # G1 (mcp.md §9): 日次の計算ジョブ数ガード (超過は 429)
+            "DAILY_COMPUTE_LIMIT": "200",
+            "DAILY_COMPUTE_LIMIT_PER_SOURCE": "30",
         }
         worker_fn = lambda_.DockerImageFunction(
             self,
@@ -146,6 +149,9 @@ class DeliveryStack(Stack):
             timeout=Duration.minutes(15),
             environment=common_env,
             description="gtfs-semantic-diff compare worker",
+            # G2 (mcp.md §9): バースト抑制。非同期呼び出しは Lambda が自動
+            # キューするため、同時 3008MB×N の瞬間コストを直列化で抑える
+            reserved_concurrent_executions=4,
         )
         # 失敗ジョブ (OOM/タイムアウト) を Lambda が自動再実行しない。
         # 既定の2回リトライだと poison job が3回走り「終わらない」ように見える
