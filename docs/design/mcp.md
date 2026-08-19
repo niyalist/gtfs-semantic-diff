@@ -113,10 +113,25 @@ MCP がそこに上乗せするのは2つだけで、それ以外を目的にし
 
 ## 7. 段階と DoD
 
-- **RD4c-1a: サーバー骨格+読み取り系** — 最新仕様・SDK の確認 (DoD 必須)、
-  Streamable HTTP、§3 の読み取りツール、contract test、/mcp デプロイ。
-  DoD: Claude (デスクトップ or claude.ai) から接続し、既存ペアで
-  ユースケース2・4 が対話で完了する。
+- **RD4c-1a: サーバー骨格+読み取り系** 【実装 2026-08-19】 —
+  SDK 確認結果: **python-sdk v2.0.0 (仕様と同日リリース) が 2026-07-28 完全
+  対応で、streamable_http_app() が新旧両世代をヘッダで自動ルーティング**。
+  実装: infra/runtime/mcp_entry.py (MCPServer + 読み取り10ツール、
+  `json_response=True` = SSE でなく素の JSON 応答 (API GW はストリーム不可)、
+  `stateless_http=True`、DNS rebinding 保護は無効化 (公開・無認証・Cookie
+  なしのため実害なし — 認証導入時に allowed_origins 必須化)、
+  Mangum (lifespan auto) で Lambda 化、**POST 以外は入口で 405** (2026-07-28
+  の要請+旧世代 standalone SSE の開きっぱなし遮断)。ツール実体は
+  mcp_tools.py (stdlib のみ・Site 注入で contract test 可能)。
+  tests/test_mcp_server.py が新旧両世代のプロトコルを実際に叩く (5件)。
+  依存は mcp~=2.0 / mangum~=0.21 をピン。
+  残 DoD: Claude からの実接続でユースケース2・4 の対話完了 (要ユーザー環境)。
+- **ChatGPT 対応の確認 (2026-08-19)**: カスタムコネクタは Settings →
+  Developer mode で追加。本番向けは streamable HTTP を明記 (apps-sdk docs)、
+  認証は「推奨だが任意」— 無認証の読み取り専用サーバーも接続可。
+  deep research 互換 (search/fetch の2ツール規約) は別枠で、Developer mode の
+  フルツール接続なら本サーバーのツールがそのまま使える。ChatGPT が旧世代
+  (initialize 系) を話しても SDK v2 の両世代対応で吸収される。
 - **RD4c-1b: run_compare** — ジョブ投入+ポーリング。**前提: §9 G1
   (実効ガード) の実装**。DoD: コールドスタート課題 (ユースケース1) が
   新規ペアで完走+ガード超過時に 429 が返ることを実測。

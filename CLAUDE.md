@@ -86,8 +86,10 @@ feeds/{org}__{feed}.json、latest エイリアス一般化、docs/api の /docs/
 CORS) も実装済み。IM トラック (ID 対応の提供) は IM1 (mapping.json —
 採択された対応のみ: 同名継続+STOP_RENAMED 採択対+M9成分。N:M は配列の
 まま) まで完了、検証は docs/verification/IM1_mapping.md。
-残: RD4c-1 (MCP — 設計は docs/design/mcp.md 済み・実装未着手、
-検証 RD4c-2 は EXP2 エージェント版 A/B)・IM3 (消費者シミュレーション)。
+RD4c-1a (MCP サーバー) 実装済み: https://diff.gtfs.jp/mcp — SDK v2
+(2026-07-28 仕様・新旧両世代)、読み取り10ツール、contract test 5件
+(docs/design/mcp.md)。残: RD4c-1b (run_compare ツール)・RD4c-2 (EXP2
+エージェント版 A/B)・IM3 (消費者シミュレーション)。
 外部向け API 文書は docs/api/ (README=案内+レシピ、reference=CLI/Web/JSON
 スキーマ+イベント型44種カタログ+digest スキーマ)。**
 **UQ トラック (UI 品質) 2026-07-26: SD5 追従漏れの監査で不整合11件を検出・修正

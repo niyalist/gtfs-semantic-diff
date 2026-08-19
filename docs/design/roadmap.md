@@ -378,11 +378,14 @@ config ゲート + 別途議論)。
     マニフェスト化 (artifacts{})、フィード台帳 feeds/{org}__{feed}.json、
     latest エイリアス一般化、digest.md 深掘り節、RID 指定ジョブ投入、
     docs/api のサイト配信、成果物 CORS
-  - **RD4c-1: MCP サーバー** 【設計 2026-08-19 (docs/design/mcp.md)、実装未着手】
-    薄いアダプタ原則 (既存 HTTP 面の変換層のみ、ロジック・ストレージなし)。
-    - RD4c-1a: 骨格+読み取り系ツール (find/list/get/map_ids)、Streamable HTTP、
-      contract test。**着手時に最新 MCP 仕様・SDK を確認するのが DoD の一部**。
-      DoD: Claude から接続しエラーチェック・ID 対応のユースケースが対話で完了
+  - **RD4c-1: MCP サーバー** 【設計+RD4c-1a 実装 2026-08-19 (docs/design/mcp.md)】
+    薄いアダプタ原則。SDK v2.0.0 (2026-07-28 仕様完全対応・新旧両世代自動) を採用。
+    - RD4c-1a 【実装済み】: https://diff.gtfs.jp/mcp — 読み取り10ツール
+      (find_feeds/find_generations/list_pairs/get_digest/list_routes/
+      get_route_detail/get_stop_changes/get_residuals/map_ids/get_events)、
+      contract test 5件 (新旧両プロトコル実叩き)。ChatGPT は Developer mode の
+      カスタムコネクタで接続可 (無認証可・streamable HTTP) と確認。
+      残 DoD: Claude/ChatGPT からの実接続確認 (要ユーザー操作)
     - RD4c-1b: run_compare。前提だった G1 は実装済み (下記)。
       DoD: コールドスタート課題が新規ペアで完走+超過時 429 の実測
     - **G1/G2/G3 【実装 2026-08-19】**: G1 = 日次計算ジョブ数ガード

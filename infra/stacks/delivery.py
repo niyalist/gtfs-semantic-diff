@@ -282,6 +282,17 @@ class DeliveryStack(Stack):
                 ),
             ),
             additional_behaviors={
+                # RD4c-1a: MCP エンドポイント (POST のみ。API GW default
+                # integration で api Lambda に届く)
+                "/mcp": cloudfront.BehaviorOptions(
+                    origin=origins.HttpOrigin(
+                        f"{http_api.api_id}.execute-api.{self.region}.amazonaws.com"
+                    ),
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+                    cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                    origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+                    allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+                ),
                 "/api/*": cloudfront.BehaviorOptions(
                     origin=origins.HttpOrigin(
                         f"{http_api.api_id}.execute-api.{self.region}.amazonaws.com"

@@ -198,6 +198,12 @@ def api(event, context):  # noqa: ARG001 - Lambda signature
     path = event.get("rawPath", "")
     qs = event.get("queryStringParameters") or {}
     try:
+        if path == "/mcp":
+            # RD4c-1a: MCP サーバー (SDK v2、新旧両世代)。遅延 import で
+            # 通常の API パスに SDK のロードコストを掛けない
+            import mcp_entry
+
+            return mcp_entry.lambda_handler(event, context)
         if method == "GET" and path == "/api/config":
             return _api_config()
         if path == "/api/me" or path.startswith("/api/me/"):

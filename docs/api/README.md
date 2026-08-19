@@ -103,6 +103,18 @@ curl "https://diff.gtfs.jp/api/gtfs/feeds?pref=10"          # フィード一覧
 curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世代一覧
 ```
 
+## MCP サーバー (AI エージェント向け)
+
+`https://diff.gtfs.jp/mcp` — MCP (Model Context Protocol) エンドポイント。
+認証不要・読み取り専用。上の HTTP 面と同じ内容をツールとして提供します:
+探索 (find_feeds / find_generations / list_pairs)、要約 (get_digest /
+list_routes / get_route_detail / get_stop_changes / get_residuals)、
+ID 対応 (map_ids)、イベント検索 (get_events)。
+
+- **Claude**: 設定 → コネクタ → カスタムコネクタ追加で URL を登録
+- **ChatGPT**: Settings → Developer mode を有効化 → コネクタ追加
+- プロトコルは 2026-07-28 版と旧世代 (initialize 方式) の両対応
+
 ## ユースケース別レシピ
 
 ### エラーチェック (データ作成者)
