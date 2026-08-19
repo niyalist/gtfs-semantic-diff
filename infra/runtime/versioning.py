@@ -53,6 +53,16 @@ def events_key(pair: str, version: str) -> str:
     return f"r/{pair}/v/{version}.events.json"
 
 
+def entry_digest_md_key(pair: str) -> str:
+    """最新版ダイジェストの入口エイリアス (RD4b 追補)。
+    「r/{pair}.html の .html を .digest.md に変えるだけ」の規則。"""
+    return f"r/{pair}.digest.md"
+
+
+def entry_digest_json_key(pair: str) -> str:
+    return f"r/{pair}.digest.json"
+
+
 def digest_md_key(pair: str, version: str) -> str:
     """AI 向けダイジェスト Markdown (RD4b)。版と並置・不変。"""
     return f"r/{pair}/v/{version}.digest.md"
@@ -106,6 +116,10 @@ def update_index(
         "version": version,
         "generated_at": generated_at,
         "key": version_key(pair, version),
+        # RD4b 追補: 台帳から digest を機械的に列挙できるように明記
+        # (2026.7.30.3 以降の版のみ。旧エントリにはこのキーがない)
+        "digest_md": digest_md_key(pair, version),
+        "digest_json": digest_json_key(pair, version),
     }
     versions = [
         v for v in (index or {}).get("versions", []) if v.get("version") != version

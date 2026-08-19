@@ -731,7 +731,8 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         _put_json_file(keys["events"], events_path, cache=cache)
         _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=cache)
         write_html_split(bundle, template, html_path, data_path,
-                         data_url=f"/{prefix}/{job_id}.json")
+                         data_url=f"/{prefix}/{job_id}.json",
+                         head_links=_digest_head_links(keys))
         _put_json_file(f"{prefix}/{job_id}.json", data_path, cache=cache)
         result_key = f"{prefix}/{job_id}.html"
         _put_html_file(result_key, html_path, cache=cache)
@@ -749,8 +750,22 @@ def _run_compare(job_id: str, job_input: dict) -> str:
     _put_json_file(keys["events"], events_path, cache=immutable)
     _put_json_file(keys["rawdiffs"], rawdiffs_path, cache=immutable)
     write_html_split(bundle, template, html_path, data_path,
-                     data_url="/" + versioning.data_key(job_id, version))
+                     data_url="/" + versioning.data_key(job_id, version),
+                     head_links=_digest_head_links(keys))
     return _write_versioned(job_id, html_path, data_path, version, pair_feed_info)
+
+
+def _digest_head_links(keys: dict) -> str:
+    """入口/版 HTML の <head> に埋める digest への発見メタ (RD4b 追補)。
+
+    「結果 URL を AI に投げて分析させる」フローで、HTML を fetch した
+    エージェントが機械可読の要約に一発で辿り着けるようにする。"""
+    return (
+        f'<link rel="alternate" type="text/markdown" '
+        f'href="/{keys["digest_md"]}" title="AI digest (Markdown)">'
+        f'<link rel="alternate" type="application/json" '
+        f'href="/{keys["digest_json"]}" title="AI digest (JSON)">'
+    )
 
 
 def _bake_raw_urls(bundle: dict, keys: dict, events_bytes: int,
@@ -922,6 +937,21 @@ def _write_versioned(pair: str, html_path: str, data_path: str, version: str,
     # (ロールバック運用中に旧版が最新入口を巻き戻さないように)
     if index["latest"] == version:
         _put_html_file(versioning.entry_key(pair), html_path, cache="public, max-age=300")
+        # RD4b 追補: 最新版 digest のエイリアス (r/{pair}.digest.md|json)。
+        # 「.html を .digest.md に変えるだけ」の規則を成立させる
+        for src, dst, ctype in (
+            (versioning.digest_md_key(pair, version),
+             versioning.entry_digest_md_key(pair), "text/markdown; charset=utf-8"),
+            (versioning.digest_json_key(pair, version),
+             versioning.entry_digest_json_key(pair),
+             "application/json; charset=utf-8"),
+        ):
+            s3.copy_object(
+                Bucket=RESULTS_BUCKET, Key=dst,
+                CopySource={"Bucket": RESULTS_BUCKET, "Key": src},
+                MetadataDirective="REPLACE", ContentType=ctype,
+                CacheControl="public, max-age=300",
+            )
     s3.put_object(
         Bucket=RESULTS_BUCKET,
         Key=versioning.index_key(pair),

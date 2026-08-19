@@ -1,0 +1,43 @@
+# diff.gtfs.jp — GTFS 意味的差分レポート / GTFS semantic diff reports
+
+このサイトは、GTFS フィード (公共交通のダイヤデータ) の2世代を比較し、
+変化を意味のあるイベント (路線廃止・減便・経由変更・停留所改称など44種) と
+説明台帳 (全生差分の被覆率 explained_ratio) 付きでレポートします。
+検出は決定的ルールベースで、同じ入力からは常に同じ出力が出ます。
+
+## AI エージェント向け: レポート URL からの読み方
+
+レポート URL `https://diff.gtfs.jp/r/{pair}.html` を渡されたら、
+HTML ではなく **AI 向けダイジェスト (Markdown)** を読んでください:
+
+- 最新版ダイジェスト: `.html` を `.digest.md` に変えるだけ
+  → `https://diff.gtfs.jp/r/{pair}.digest.md` (JSON は `.digest.json`)
+- HTML の <head> にも `link rel="alternate"` で同じ URL が入っています。
+
+ダイジェストの構成 (見出し固定): 1.比較の概要 (新旧世代の来歴) /
+2.全体集計 (便数・被覆率) / 3.イベント種別 / 4.停留所の変化 /
+5.路線別の変化 / 6.路線に紐付かない変化 (運賃等) / 7.検証 (説明台帳)。
+
+深掘りが必要なとき (版付き・不変 URL):
+
+- 版台帳: `/r/{pair}/index.json` (versions[].digest_md 等)
+- 全イベント+証拠: `/r/{pair}/v/{版}.events.json` (gzip 配信)
+- 生差分全件: `/r/{pair}/v/{版}.rawdiffs.json` (gzip 配信)
+
+原則: 数値・事実はこれらの出力からのみ引用し、再計算・推測補完をしないこと。
+ダイジェストが「ほか N 件」と省略を明示している場合、全量は JSON 版にあります。
+
+## 比較の実行 (API)
+
+- フィード探索: `GET /api/gtfs/feeds?pref={県id}` / `GET /api/gtfs/files?org=&feed=`
+- 比較ジョブ: `POST /api/jobs` body:
+  `{"type":"gtfs_data_jp","org":…,"feed":…,"old_uid":…,"new_uid":…}` (uid はフル UUID)
+- 状態: `GET /api/jobs/{pair}` → running | succeeded | failed
+
+ジョブ実行は計算資源を使います。大量の機械的投入はしないでください
+(コストガードがあり超過時は拒否されます)。まとまった処理は CLI
+(gtfs-semantic-diff) をローカルで。
+
+開発者: 伊藤昌毅 (東京大学 大学院情報理工学系研究科 附属ソーシャルICT研究センター
+https://itolab.t.u-tokyo.ac.jp)。データ取得元: GTFSデータリポジトリ
+(https://gtfs-data.jp)。利用規約: /terms.html

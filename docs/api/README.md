@@ -79,7 +79,7 @@ curl https://diff.gtfs.jp/api/jobs/<pair>
 
 # 3) 成果物 (版付き・不変)
 #    レポート:      https://diff.gtfs.jp/r/<pair>.html
-#    ダイジェスト:   https://diff.gtfs.jp/r/<pair>/v/<版>.digest.md (LLM にはまずこれ)
+#    ダイジェスト:   https://diff.gtfs.jp/r/<pair>.digest.md (最新版。LLM にはまずこれ)
 #    イベント JSON: https://diff.gtfs.jp/r/<pair>/v/<版>.events.json
 #    生差分 JSON:   https://diff.gtfs.jp/r/<pair>/v/<版>.rawdiffs.json
 ```
@@ -121,6 +121,10 @@ curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世�
 告知と照らす。
 
 ## AI に渡すときの推奨
+
+- レポート URL (`…/r/<pair>.html`) をそのまま AI に渡しても、HTML の
+  `link rel="alternate"` とサイトの `/llms.txt` から digest に誘導されます。
+  確実なのは最初から `…/r/<pair>.digest.md` を渡すこと。
 
 - まず digest (`--digest out.md`) を渡し、深掘りが要るときだけ
   events.json の該当部分を渡す。events.json 全体は大規模フィードで

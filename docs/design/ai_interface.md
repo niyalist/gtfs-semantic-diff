@@ -118,6 +118,11 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
   を RD2 と同じ棚に (Lambda worker が同じ bundle から生成 = 数値一致、
   gzip なしの素置き、immutable。アップロード由来も並置)。meta.raw_urls に
   digest の URL も焼き込み (additive)。URL を LLM に渡すだけで使える。
+  **追補 (2026.7.30.3、発見導線)**: レポート HTML の head に
+  link rel=alternate、最新版エイリアス r/{pair}.digest.md|json
+  (.html を置換するだけの規則)、index.json versions[] に digest キー、
+  /llms.txt (サイト全体の機械向け案内) — 「結果 URL を AI に投げる」
+  フローで digest に到達できる。
 - **RD4c: MCP サーバー** — §5 のツール群。コストガード設計込み。
 
 ## 7. 決定事項・棄却案

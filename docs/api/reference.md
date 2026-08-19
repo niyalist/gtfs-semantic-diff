@@ -75,6 +75,7 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 | URL | 中身 |
 |---|---|
 | `/r/{pair}.html` | レポート入口 (常に最新版へ) |
+| `/r/{pair}.digest.md` / `.digest.json` | **最新版ダイジェストのエイリアス** (.html を .digest.md に変えるだけ) |
 | `/r/{pair}/index.json` | 版台帳 (どの版があるか、latest) |
 | `/r/{pair}/v/{版}.html` | 特定版のレポート |
 | `/r/{pair}/v/{版}.json` | ビューア用データ (bundle。安定 IF ではない) |
@@ -86,6 +87,9 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 版は生成したツールの CalVer (例: 2026.7.30.1)。一度書かれた版は不変。
 ツール更新後の初アクセスで新しい版が lazy に追加される。
 digest は 2026.7.30.2 以降に生成された版に並置される (それ以前の版にはない)。
+発見導線 (2026.7.30.3〜): レポート HTML の `<head>` に digest への
+`link rel="alternate"`、index.json の versions[] に digest_md / digest_json、
+サイトルートに機械向け案内 `/llms.txt`。
 
 ### 認証・制限
 

@@ -439,3 +439,14 @@ def test_date_runs_year_split():
     # 月跨ぎは繋げる
     runs, more = date_runs_year_split(["20260331", "20260401"], 8)
     assert runs == [["20260331", "20260401"]]
+
+
+def test_write_html_split_head_links(tmp_path, config):
+    # RD4b 追補: digest への発見メタ (</head> 直前に注入)
+    bundle = _bundle(tmp_path, config, core=True)
+    html = tmp_path / "o.html"
+    link = '<link rel="alternate" type="text/markdown" href="/x.digest.md">'
+    write_html_split(bundle, "<head><title>t</title></head><x>__GTFS_SEMDIFF_DATA__</x>",
+                     html, tmp_path / "o.json", "/d.json", head_links=link)
+    out = html.read_text(encoding="utf-8")
+    assert link + "</head>" in out

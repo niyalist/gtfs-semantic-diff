@@ -1012,6 +1012,7 @@ def write_html_split(
     data_path,
     data_url: str,
     gzip_data: bool = True,
+    head_links: str = "",
 ) -> None:
     """アプリ HTML とデータ JSON を分離して書き出す (RD1b)。
 
@@ -1021,8 +1022,12 @@ def write_html_split(
     コピーが参照されるため、相対パスでは一方が壊れる。data は
     _payload_chunks を逐次書き出し ("</" は "<\\/" にエスケープされるが
     JSON としては等価。gzip_data=True で Content-Encoding: gzip 配信用)。
+    head_links: </head> 直前に注入する発見メタ (RD4b 追補 — digest への
+    link rel=alternate。URL だけを渡された AI エージェントの発見導線)。
     """
     head, tail = _split_template(bundle, template_html)
+    if head_links:
+        head = head.replace("</head>", head_links + "</head>", 1)
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(head)
         f.write(json.dumps({"$data_url": data_url}))
