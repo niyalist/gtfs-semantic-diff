@@ -319,7 +319,9 @@ def render_digest_md(d: dict, routes_max: int = 200,
             if key in ru:
                 a(f"- {label}: {ru[key]['url']}")
         a("")
-        a("仕様は /docs/reference.md (このサイト) を参照。")
+        a("仕様は /docs/reference.md (このサイト) を参照。"
+          "MCP コネクタ (https://diff.gtfs.jp/mcp) 登録済みなら、この URL の"
+          " r/〜.html の〜部分を pair 引数として各ツールで深掘りできる。")
     else:
         a("詳細 (証拠・行レベル) は events.json / rawdiffs.json"
           " (docs/api/reference.md)。")

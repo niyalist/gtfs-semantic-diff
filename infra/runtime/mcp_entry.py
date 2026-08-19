@@ -31,6 +31,11 @@ trip_id の旧新対応)・全イベントを提供します。
 
 典型的な流れ: find_feeds → find_generations → list_pairs (計算済みの確認) →
 get_digest → list_routes / get_route_detail / map_ids / get_events。
+未計算の世代ペアは run_compare → get_job_status で作れる。
+
+レポート URL を渡されたら: https://diff.gtfs.jp/r/{pair}.html の {pair} 部分が
+そのままツールの pair 引数になる (例: r/nagai-unyu__Nagaibus__4a4a81e7__b1be1add.html
+→ pair="nagai-unyu__Nagaibus__4a4a81e7__b1be1add")。
 """
 
 server = MCPServer(
