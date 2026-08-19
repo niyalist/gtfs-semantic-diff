@@ -110,6 +110,28 @@ def get_events(pair: str, type: str | None = None, severity: str | None = None,
                         route=route, limit=limit)
 
 
+@server.tool(description="比較を実行する。計算済みペアなら即 succeeded、"
+             "未計算なら計算を開始 (数十秒〜数分、日次の回数ガードあり)。"
+             "old/new は世代の uid (フル UUID) か rid (prev_1, current 等)。"
+             "開始後は get_job_status(pair) で succeeded を待ち get_digest へ")
+def run_compare(org: str, feed: str, old: str = "prev_1",
+                new: str = "current") -> dict:
+    def submit(body):
+        import json as _json
+
+        import handler  # 同一プロセス (api Lambda) — G1 ガードを直接通す
+
+        r = handler._api_submit(body, source=T.get_request_source())
+        return r["statusCode"], _json.loads(r["body"])
+
+    return T.run_compare(_site, submit, org, feed, old=old, new=new)
+
+
+@server.tool(description="比較ジョブの状態 (queued/running/succeeded/failed)")
+def get_job_status(pair: str) -> dict:
+    return T.get_job_status(_site, pair)
+
+
 def build_app():
     return server.streamable_http_app(
         streamable_http_path="/mcp",
@@ -171,6 +193,11 @@ def lambda_handler(event, context):  # noqa: ARG001 - Lambda signature
                             "content-type": "application/json"},
                 "body": '{"error": "method not allowed (POST only)"}'}
     _ensure_started()
+    # G1 ガードの送信元 (run_compare 用): エンドクライアントの IP ハッシュ
+    import hashlib
+    _hdrs = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    _ip = (_hdrs.get("x-forwarded-for", "").split(",")[0].strip() or "unknown")
+    T.set_request_source("mcp:" + hashlib.sha256(_ip.encode()).hexdigest()[:12])
     raw = event.get("body") or ""
     body = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode()
     headers = [(k.lower().encode(), v.encode())

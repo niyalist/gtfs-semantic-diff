@@ -232,3 +232,62 @@ def get_events(site: Site, pair: str, type: str | None = None,  # noqa: A002 ツ
             **({"note": f"{matched}件中{limit}件を表示。全量は {url}"}
                if matched > limit else {}),
             "url": url}
+
+
+# --- 比較の実行 (RD4c-1b) ---
+
+import contextvars  # noqa: E402
+import re  # noqa: E402
+
+_REQUEST_SOURCE = contextvars.ContextVar("mcp_request_source",
+                                         default="mcp:unknown")
+_UID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{20,}")
+
+
+def set_request_source(source: str) -> None:
+    """G1 ガードの送信元識別子 (lambda_handler がリクエスト毎に設定)。"""
+    _REQUEST_SOURCE.set(source)
+
+
+def get_request_source() -> str:
+    return _REQUEST_SOURCE.get()
+
+
+def run_compare(site: Site, submit, org: str, feed: str,
+                old: str = "prev_1", new: str = "current") -> dict:
+    """比較ジョブの投入。submit(body) -> (status, payload) は注入
+    (Lambda では handler._api_submit を同一プロセスで呼ぶ — G1 ガードを
+    エンドクライアント単位で通すため)。"""
+    body: dict = {"type": "gtfs_data_jp", "org": org, "feed": feed}
+    for key, val in (("old", old), ("new", new)):
+        if _UID_RE.fullmatch(val or ""):
+            body[f"{key}_uid"] = val
+        else:
+            body[f"{key}_rid"] = val
+    status, payload = submit(body)
+    if status == 429:
+        raise ValueError("計算ジョブの回数制限に達しました。時間をおいて"
+                         "再試行してください (計算済みペアの読み取りは制限なし)")
+    if status >= 400:
+        raise ValueError(f"投入エラー ({status}): "
+                         f"{(payload or {}).get('error', '')}")
+    pair = payload["job_id"]
+    out = {
+        "pair": pair,
+        "status": payload.get("status", "queued"),
+        "report_url": f"{site.origin}/r/{pair}.html",
+        "digest_url": f"{site.origin}/r/{pair}.digest.md",
+    }
+    if out["status"] == "succeeded":
+        out["note"] = "計算済みです。get_digest(pair) で読めます"
+    else:
+        out["note"] = ("計算を開始しました (数十秒〜数分)。get_job_status(pair) で "
+                       "succeeded を確認してから get_digest(pair) を呼んでください")
+    return out
+
+
+def get_job_status(site: Site, pair: str) -> dict:
+    d = site.json(f"/api/jobs/{urllib.parse.quote(pair)}")
+    if d is None:
+        raise ValueError(f"ジョブ '{pair}' が見つかりません")
+    return d

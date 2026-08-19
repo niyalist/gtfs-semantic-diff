@@ -386,8 +386,8 @@ config ゲート + 別途議論)。
       contract test 5件 (新旧両プロトコル実叩き)。ChatGPT は Developer mode の
       カスタムコネクタで接続可 (無認証可・streamable HTTP) と確認。
       残 DoD: Claude/ChatGPT からの実接続確認 (要ユーザー操作)
-    - RD4c-1b: run_compare。前提だった G1 は実装済み (下記)。
-      DoD: コールドスタート課題が新規ペアで完走+超過時 429 の実測
+    - RD4c-1b 【実装 2026-08-19】: run_compare + get_job_status (G1 を
+      エンドクライアント単位で通す)。残 DoD: コールドスタート課題の実走
     - **G1/G2/G3 【実装 2026-08-19】**: G1 = 日次計算ジョブ数ガード
       (DynamoDB 原子カウンタ、全体200/送信元別30、超過429+Retry-After、
       fail-open。キャッシュヒットは消費しない)。G2 = アカウントの同時実行クォータ 10 のため予約不可 (保留 —

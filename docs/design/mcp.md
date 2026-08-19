@@ -132,9 +132,12 @@ MCP がそこに上乗せするのは2つだけで、それ以外を目的にし
   deep research 互換 (search/fetch の2ツール規約) は別枠で、Developer mode の
   フルツール接続なら本サーバーのツールがそのまま使える。ChatGPT が旧世代
   (initialize 系) を話しても SDK v2 の両世代対応で吸収される。
-- **RD4c-1b: run_compare** — ジョブ投入+ポーリング。**前提: §9 G1
-  (実効ガード) の実装**。DoD: コールドスタート課題 (ユースケース1) が
-  新規ペアで完走+ガード超過時に 429 が返ることを実測。
+- **RD4c-1b: run_compare** 【実装 2026-08-19】 — run_compare +
+  get_job_status。ジョブ投入は同一プロセスの handler._api_submit を直接
+  呼び、G1 ガードを**エンドクライアント単位** (MCP リクエストの XFF ハッシュ、
+  contextvar 経由) で通す — HTTP 経由だと Lambda の egress IP に全 MCP
+  利用者が束なってしまうため。429 はツールエラーとして「時間をおいて」の
+  ガイダンス付きで返る。残 DoD: コールドスタート課題の実走 (エージェントから)。
 - **RD4c-2: A/B 検証** — §6。DoD: 判定一致率と呼び出し回数の比較を
   docs/verification/ に記録。
 - 先送り: 認可強化、ローカル MCP (CLI 同梱で compare をローカル実行する

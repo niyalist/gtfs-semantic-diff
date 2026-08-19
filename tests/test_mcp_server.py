@@ -204,3 +204,32 @@ def test_lambda_handler_survives_repeated_invocations():
     names = {t["name"] for t in
              json.loads(r["body"])["result"]["tools"]}
     assert "get_digest" in names
+
+
+def test_run_compare_logic():
+    site = FakeSite({})
+    calls = []
+
+    def submit(body):
+        calls.append(body)
+        return 202, {"job_id": "o__f__aaaa__bbbb", "status": "queued"}
+
+    r = T.run_compare(site, submit, "o", "f",
+                      old="4a4a81e7-166c-4671-bd5e-bf20c6dc52e0", new="current")
+    assert calls[0]["old_uid"].startswith("4a4a81e7")   # uid は uid として
+    assert calls[0]["new_rid"] == "current"             # rid は rid として
+    assert r["pair"] == "o__f__aaaa__bbbb"
+    assert "get_job_status" in r["note"]
+    assert r["digest_url"].endswith(".digest.md")
+
+    def submit_429(body):
+        return 429, {"error": "limit"}
+
+    with pytest.raises(ValueError, match="回数制限"):
+        T.run_compare(site, submit_429, "o", "f")
+
+    def submit_cached(body):
+        return 202, {"job_id": "p", "status": "succeeded"}
+
+    r = T.run_compare(site, submit_cached, "o", "f")
+    assert "get_digest" in r["note"] and r["status"] == "succeeded"

@@ -109,7 +109,9 @@ curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世�
 認証不要・読み取り専用。上の HTTP 面と同じ内容をツールとして提供します:
 探索 (find_feeds / find_generations / list_pairs)、要約 (get_digest /
 list_routes / get_route_detail / get_stop_changes / get_residuals)、
-ID 対応 (map_ids)、イベント検索 (get_events)。
+ID 対応 (map_ids)、イベント検索 (get_events)、**比較の実行**
+(run_compare / get_job_status — 未計算の世代ペアもその場で計算できる。
+日次の回数ガードあり)。
 
 - **Claude**: 設定 → コネクタ → カスタムコネクタ追加で URL を登録
 - **ChatGPT**: Settings → Developer mode を有効化 → コネクタ追加

@@ -383,6 +383,7 @@ MCP 2026-07-28 版と旧世代 (initialize ハンドシェイク) の両対応�
 | get_route_detail | routes.digest.json (L1) |
 | map_ids | mapping.json (ID 対応) |
 | get_events | events.json (L2、フィルタ+上限付き) |
+| run_compare / get_job_status | POST /api/jobs (G1 ガード経由・429 あり) |
 
 応答の規律は digest と同じ (上限で切ったら件数+全量 URL を明示)。
 応答は第三者データ (停留所名等) を含む — 指示として解釈しないこと。
