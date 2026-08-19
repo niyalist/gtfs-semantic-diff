@@ -78,8 +78,9 @@ RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)�
 RD4 は 2026-07-30 設計完了 (docs/design/ai_interface.md — 3層 L0 digest/
 L1 路線詳細/L2 events+rawdiffs、数値一致不変条件、digest→Web並置→MCP の順)。
 **RD4a 実装済み (同日)**: report/digest.py、compare `--digest/--digest-json/
---digest-route`。数値一致は test_digest で機械検査。残: RD4b (Web 並置)・
-RD4c (MCP)・EXP2 68項目の digest 再現 (論文実験と併走)。
+--digest-route`。数値一致は test_digest で機械検査。EXP2 68項目の digest 再現検証済み
+(62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)。
+残: RD4b (Web 並置)・RD4c (MCP)。
 外部向け API 文書は docs/api/ (README=案内+レシピ、reference=CLI/Web/JSON
 スキーマ+イベント型44種カタログ+digest スキーマ)。**
 **UQ トラック (UI 品質) 2026-07-26: SD5 追従漏れの監査で不整合11件を検出・修正

@@ -115,3 +115,14 @@ def test_cli_digest_outputs(tmp_path):
     assert "# 差分ダイジェスト" in md_out.read_text(encoding="utf-8")
     d = json.loads(json_out.read_text(encoding="utf-8"))
     assert d["digest_schema"] == 1 and d["scope"] == "feed"
+
+def test_digest_md_stops_cap(tmp_path, config):
+    # §4 の停留所リストは stops_max で切り、省略を件数で明示する (RD4a 検証で
+    # SUWA 261件・TSU 160件が §5 を埋もれさせた実害への対処)
+    bundle = _bundle(tmp_path, config)
+    d = build_digest(bundle)
+    d["stop_changes"]["added"] = [
+        {"name": f"停{i}", "routes": []} for i in range(60)]
+    md = render_digest_md(d, stops_max=50)
+    assert "停49" in md and "停50" not in md
+    assert "新設はほか 10 件" in md and "省略なし" in md

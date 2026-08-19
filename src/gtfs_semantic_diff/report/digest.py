@@ -188,8 +188,12 @@ def _fmt_quant(q) -> str:
     return "、".join(f"{k} {v}" for k, v in q.items())
 
 
-def render_digest_md(d: dict, routes_max: int = 200) -> str:
-    """L0 digest の Markdown。見出し構造は固定 (スキーマの一部)。"""
+def render_digest_md(d: dict, routes_max: int = 200,
+                     stops_max: int = 50) -> str:
+    """L0 digest の Markdown。見出し構造は固定 (スキーマの一部)。
+
+    routes_max / stops_max は Markdown 版の上限 (超過は件数を明示して
+    JSON 版へ誘導 — 省略は必ず明示する)。JSON 版は常に全量。"""
     meta = d["meta"]
     feed = meta.get("feed", {})
     agency = "・".join(meta.get("agency_names") or []) or \
@@ -245,7 +249,8 @@ def render_digest_md(d: dict, routes_max: int = 200) -> str:
     any_stop = False
     for key, label in (("renamed", "改称"), ("added", "新設"),
                        ("removed", "廃止"), ("relocated", "移設")):
-        for s in sc.get(key, []):
+        items = sc.get(key, [])
+        for s in items[:stops_max]:
             any_stop = True
             routes = "、".join(s.get("routes", []))
             where = f" (路線: {routes})" if routes else ""
@@ -253,6 +258,9 @@ def render_digest_md(d: dict, routes_max: int = 200) -> str:
                 a(f"- 改称: {s['old']} → {s['new']}{where}")
             else:
                 a(f"- {label}: {s['name']}{where}")
+        if len(items) > stops_max:
+            a(f"- ({label}はほか {len(items) - stops_max} 件 — 全量は"
+              f" JSON 版の stop_changes に。省略なし)")
     if not any_stop:
         a("(なし)")
     a("")

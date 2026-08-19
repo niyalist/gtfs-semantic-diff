@@ -285,7 +285,9 @@ def compare(
         else:
             dig = build_digest(bundle)
             routes_max = config.get("report", "digest_routes_max", default=200)
-            md = render_digest_md(dig, routes_max=routes_max)
+            stops_max = config.get("report", "digest_stops_max", default=50)
+            md = render_digest_md(dig, routes_max=routes_max,
+                                  stops_max=stops_max)
         if digest_out:
             Path(digest_out).write_text(md, encoding="utf-8")
             console.print(f"ダイジェスト (Markdown): [cyan]{digest_out}[/cyan]")
