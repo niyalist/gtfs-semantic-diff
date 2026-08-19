@@ -1,6 +1,6 @@
 [project]
 name = "gtfs-semantic-diff"
-version = "2026.8.19.1"
+version = "2026.8.19.2"
 description = "Semantic diff extraction for multi-generation GTFS feeds"
 license = "MIT"
 license-files = ["LICENSE"]
