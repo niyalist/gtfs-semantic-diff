@@ -371,7 +371,7 @@ class DeliveryStack(Stack):
             distribution_paths=["/index.html", "/", "/terms.html", "/admin.html",
                                 "/favicon.svg", "/favicon.ico",
                                 "/apple-touch-icon.png", "/ogp.png",
-                                "/llms.txt", "/robots.txt"],
+                                "/llms.txt", "/robots.txt", "/developers.html"],
         )
 
         # 外部開発者・AI 向けドキュメント (docs/api) を /docs/ に配信 (RD4c-0)

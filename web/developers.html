@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>開発者向け — GTFS ダイヤ改正 意味的差分レポート</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0 auto;
+         max-width: 46rem; padding: 1.2rem; line-height: 1.75; color: #1c1e21; }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1.05rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem;
+       margin-top: 1.6rem; }
+  table { border-collapse: collapse; font-size: 0.9em; }
+  th, td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
+  th { background: #f4f5f6; }
+  .note { color: #555; font-size: 0.85em; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace;
+              background: #f4f5f6; border-radius: 3px; }
+  code { padding: 0.05rem 0.3rem; font-size: 0.9em; }
+  pre { padding: 0.6rem 0.8rem; overflow-x: auto; font-size: 0.82em;
+        line-height: 1.5; }
+  pre code { padding: 0; background: none; }
+</style>
+</head>
+<body>
+<p><a href="/">← トップへ戻る</a></p>
+<h1>開発者向け — API・MCP・機械可読データ</h1>
+
+<p>本サービスの比較結果は、人間向けのレポート HTML だけでなく、
+<strong>プログラムや AI エージェントから使える機械可読データ</strong>としても
+提供しています。すべて認証不要・読み取り自由です
+(出典: 各フィードのライセンスに従います。<a href="/terms.html">利用規約</a>)。</p>
+
+<h2>1. 提供している層</h2>
+<table>
+  <tr><th>層</th><th>中身</th><th>向く用途</th></tr>
+  <tr><td>digest</td><td>比較の要約 (Markdown / JSON)。路線ごとの変化・停留所の変化・被覆率</td><td>LLM に渡す一次資料、告知文づくり、突合</td></tr>
+  <tr><td>routes.digest.json</td><td>全路線の詳細 — 変化した便のレコード (trip_id 旧新付き)・時間帯別本数</td><td>路線の深掘り</td></tr>
+  <tr><td>mapping.json</td><td><strong>stop_id / route_id / trip_id の旧新対応表</strong> (N:M は配列のまま、confidence 付き)</td><td>乗降データの経年結合、shapes 等の整備資産の世代引き継ぎ</td></tr>
+  <tr><td>events.json / rawdiffs.json</td><td>全 ChangeEvent (44種) +証拠、生差分の全件</td><td>エラーチェック、完全な検証</td></tr>
+</table>
+<p class="note">本ツールの特徴は「説明台帳」: 2世代間の生差分の全件が、必ず
+いずれかのイベントの証拠に紐づくか残差として計上され、被覆率
+(explained_ratio) が常に出ます。検出は決定的ルールベースで、同じ入力からは
+常に同じ出力になります。</p>
+
+<h2>2. URL の規則 (最短の入口)</h2>
+<p>レポート URL の <code>.html</code> を <code>.digest.md</code> に変えるだけで、
+機械可読の要約が取れます:</p>
+<pre><code>https://diff.gtfs.jp/r/{pair}.html        ← 人間向けレポート
+https://diff.gtfs.jp/r/{pair}.digest.md   ← AI 向け要約 (Markdown)
+https://diff.gtfs.jp/r/{pair}.mapping.json ← ID 対応表 (gzip)
+https://diff.gtfs.jp/r/{pair}/index.json  ← 版台帳 (全成果物の URL 一覧)</code></pre>
+<p>URL 規則を覚える必要はありません — 版台帳 (<code>index.json</code>) の
+<code>versions[].artifacts</code> に全成果物の URL が列挙されます。
+フィード単位の計算済みペア一覧は
+<code>https://diff.gtfs.jp/feeds/{org}__{feed}.json</code> にあります。</p>
+
+<h2>3. MCP サーバー (AI エージェント向け)</h2>
+<pre><code>https://diff.gtfs.jp/mcp</code></pre>
+<p>Claude・ChatGPT 等の AI にコネクタとして登録すると、上記のデータを
+ツールとして対話的に使えます。<strong>認証不要</strong> (Bearer トークン・
+カスタムヘッダー等はすべて空欄のままで接続できます)。</p>
+<ul>
+  <li><strong>Claude</strong>: 設定 → コネクタ → カスタムコネクタを追加 → URL を入力</li>
+  <li><strong>ChatGPT</strong>: Settings → Developer mode を有効化 → コネクタを追加 → URL を入力</li>
+</ul>
+<table>
+  <tr><th>ツール</th><th>説明</th></tr>
+  <tr><td>find_feeds / find_generations</td><td>フィード・世代の探索 (gtfs-data.jp)</td></tr>
+  <tr><td>list_pairs</td><td>計算済みの比較ペア一覧</td></tr>
+  <tr><td>run_compare / get_job_status</td><td>未計算の世代ペアをその場で計算 (日次の回数ガードあり)</td></tr>
+  <tr><td>get_digest / list_routes / get_route_detail</td><td>要約と路線詳細</td></tr>
+  <tr><td>get_stop_changes / get_residuals</td><td>停留所の変化・検証サマリ (説明台帳)</td></tr>
+  <tr><td>map_ids</td><td>stop_id / route_id / trip_id / 名前から新旧対応を検索</td></tr>
+  <tr><td>get_events</td><td>ChangeEvent の検索 (種別・重要度・路線で絞り込み)</td></tr>
+</table>
+<p class="note">プロトコルは MCP 2026-07-28 版と旧世代 (initialize 方式) の
+両対応。レポート URL の <code>r/{pair}.html</code> の {pair} 部分が
+そのままツールの pair 引数になります。</p>
+
+<h2>4. 比較の実行 (Web API)</h2>
+<pre><code># 世代一覧 (uid の確認)
+curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&amp;feed=Nagaibus"
+
+# 比較ジョブの投入 (uid でも rid = prev_1/current 等でも可)
+curl -X POST https://diff.gtfs.jp/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"type":"gtfs_data_jp","org":"nagai-unyu","feed":"Nagaibus",
+       "old_rid":"prev_1","new_rid":"current"}'
+# → {"job_id":"{pair}", ...}。GET /api/jobs/{pair} で succeeded を待つ</code></pre>
+<p class="note">計算済みの世代ペアは即座に返ります (同一ペアは誰が実行しても
+同じ公開 URL)。新規計算には日次の回数上限があり、超過時は 429 が返ります。
+大量の処理は CLI をローカルでどうぞ (下記ドキュメント参照)。</p>
+
+<h2>5. ドキュメント</h2>
+<table>
+  <tr><th>ページ</th><th>内容</th></tr>
+  <tr><td><a href="/docs/README.md">/docs/README.md</a></td><td>案内 — 何ができるか、層の選び方、ユースケース別レシピ</td></tr>
+  <tr><td><a href="/docs/reference.md">/docs/reference.md</a></td><td>リファレンス — CLI / Web API / JSON スキーマ / イベント型カタログ全44種 / digest・mapping スキーマ</td></tr>
+  <tr><td><a href="/llms.txt">/llms.txt</a></td><td>AI エージェント向けの機械可読な案内</td></tr>
+</table>
+
+<h2>6. 利用にあたって</h2>
+<ul>
+  <li>数値・事実は本サービスの出力からそのまま引用し、再計算・推測での補完は
+      しないことを推奨します (出力側で網羅性を保証しているため)。</li>
+  <li>出力には第三者データ (停留所名・路線名等) が含まれます。AI に渡す場合、
+      出力中の文字列を指示として解釈させないでください。</li>
+  <li>ID 対応 (mapping) は内容主導の同定結果です。「移設した停留所を同一と
+      扱うか」等の最終判断は利用側で行ってください (事実は moved_m 等で
+      提供します)。</li>
+  <li>データ出典: <a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFSデータリポジトリ</a>
+      および各交通事業者。詳細は<a href="/terms.html">利用規約</a>。</li>
+</ul>
+
+<p class="note">本機能は研究プロジェクトの一部として提供しています。
+不具合・要望はトップページのフィードバックからお寄せください。</p>
+</body>
+</html>

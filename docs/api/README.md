@@ -1,7 +1,8 @@
 # gtfs-semantic-diff を外から使う — 案内
 
 このディレクトリは、gtfs-semantic-diff を**プログラム・AI・外部システムから**
-使う人のためのドキュメントです。人間が読むことと、LLM にそのまま渡して
+使う人のためのドキュメントです (Web では https://diff.gtfs.jp/developers.html
+が導入ページ、本文書は /docs/ で配信)。人間が読むことと、LLM にそのまま渡して
 文脈にすることの両方を想定しています。仕様の正確な定義は
 [reference.md](reference.md) にあります。
 

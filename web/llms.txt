@@ -31,7 +31,8 @@ HTML ではなく **AI 向けダイジェスト (Markdown)** を読んでくだ�
 - 全イベント+証拠: `/r/{pair}/v/{版}.events.json` (gzip 配信)
 - 生差分全件: `/r/{pair}/v/{版}.rawdiffs.json` (gzip 配信)
 
-完全な仕様: /docs/README.md (案内) と /docs/reference.md (リファレンス)
+完全な仕様: /docs/README.md (案内) と /docs/reference.md (リファレンス)。
+人間向けの導入は /developers.html
 
 原則: 数値・事実はこれらの出力からのみ引用し、再計算・推測補完をしないこと。
 ダイジェストが「ほか N 件」と省略を明示している場合、全量は JSON 版にあります。
