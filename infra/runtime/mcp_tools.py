@@ -68,6 +68,23 @@ class Site:
             return None
 
 
+def _canon_pair(pair: str) -> str:
+    """pair の正規化。アップロード由来は URL 上 r/u/{id} または r/anon/{id} に
+    住むため、素の id (u-xxxx / anon-xxxx) で渡されたら接頭辞を補う。
+    逆に get_job_status 系は素の id を使う (_job_id 参照)。"""
+    pair = pair.strip().strip("/")
+    if re.fullmatch(r"u-[0-9a-f]+", pair):
+        return f"u/{pair}"
+    if re.fullmatch(r"anon-[0-9a-f]+", pair):
+        return f"anon/{pair}"
+    return pair
+
+
+def _job_id(pair: str) -> str:
+    """ジョブ API 用の素の id (u/u-xxx → u-xxx)。"""
+    return pair.strip().strip("/").split("/")[-1]
+
+
 def _pair_missing(pair: str) -> ValueError:
     return ValueError(
         f"ペア '{pair}' の成果物が見つかりません。list_pairs で計算済みペアを"
@@ -109,6 +126,7 @@ def list_pairs(site: Site, org: str, feed: str) -> dict:
 
 
 def get_digest(site: Site, pair: str) -> str:
+    pair = _canon_pair(pair)
     md = site.text(f"/r/{urllib.parse.quote(pair)}.digest.md")
     if md is None:
         raise _pair_missing(pair)
@@ -116,6 +134,7 @@ def get_digest(site: Site, pair: str) -> str:
 
 
 def _digest_json(site: Site, pair: str) -> dict:
+    pair = _canon_pair(pair)
     d = site.json(f"/r/{urllib.parse.quote(pair)}.digest.json")
     if d is None:
         raise _pair_missing(pair)
@@ -133,6 +152,7 @@ def list_routes(site: Site, pair: str) -> dict:
 
 
 def get_route_detail(site: Site, pair: str, route: str) -> dict:
+    pair = _canon_pair(pair)
     d = site.json(f"/r/{urllib.parse.quote(pair)}.routes.digest.json")
     if d is None:
         raise _pair_missing(pair)
@@ -159,6 +179,7 @@ def map_ids(site: Site, pair: str, stop_id: str | None = None,
             name: str | None = None) -> dict:
     if not any([stop_id, route_id, trip_id, name]):
         raise ValueError("stop_id / route_id / trip_id / name のいずれかを指定")
+    pair = _canon_pair(pair)
     mp = site.json(f"/r/{urllib.parse.quote(pair)}.mapping.json")
     if mp is None:
         raise _pair_missing(pair)
@@ -199,6 +220,7 @@ def get_events(site: Site, pair: str, type: str | None = None,  # noqa: A002 ツ
                severity: str | None = None, route: str | None = None,
                limit: int = 50) -> dict:
     limit = max(1, min(int(limit), 200))
+    pair = _canon_pair(pair)
     idx = site.json(f"/r/{urllib.parse.quote(pair)}/index.json")
     if idx is None:
         raise _pair_missing(pair)
@@ -287,7 +309,7 @@ def run_compare(site: Site, submit, org: str, feed: str,
 
 
 def get_job_status(site: Site, pair: str) -> dict:
-    d = site.json(f"/api/jobs/{urllib.parse.quote(pair)}")
+    d = site.json(f"/api/jobs/{urllib.parse.quote(_job_id(pair))}")
     if d is None:
         raise ValueError(f"ジョブ '{pair}' が見つかりません")
     return d

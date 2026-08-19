@@ -233,3 +233,16 @@ def test_run_compare_logic():
 
     r = T.run_compare(site, submit_cached, "o", "f")
     assert "get_digest" in r["note"] and r["status"] == "succeeded"
+
+
+def test_upload_pair_normalization():
+    # アップロード由来: pair は u/{id} でも素の u-{id} でも読める。
+    # get_job_status は逆に素の id で API を叩く (ChatGPT Work 実走で発見)
+    site = FakeSite({
+        "/r/u/u-fa22b3aff728.digest.md": "# 差分ダイジェスト: up",
+        "/api/jobs/u-fa22b3aff728": {"status": "succeeded"},
+    })
+    assert T.get_digest(site, "u/u-fa22b3aff728").startswith("# 差分")
+    assert T.get_digest(site, "u-fa22b3aff728").startswith("# 差分")
+    assert T.get_job_status(site, "u/u-fa22b3aff728")["status"] == "succeeded"
+    assert T.get_job_status(site, "u-fa22b3aff728")["status"] == "succeeded"

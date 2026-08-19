@@ -36,6 +36,8 @@ get_digest → list_routes / get_route_detail / map_ids / get_events。
 レポート URL を渡されたら: https://diff.gtfs.jp/r/{pair}.html の {pair} 部分が
 そのままツールの pair 引数になる (例: r/nagai-unyu__Nagaibus__4a4a81e7__b1be1add.html
 → pair="nagai-unyu__Nagaibus__4a4a81e7__b1be1add")。
+アップロード由来の結果 (r/u/{id}.html / r/anon/{id}.html) は pair="u/{id}" —
+素の id (u-xxxx) だけでも各ツールが自動補完する。
 """
 
 server = MCPServer(
