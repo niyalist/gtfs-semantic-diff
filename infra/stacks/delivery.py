@@ -347,7 +347,7 @@ class DeliveryStack(Stack):
             distribution_paths=["/index.html", "/", "/terms.html", "/admin.html",
                                 "/favicon.svg", "/favicon.ico",
                                 "/apple-touch-icon.png", "/ogp.png",
-                                "/llms.txt"],
+                                "/llms.txt", "/robots.txt"],
         )
 
         # --- 運用ダッシュボード (S1: docs/design/admin.md)。暴走・障害はここで見る ---

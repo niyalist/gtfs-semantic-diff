@@ -1,0 +1,7 @@
+# diff.gtfs.jp — GTFS 意味的差分レポート
+# 全パス閲覧可。機械向けの案内は /llms.txt を参照してください。
+# AI エージェント向け: レポート URL の .html を .digest.md に変えると
+# 機械可読ダイジェスト (Markdown) が取得できます。
+
+User-agent: *
+Allow: /
