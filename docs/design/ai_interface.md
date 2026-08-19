@@ -178,11 +178,16 @@ MCP 経由にも通すこと。digest (RD4a) の内容設計がそのままツ�
   (.html を置換するだけの規則)、index.json versions[] に digest キー、
   /llms.txt (サイト全体の機械向け案内) — 「結果 URL を AI に投げる」
   フローで digest に到達できる。
-- **RD4c-0: routes.digest.json + 台帳強化** — L1 全路線束ね (時間帯別本数・
-  route_id 軽注記込み)、ペア台帳のマニフェスト化、フィード台帳、latest
-  エイリアス一般化、digest.md 深掘り節、RID 投入、docs 配信、CORS (§5)。
-- **IM1: mapping.json** — identity 層の直列化 (§5.1)。CLI `--mapping`、
-  Web 並置、合成テスト (改称・churn・N:M)、docs/api スキーマ。
+- **RD4c-0: routes.digest.json + 台帳強化** 【実装 2026-07-30、本番検証済み】 —
+  L1 全路線束ね (時間帯別本数・route_id 軽注記込み)、ペア台帳の
+  マニフェスト化、フィード台帳、latest エイリアス一般化、digest.md
+  深掘り節、RID 投入 (既存実装の文書化)、docs 配信、CORS (§5)。
+- **IM1: mapping.json** 【実装 2026-07-30。検証: docs/verification/
+  IM1_mapping.md — 永井で公式発表と完全一致、朝日町で N:1 保持】 —
+  identity 層の直列化 (§5.1)。**採択された対応のみ** (同名継続+
+  STOP_RENAMED 採択対+M9 成分。MatchGraph の仮説エッジは棄却済み対応を
+  含むため出さない — 実装時に永井で偽対応混入を検出して確定した規則)。
+  CLI `--mapping`、Web 並置、合成テスト (改称・churn・N:M)、docs/api §8。
 - **IM2/IM3 (後続)**: 消費者シミュレーション検証 (合成乗降データの世代跨ぎ
   結合で件数保存を機械検査)・実フィード錨 (名古屋 鳴.ワイ→鳴.メグ、
   朝日町 21→9 統合の N:1)。論文の応用節候補。

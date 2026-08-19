@@ -8,7 +8,7 @@
 > 次のマイルストーンは I1 (国際検証データセット)。ユーザー側タスク
 > (SES 検証・規約レビュー・倫理審査確認) とバックログ (「将来」節・
 > w3_2_directions.md §4〜5) は継続。**
-> V6 本体 (運賃深掘り)・X1 (bundle スキーマ文書化) は並行可能な残タスク。
+> V6 本体 (運賃深掘り) は並行可能な残タスク (X1 は RD4 に併合し完了 — docs/api/)。
 > 判断待ち: 置き換えダイヤ (alt:day_type) の二重計上対策 (稀のため費用対効果を
 > ユーザー判断待ち、2026-07-10 提案)。
 > 各 DoD の実行結果は docs/verification/ と docs/perf/ に記録済み。
@@ -373,7 +373,7 @@ config ゲート + 別途議論)。
     EXP2 68項目の digest 再現も完了 (2026-07-30、62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)】
   - **RD4b: Web 並置** 【実装 2026-07-30】 — `v/{版}.digest.md|json` を
     RD2 の棚に (worker が同一 bundle から生成・immutable、アップロード由来も)
-  - **RD4c-0: API 体系の背骨** (承認 2026-07-30、ai_interface.md §5) —
+  - **RD4c-0: API 体系の背骨** 【実装 2026-07-30 (2026.7.30.4〜5)、本番検証済み】 —
     routes.digest.json (L1 全路線+時間帯別本数+route_id 軽注記)、ペア台帳の
     マニフェスト化 (artifacts{})、フィード台帳 feeds/{org}__{feed}.json、
     latest エイリアス一般化、digest.md 深掘り節、RID 指定ジョブ投入、
@@ -388,8 +388,11 @@ identity 層 (内容主導の新旧同定) を製品面に昇格し、「差分�
 バックエンドにする。N:M を潰さない・confidence と証拠参照を必ず付ける・
 判断は消費側に残す。
 
-- **IM1: mapping.json** — stops/routes/trips/day_types の対応表。CLI
-  `--mapping`、Web 並置+latest エイリアス、合成テスト (改称・churn・N:M)
+- **IM1: mapping.json** 【実装 2026-07-30 (2026.7.30.5)、検証:
+  docs/verification/IM1_mapping.md】 — stops/routes/trips/day_types の対応表。
+  CLI `--mapping`、Web 並置+latest エイリアス、合成テスト (改称・churn・N:M)。
+  実装教訓: MatchGraph の仮説エッジをそのまま出すと偽対応が混入する —
+  **mapping = 説明台帳が採択した対応のみ** (同名継続+STOP_RENAMED+M9成分)
 - **IM2: docs/api スキーマ+契約明文化** (ツール版で対応が変わる旨)
 - **IM3: 消費者シミュレーション検証** — 合成乗降データの世代跨ぎ結合で
   件数保存を機械検査。実フィード錨: 名古屋 鳴.ワイ→鳴.メグ、朝日町 21→9

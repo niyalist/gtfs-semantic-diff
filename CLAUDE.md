@@ -25,7 +25,7 @@ input (zip x N generations | gtfs-data.jp API)
 
 必読ドキュメント:
 - docs/design/architecture.md — モジュール構成と JSON スキーマ
-- docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.2)
+- docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.4)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
 ## 現在の状態 (2026-07-24)
@@ -80,7 +80,13 @@ L1 路線詳細/L2 events+rawdiffs、数値一致不変条件、digest→Web並�
 **RD4a 実装済み (同日)**: report/digest.py、compare `--digest/--digest-json/
 --digest-route`。数値一致は test_digest で機械検査。EXP2 68項目の digest 再現検証済み
 (62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)。
-RD4b (Web 並置、v/{版}.digest.md|json) も実装済み。残: RD4c (MCP)。
+RD4b (Web 並置)・RD4c-0 (API 体系の背骨 — routes.digest.json =
+L1全路線+時間帯別本数、ペア台帳の artifacts マニフェスト、フィード台帳
+feeds/{org}__{feed}.json、latest エイリアス一般化、docs/api の /docs/ 配信、
+CORS) も実装済み。IM トラック (ID 対応の提供) は IM1 (mapping.json —
+採択された対応のみ: 同名継続+STOP_RENAMED 採択対+M9成分。N:M は配列の
+まま) まで完了、検証は docs/verification/IM1_mapping.md。
+残: RD4c-1 (MCP)・IM3 (消費者シミュレーション)。
 外部向け API 文書は docs/api/ (README=案内+レシピ、reference=CLI/Web/JSON
 スキーマ+イベント型44種カタログ+digest スキーマ)。**
 **UQ トラック (UI 品質) 2026-07-26: SD5 追従漏れの監査で不整合11件を検出・修正
@@ -116,7 +122,7 @@ docs/design/w3_2_directions.md (観測所構想などの将来案も §4〜5 に
 **https://diff.gtfs.jp/** (旧 d22mbbm5uatfcc.cloudfront.net も有効。
 DNS はさくら、docs/ops/domain.md)。(CDK は infra/、デプロイは
 AWS_PROFILE=AdministratorAccess-948645358251 で npx cdk deploy)。
-V6 本体 (運賃深掘り) は並行可能な残タスク (X1 は RD4 に併合予定)。**
+V6 本体 (運賃深掘り) は並行可能な残タスク (X1 は RD4 に併合済み)。**
 
 ## 過去プロジェクトからの資産移植 (完了)
 

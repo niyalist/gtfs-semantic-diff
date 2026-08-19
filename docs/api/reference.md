@@ -29,6 +29,8 @@ gtfs-semantic-diff compare [OLD.zip NEW.zip] [オプション]
 | `--digest FILE.md` | AI 向けダイジェスト Markdown (L0。§7) |
 | `--digest-json FILE.json` | 同 JSON |
 | `--digest-route <ページ名>` | ダイジェストを1路線の詳細 (L1) に切り替える |
+| `--digest-routes FILE.json` | 全路線の L1 を束ねた routes.digest.json (§7) |
+| `--mapping FILE.json` | ID 対応表 mapping.json (§8) |
 
 ### fetch — 世代の取得確認
 
@@ -325,7 +327,7 @@ Web 配信は gzip。
 
 ## 8. mapping.json (ID 対応表、mapping_schema 1)
 
-CLI `--mapping` / Web `v/{版}.mapping.json` (gzip)。identity 層
+CLI `--mapping` / Web `v/{版}.mapping.json` (gzip。**2026.7.30.5 以降の版を使うこと** — .4 は仮説エッジ混入の既知不具合)。identity 層
 (内容主導・決定的な新旧同定) の直列化で、**世代を跨いだ ID の結合キー**を
 提供する — 乗客データの経年分析、shapes 等整備資産の世代引き継ぎ、
 設定移行のバックエンド。

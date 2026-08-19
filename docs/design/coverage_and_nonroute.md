@@ -77,6 +77,10 @@ V1 (2026-07-06) で「路線 (route_group) に紐付く変更の表現」に意�
 
 ### X1: 機械向けインタフェースの文書化 (小・並行可)
 
+> **完了 (2026-07-30)**: RD4 に併合し docs/api/ (README+reference) として
+> 実現。digest / routes.digest / mapping の各層も追加された —
+> 以降の正は docs/design/ai_interface.md。
+
 - docs/spec/bundle_schema.md: bundle の各キー (events / rawdiffs / presentation /
   geometry / timetables / catalog / meta) のスキーマと安定性の約束を明文化
 - AI・外部システムへの推奨: 低レベルは events + rawdiffs (+ evidence)、

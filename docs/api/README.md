@@ -66,7 +66,8 @@ gtfs-semantic-diff compare --org nagai-unyu --feed Nagaibus \
 - `report.html` — 自己完結ビューア (ブラウザで開く)
 
 1路線を深掘りするなら `--digest-route "路線名" --digest route.md`
-(変化した便の一覧が trip_id 付きで出る)。
+(変化した便の一覧が trip_id 付きで出る)。全路線一括は
+`--digest-routes routes.json`、ID 対応表は `--mapping mapping.json`。
 
 ローカルの zip 2つを比較するなら `compare old.zip new.zip` (古い方が先)。
 
