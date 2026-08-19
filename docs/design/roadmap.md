@@ -363,8 +363,14 @@ config ゲート + 別途議論)。
   検証モードに DL リンク (URL+非圧縮サイズは meta.raw_urls に焼き込み)。
   アップロード由来も並置・削除は対。残 DoD: デプロイ後の本番確認。
 - **RD3: 地図リッチ化** — 路線網モード、PMTiles 検討、deep link (#/route/…)。
-- **RD4: AI digest** — `--digest` (Markdown/JSON の事実要約層)。X1 (スキーマ
-  文書化) をここに併合。
+- **RD4: AI digest** 【設計 2026-07-30 (docs/design/ai_interface.md)、
+  X1 を併合 — API 文書は docs/api/ (README=案内、reference=仕様)】
+  3層 (L0 digest / L1 路線詳細 / L2 events+rawdiffs)、ID は階層で出し分け、
+  数値一致不変条件 (digest の数値 = presentation/accounting)。
+  - **RD4a: digest 出力** — `--digest` / `--digest-json` / `--digest-route`。
+    DoD: 数値一致の機械検査 + EXP2 判定シート68項目が digest だけで再現
+  - **RD4b: Web 並置** — `v/{版}.digest.md|json` を RD2 の棚に
+  - **RD4c: MCP サーバー** — find/run/get ツール群。コストガード連動が先行条件
 
 ## SD: 運行日モデルの精緻化 【承認 2026-07-23、設計: docs/design/service_days.md。
 v0.8 (SD5/SD6) 設計 2026-07-25 — 検証: docs/verification/day_pattern_survey.md】
