@@ -56,47 +56,69 @@ def build_mapping(identity, trip_delta, event_set, meta: dict | None = None) -> 
         return out
 
     # --- 停留所 (クラスタ対応 = GTFS stop_id 群の旧新対応) ---
+    # **採択された対応だけを出す**: ①同一クラスタ ID (同名) の継続、
+    # ②STOP_RENAMED イベント (ルール段が採択した改称)。MatchGraph の
+    # 仮説エッジ (近接候補・双方向) はルール段が棄却したものを含むため、
+    # そのまま流さない — 説明台帳と同じ結論だけが mapping になる。
     stops = []
     seen_old: set[str] = set()
     seen_new: set[str] = set()
-    for e in identity.graph.for_type("stop_cluster"):
-        old_c = identity.old_stop_clusters.get(e.old_id) if e.old_id else None
-        new_c = identity.new_stop_clusters.get(e.new_id) if e.new_id else None
-        if old_c:
-            seen_old.add(e.old_id)
-        if new_c:
-            seen_new.add(e.new_id)
-        if old_c and new_c:
-            relation = "renamed" if old_c.name != new_c.name else "continued"
-        elif new_c:
-            relation = "added"
-        else:
-            relation = "removed"
+
+    def _stop_entry(relation, old_c, new_c, **extra) -> dict[str, Any]:
         entry: dict[str, Any] = {"relation": relation}
-        if old_c:
+        if old_c is not None:
             entry["old"] = {"name": old_c.name, "stop_ids": list(old_c.platform_ids)}
-        if new_c:
+        if new_c is not None:
             entry["new"] = {"name": new_c.name, "stop_ids": list(new_c.platform_ids)}
-        if old_c and new_c:
-            entry["confidence"] = e.confidence
-            entry["method"] = e.method
+        if old_c is not None and new_c is not None:
             m = _moved_m(old_c, new_c)
             if m:
                 entry["moved_m"] = m
-        evs = events_for(*(c.name for c in (old_c, new_c) if c))
-        if evs:
-            entry["events"] = evs
-        stops.append(entry)
+        entry.update({k: v for k, v in extra.items() if v})
+        return entry
+
+    for cid, old_c in identity.old_stop_clusters.items():
+        new_c = identity.new_stop_clusters.get(cid)
+        if new_c is None:
+            continue
+        seen_old.add(cid)
+        seen_new.add(cid)
+        stops.append(_stop_entry(
+            "continued", old_c, new_c, confidence=1.0, method="name",
+            events=events_for(old_c.name) or None))
+
+    def _cluster_by_name(clusters, name):
+        for cid, c in clusters.items():
+            if c.name == name:
+                return cid, c
+        return None, None
+
+    for e in event_set.events:
+        if e.type != "STOP_RENAMED":
+            continue
+        old_cid, old_c = _cluster_by_name(
+            identity.old_stop_clusters, (e.old_ref or {}).get("name", ""))
+        new_cid, new_c = _cluster_by_name(
+            identity.new_stop_clusters, (e.new_ref or {}).get("name", ""))
+        if old_c is None or new_c is None:
+            continue
+        seen_old.add(old_cid)
+        seen_new.add(new_cid)
+        edge_conf = next(
+            (ed.confidence for ed in identity.graph.for_type("stop_cluster")
+             if ed.old_id == old_cid and ed.new_id == new_cid), None)
+        stops.append(_stop_entry(
+            "renamed", old_c, new_c, confidence=edge_conf,
+            events=[e.event_id]))
+
     for cid, c in identity.old_stop_clusters.items():
         if cid not in seen_old:
-            stops.append({"relation": "removed",
-                          "old": {"name": c.name, "stop_ids": list(c.platform_ids)},
-                          **({"events": e} if (e := events_for(c.name)) else {})})
+            stops.append(_stop_entry("removed", c, None,
+                                     events=events_for(c.name) or None))
     for cid, c in identity.new_stop_clusters.items():
         if cid not in seen_new:
-            stops.append({"relation": "added",
-                          "new": {"name": c.name, "stop_ids": list(c.platform_ids)},
-                          **({"events": e} if (e := events_for(c.name)) else {})})
+            stops.append(_stop_entry("added", None, c,
+                                     events=events_for(c.name) or None))
 
     # --- 路線 (family 対応 = route_id 群の旧新対応)。N:M は成分のまま ---
     def fam_side(names, families) -> list[dict]:
@@ -123,21 +145,21 @@ def build_mapping(identity, trip_delta, event_set, meta: dict | None = None) -> 
         routes.append(entry)
     matched_old: set[str] = set(in_component_old)
     matched_new: set[str] = set(in_component_new)
-    for e in identity.graph.for_type("route_family"):
-        if not (e.old_id and e.new_id):
+    # 成分外は**同名の継続のみ**を採択 (名前が違う対応は M9 成分が
+    # RENAMED 等として持つ。graph に残る名前違いエッジは仮説であり出さない)
+    for name in identity.old_families:
+        if name in matched_old or name not in identity.new_families:
             continue
-        if e.old_id in in_component_old or e.new_id in in_component_new:
-            continue
-        matched_old.add(e.old_id)
-        matched_new.add(e.new_id)
+        matched_old.add(name)
+        matched_new.add(name)
         entry = {
             "relation": "continued",
-            "old": fam_side([e.old_id], identity.old_families),
-            "new": fam_side([e.new_id], identity.new_families),
-            "confidence": e.confidence,
-            "method": e.method,
+            "old": fam_side([name], identity.old_families),
+            "new": fam_side([name], identity.new_families),
+            "confidence": 1.0,
+            "method": "name",
         }
-        evs = events_for(e.old_id, e.new_id)
+        evs = events_for(name)
         if evs:
             entry["events"] = evs
         routes.append(entry)
