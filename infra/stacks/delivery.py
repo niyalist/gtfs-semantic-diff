@@ -149,9 +149,10 @@ class DeliveryStack(Stack):
             timeout=Duration.minutes(15),
             environment=common_env,
             description="gtfs-semantic-diff compare worker",
-            # G2 (mcp.md §9): バースト抑制。非同期呼び出しは Lambda が自動
-            # キューするため、同時 3008MB×N の瞬間コストを直列化で抑える
-            reserved_concurrent_executions=4,
+            # G2 (mcp.md §9) の reserved concurrency は本アカウントでは設定不可
+            # (アカウント同時実行クォータが 10 = 最低未予約枠と同値のため
+            # 2026-08-19 のデプロイで 400)。当面はクォータ 10 自体が実質の
+            # バースト上限。恒久策: Service Quotas 引き上げ後に予約枠を設定
         )
         # 失敗ジョブ (OOM/タイムアウト) を Lambda が自動再実行しない。
         # 既定の2回リトライだと poison job が3回走り「終わらない」ように見える
