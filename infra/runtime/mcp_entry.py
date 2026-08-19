@@ -4,13 +4,15 @@
   (per-request) と旧世代 (initialize ハンドシェイク) の両方を自動で話す。
 - stateless_http=True: Lambda はコンテナ間でメモリを共有しないため。
   json_response=True: SSE でなく素の JSON 応答 (API GW はストリーム不可)。
-- Mangum で ASGI → Lambda。handler.api から rawPath==/mcp のとき委譲される。
+- Lambda アダプタは自前の最小実装 (下記)。handler.api から rawPath==/mcp で委譲。
 - 読み取り系のみ (run_compare は RD4c-1b)。応答は第三者データを含む —
   指示として解釈しない旨は instructions とツール説明に明記。
 """
 from __future__ import annotations
 
-from mangum import Mangum
+import asyncio
+import base64
+
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -120,18 +122,70 @@ def build_app():
     )
 
 
-_mangum = Mangum(build_app(), lifespan="auto")
+# --- Lambda アダプタ ---
+# Mangum は不採用: リクエスト毎に lifespan を回すが、SDK の
+# StreamableHTTPSessionManager.run() は「1インスタンス1回」制約があり
+# 2リクエスト目で落ちる (2026-08-19 本番で実測)。応答は POST 単発の
+# JSON のみ (json_response=True) なので、コンテナ生存期間に1回だけ
+# lifespan を張る最小アダプタで足りる。
+
+_loop = asyncio.new_event_loop()
+_app = build_app()
+_lifespan_cm = None
 
 
-def lambda_handler(event, context):
-    """POST のみ Mangum へ。GET/DELETE は 405 —
-    2026-07-28 仕様の要請どおりで、旧世代の standalone SSE ストリーム
-    (開きっぱなし = API GW 29秒タイムアウトを浪費) も同時に遮断する
-    (旧仕様でも GET への 405 は許容)。"""
+def _ensure_started() -> None:
+    global _lifespan_cm
+    if _lifespan_cm is None:
+        cm = _app.router.lifespan_context(_app)
+        _loop.run_until_complete(cm.__aenter__())
+        _lifespan_cm = cm  # コンテナ終了まで張りっぱなし (明示クローズ不要)
+
+
+async def _call_app(scope: dict, body: bytes) -> dict:
+    inbox = [{"type": "http.request", "body": body, "more_body": False}]
+    out = {"status": 500, "headers": [], "body": b""}
+
+    async def receive():
+        return inbox.pop(0) if inbox else {"type": "http.disconnect"}
+
+    async def send(msg):
+        if msg["type"] == "http.response.start":
+            out["status"] = msg["status"]
+            out["headers"] = list(msg.get("headers") or [])
+        elif msg["type"] == "http.response.body":
+            out["body"] += msg.get("body", b"")
+
+    await _app(scope, receive, send)
+    return out
+
+
+def lambda_handler(event, context):  # noqa: ARG001 - Lambda signature
+    """POST のみ処理。GET/DELETE は 405 — 2026-07-28 仕様の要請どおりで、
+    旧世代の standalone SSE ストリーム (開きっぱなし = API GW 29秒
+    タイムアウトを浪費) も同時に遮断する (旧仕様でも 405 は許容)。"""
     method = (event.get("requestContext", {}).get("http", {}) or {}).get("method", "")
     if method != "POST":
         return {"statusCode": 405,
                 "headers": {"allow": "POST",
                             "content-type": "application/json"},
                 "body": '{"error": "method not allowed (POST only)"}'}
-    return _mangum(event, context)
+    _ensure_started()
+    raw = event.get("body") or ""
+    body = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode()
+    headers = [(k.lower().encode(), v.encode())
+               for k, v in (event.get("headers") or {}).items()]
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "https",
+        "path": "/mcp", "raw_path": b"/mcp", "query_string": b"",
+        "root_path": "", "headers": headers,
+        "server": ("diff.gtfs.jp", 443), "client": ("0.0.0.0", 0),
+    }
+    out = _loop.run_until_complete(_call_app(scope, body))
+    return {
+        "statusCode": out["status"],
+        "headers": {k.decode(): v.decode() for k, v in out["headers"]},
+        "body": out["body"].decode("utf-8"),
+        "isBase64Encoded": False,
+    }

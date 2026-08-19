@@ -174,3 +174,33 @@ def test_lambda_gate_rejects_non_post():
         r = mcp_entry.lambda_handler(ev, None)
         assert r["statusCode"] == 405
         assert r["headers"]["allow"] == "POST"
+
+
+def _post_event(payload: dict, headers: dict) -> dict:
+    return {"requestContext": {"http": {"method": "POST"}}, "rawPath": "/mcp",
+            "headers": {"content-type": "application/json", **headers},
+            "body": json.dumps(payload), "isBase64Encoded": False}
+
+
+def test_lambda_handler_survives_repeated_invocations():
+    # 回帰: Mangum はリクエスト毎に lifespan を回し、session manager の
+    # 「1インスタンス1回」制約で2回目に落ちた (2026-08-19 本番)。
+    # 同一プロセスで新旧世代を交互に3回叩いて全て 200 を確認する
+    import mcp_entry
+
+    legacy = _post_event(
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                    "clientInfo": {"name": "t", "version": "0"}}},
+        {"accept": "application/json, text/event-stream"})
+    modern = _post_event(
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list",
+         "params": {"_meta": _modern_meta()}},
+        {"accept": "application/json, text/event-stream",
+         "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/list"})
+    for i, ev in enumerate([legacy, modern, modern]):
+        r = mcp_entry.lambda_handler(ev, None)
+        assert r["statusCode"] == 200, (i, r["body"][:300])
+    names = {t["name"] for t in
+             json.loads(r["body"])["result"]["tools"]}
+    assert "get_digest" in names

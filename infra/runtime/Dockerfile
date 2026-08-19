@@ -5,7 +5,7 @@ FROM public.ecr.aws/lambda/python:3.13
 # パッケージ本体 (viewer_template.html は wheel に同梱される)
 COPY pyproject.toml /build/
 COPY src /build/src
-RUN pip install --no-cache-dir /build "mcp~=2.0" "mangum~=0.21" && rm -rf /build
+RUN pip install --no-cache-dir /build "mcp~=2.0" && rm -rf /build
 
 # 閾値設定 (Config.load は GTFS_SEMDIFF_CONFIG で参照)
 COPY config ${LAMBDA_TASK_ROOT}/config
