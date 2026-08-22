@@ -9,6 +9,12 @@
 load/          GtfsSnapshot: 正規化済み読み込み (pandas DataFrame 群 + インデックス)
    │           - calendar → day_type (weekday/saturday/holiday/...) への正規化
    │           - 文字コード・BOM・型の吸収
+   │           - 壊れた入力への態度 (2026-08-22): 必須外の空 .txt は 0 行テーブル
+   │             として許容 (実例: 米沢の result.txt 混入。存在は L0 が記帳)。
+   │             CSV 形式の不備 (列数不一致等、実例: 立山町 translations.txt の
+   │             引用符なしカンマ) は行を読み飛ばさず、ファイル・行・原因を
+   │             示す GtfsLoadError で失敗させる — 黙って欠損させると L0 の
+   │             網羅性が崩れるため
    ▼
 diff0/         RawDiff 全列挙 (L0)
    │           - ファイル単位 → 行単位 → フィールド単位

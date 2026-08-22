@@ -714,6 +714,8 @@ def _api_status(job_id: str) -> dict:
         body["result_url"] = item["result_url"]
     if "error" in item:
         body["error"] = item["error"]
+    if "error_kind" in item:
+        body["error_kind"] = item["error_kind"]
     return _resp(200, body)
 
 
@@ -730,6 +732,30 @@ def _update(job_id: str, **attrs) -> None:
     )
 
 
+def _user_error(e: Exception) -> str:
+    """ジョブ失敗をユーザー向けメッセージへ変換する。
+
+    この文字列は index.html のエラー表示・履歴・admin・MCP get_job_status に
+    そのまま出る。入力データの不備 (GtfsLoadError / ValueError — 日本語の説明を
+    持つ想定) はそのまま、想定外の例外は「内部エラー」と明示して生メッセージを
+    調査用に添える。"""
+    if isinstance(e, ValueError):
+        return str(e)[:500]
+    return (f"内部エラーが発生しました ({type(e).__name__})。時間をおいて再試行"
+            "しても失敗する場合はフィードバックからお知らせください"
+            f" [{str(e)[:250]}]")
+
+
+def _load_labeled(label: str, path, config, meta=None):
+    """load_snapshot の失敗に旧/新どちら側かを付ける (エラー表示用)。"""
+    from gtfs_semantic_diff.load import GtfsLoadError, load_snapshot
+
+    try:
+        return load_snapshot(path, config=config, meta=meta)
+    except GtfsLoadError as e:
+        raise GtfsLoadError(f"{label}: {e}") from e
+
+
 def worker(event, context):  # noqa: ARG001 - Lambda signature
     job_id = event["job_id"]
     job_input = event["input"]
@@ -744,14 +770,17 @@ def worker(event, context):  # noqa: ARG001 - Lambda signature
     except Exception as e:
         logger.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
         now = int(time.time())
-        _update(job_id, status="failed", error=str(e)[:500],
+        # error_kind: input = 入力データ起因 (再試行しても結果は変わらない)、
+        # internal = ツール側の想定外 (フロントの文言出し分けに使う)
+        kind = "input" if isinstance(e, ValueError) else "internal"
+        _update(job_id, status="failed", error=_user_error(e), error_kind=kind,
                 finished_at=now, duration_s=now - t0)
 
 
 def _run_compare(job_id: str, job_input: dict) -> str:
     from gtfs_semantic_diff.config import Config
     from gtfs_semantic_diff.events.pipeline import compare_snapshots_with_artifacts
-    from gtfs_semantic_diff.load import GtfsDataRepository, load_snapshot
+    from gtfs_semantic_diff.load import GtfsDataRepository
     from gtfs_semantic_diff.report.bundle import (
         build_bundle,
         write_events_json_gz,
@@ -773,10 +802,10 @@ def _run_compare(job_id: str, job_input: dict) -> str:
                     "リポジトリ側で削除された可能性があります"
                 )
         fo, fn = by_uid[job_input["old_uid"]], by_uid[job_input["new_uid"]]
-        old = load_snapshot(repo.download(fo).path, config=config,
-                            meta=fo.snapshot_meta())
-        new = load_snapshot(repo.download(fn).path, config=config,
-                            meta=fn.snapshot_meta())
+        old = _load_labeled(f"旧世代 ({fo.from_date}〜)", repo.download(fo).path,
+                            config, meta=fo.snapshot_meta())
+        new = _load_labeled(f"新世代 ({fn.from_date}〜)", repo.download(fn).path,
+                            config, meta=fn.snapshot_meta())
         pair_feed_info = {
             "org": job_input["org"], "feed": job_input["feed"],
             "old_uid": fo.uid, "new_uid": fn.uid,
@@ -792,8 +821,8 @@ def _run_compare(job_id: str, job_input: dict) -> str:
             path = Path(f"/tmp/{side}.zip")
             s3.download_file(RESULTS_BUCKET, key, str(path))
             paths[side] = path
-        old = load_snapshot(paths["old"], config=config)
-        new = load_snapshot(paths["new"], config=config)
+        old = _load_labeled("旧側の zip", paths["old"], config)
+        new = _load_labeled("新側の zip", paths["new"], config)
         if job_input.get("user_id"):
             _save_user_zips(job_input, {"old": old, "new": new})
 

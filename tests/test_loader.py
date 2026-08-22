@@ -79,6 +79,40 @@ def test_load_from_directory(tmp_path, config):
     assert snapshot.row_counts()["stop_times"] == 6
 
 
+def test_empty_extra_file_tolerated(tmp_path, config):
+    # 実例: 米沢市営バス旧世代の result.txt (0バイト、検証ツール出力の混入)。
+    # 必須外の空ファイルは 0 行テーブルとして受け入れ、比較を続行する
+    zip_path = make_gtfs_zip(tmp_path, files={"result.txt": ""})
+    snapshot = load_snapshot(zip_path, config=config)
+    assert snapshot.has_table("result")
+    assert snapshot.table("result").empty
+
+
+def test_empty_required_file_raises(tmp_path, config):
+    zip_path = make_gtfs_zip(tmp_path, files={"stops.txt": ""})
+    with pytest.raises(GtfsLoadError, match="stops.txt が空"):
+        load_snapshot(zip_path, config=config)
+
+
+def test_ragged_csv_raises_clear_message(tmp_path, config):
+    # 実例: 立山町旧世代の translations.txt (引用符なしカンマで列数超過)。
+    # 生の pandas エラーでなく、ファイル・行・原因が分かる日本語で失敗する
+    zip_path = make_gtfs_zip(tmp_path, files={
+        "translations.txt": (
+            "table_name,field_name,language,translation,record_id,"
+            "record_sub_id,field_value\n"
+            "agency,agency_name,ja-Hrkt,てすと,A1,,\n"
+            "agency,agency_name,en,Test Town, Test Prefecture,A1,,\n"
+        )
+    })
+    with pytest.raises(GtfsLoadError) as ei:
+        load_snapshot(zip_path, config=config)
+    msg = str(ei.value)
+    assert "translations.txt" in msg
+    assert "3行目" in msg and "7列" in msg and "8列" in msg
+    assert "不備" in msg  # 入力データ側の問題であることの明示
+
+
 def test_missing_required_file_raises(tmp_path, config):
     import zipfile
 

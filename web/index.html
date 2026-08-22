@@ -335,7 +335,17 @@ async function submitAndPoll(body) {
         `<br><span class="note">この URL は後から共有・再訪できます</span>`);
       return;
     }
-    if (st.status === "failed") throw new Error(st.error || "比較に失敗しました");
+    if (st.status === "failed") {
+      // error_kind: input = 入力 GTFS データ起因 (再試行しても結果は同じ)
+      const hint = st.error_kind === "input"
+        ? `<br><span class="note">入力データ側の問題のため、同じデータでは再試行しても` +
+          `結果は変わりません。フィード世代の比較なら別の世代の組み合わせを、` +
+          `アップロードなら該当ファイルを修正した zip をお試しください。</span>`
+        : "";
+      showStatus(`<strong>比較できませんでした</strong><br>` +
+        `${esc(st.error || "比較に失敗しました")}${hint}`, true);
+      return;
+    }
     showStatus(`計算中… (${sec}秒経過)。フィードの規模によっては数分かかります。`);
   }
 }

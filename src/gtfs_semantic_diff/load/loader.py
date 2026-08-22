@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import zipfile
 from pathlib import Path
 
@@ -26,7 +27,22 @@ REQUIRED_FILES = {"agency.txt", "stops.txt", "routes.txt", "trips.txt", "stop_ti
 
 
 class GtfsLoadError(ValueError):
-    """GTFS として読めない入力 (必須ファイル欠落など)。"""
+    """GTFS として読めない入力 (必須ファイル欠落など)。
+
+    メッセージはそのままエンドユーザーに表示される前提で、原因のファイル・行と
+    「入力データ側の不備である」ことが分かる日本語で書く。"""
+
+
+def _parser_error_message(name: str, e: Exception) -> str:
+    m = re.search(r"Expected (\d+) fields in line (\d+), saw (\d+)", str(e))
+    if m:
+        expected, line, saw = m.groups()
+        return (
+            f"{name} の {line}行目: 列数がヘッダ ({expected}列) と一致しません "
+            f"(この行は {saw}列)。カンマを含む値が引用符 \" で囲まれていない等、"
+            "フィード側データの CSV 形式の不備が原因です"
+        )
+    return f"{name}: CSV として解析できません (フィード側データの形式不備): {e}"
 
 
 def _read_csv_bytes(data: bytes, name: str) -> pd.DataFrame:
@@ -45,7 +61,21 @@ def _read_csv_bytes(data: bytes, name: str) -> pd.DataFrame:
             return df
         except UnicodeDecodeError:
             continue
-    raise GtfsLoadError(f"{name}: UTF-8 / cp932 のいずれでも読み込めません")
+        except pd.errors.EmptyDataError:
+            # 0バイト等の空ファイル (実例: 米沢市営バス旧世代の result.txt —
+            # 検証ツール出力の混入)。ファイルの存在自体は L0 の記帳対象なので
+            # 空テーブルとして受け入れ、比較は続行する
+            logger.info("%s: 空ファイルのため 0 行テーブルとして読み込みます", name)
+            return pd.DataFrame()
+        except pd.errors.ParserError as e:
+            # CSV 形式の不備 (実例: 立山町旧世代の translations.txt —
+            # 引用符なしカンマで列数超過)。壊れた行を黙って読み飛ばすと
+            # L0 網羅性が崩れるため、原因を明示して失敗させる
+            raise GtfsLoadError(_parser_error_message(name, e)) from e
+    raise GtfsLoadError(
+        f"{name}: 文字コードが UTF-8 / cp932 (Shift_JIS) のいずれでもなく"
+        "読み込めません (フィード側データの形式不備)"
+    )
 
 
 def _collect_txt_from_zip(path: Path) -> dict[str, bytes]:
@@ -117,7 +147,14 @@ def load_snapshot(
 
     tables: dict[str, pd.DataFrame] = {}
     for filename, data in raw_files.items():
-        tables[filename.removesuffix(".txt")] = _read_csv_bytes(data, filename)
+        df = _read_csv_bytes(data, filename)
+        # 空ファイルの許容は必須外ファイルに限る。必須ファイルが空の GTFS は
+        # 成立しないので、原因を明示して失敗させる
+        if len(df.columns) == 0 and filename in REQUIRED_FILES:
+            raise GtfsLoadError(
+                f"{filename} が空です (フィード側データの不備)"
+            )
+        tables[filename.removesuffix(".txt")] = df
 
     if "calendar" not in tables and "calendar_dates" not in tables:
         logger.warning("%s: calendar.txt / calendar_dates.txt がどちらもありません", path)
