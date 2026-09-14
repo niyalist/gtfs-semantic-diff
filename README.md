@@ -1,172 +1,188 @@
 # gtfs-semantic-diff
 
-複数世代の GTFS フィードを比較し、変化を「人間が認識できる意味」——路線廃止・減便・
-区間短縮・迂回追加・停留所改称・乗り場変更・運賃改定など——として抽出・レポートする
-ツール。[GTFSデータリポジトリ (gtfs-data.jp)](https://gtfs-data.jp) の世代管理 API と
-連携し、CLI と Web (自己完結 HTML レポート) の両方で使える。
+*日本語版: [README.ja.md](README.ja.md)*
 
-> **gtfs-semantic-diff** compares two generations of a GTFS feed and reports the
-> differences as human-recognizable semantic changes (route discontinued,
-> service reduced, stops renamed, timetable diffs in published-timetable
-> format, …), with a structural guarantee that every raw difference is
-> accounted for. Reports are self-contained HTML files (Japanese-first).
-> Built around the Japanese GTFS repository gtfs-data.jp.
+**gtfs-semantic-diff** compares two versions of a GTFS feed and reports the
+differences as human-recognizable, semantic changes — a route discontinued,
+evening service cut, a stop renamed or relocated, departures shifted — instead
+of thousands of changed rows. Every raw field-level difference is structurally
+accounted for: it either becomes evidence for a change event or is reported as
+an unexplained residual, and the coverage ratio is measured on every run.
 
-## 特徴
+Try it: **[diff.gtfs.jp](https://diff.gtfs.jp/)** — upload any two GTFS zips,
+free, no sign-up. (The input UI is currently Japanese-first; the report viewer
+has an English mode. Full English support is being rolled out — see
+[docs/design/i18n.md](docs/design/i18n.md).)
 
-- **説明台帳 (explanation ledger)**: 機械的な生差分 (RawDiff) を全列挙し、
-  すべてがいずれかのイベントの根拠 (evidence) になるか、未説明残差として報告される。
-  被覆率 (explained_ratio) を常に計測・表示するため「何かを見落としていないか」が
-  構造的に分かる。
-- **ID 非依存の同定**: stop_id / route_id / trip_id が世代間で張り替わっても、
-  名称・座標・停車パターン・時刻の内容から「同じもの」を再構成して比較する。
-- **認知単位のレポート**: 4部構成 (①フィード全体の変化 ②停留所の変化 ③路線毎の変化
-  ④その他) の自己完結 HTML。路線ページは 概要 (leg 単位の停車列・地図) /
-  変化のサマリー (Lev.1〜5) / 時間帯別本数 / **出版時刻表形式の新旧差分**
-  (旧/新/差分の3切替・曜日タブ・読みにくい表は経由ごとに分冊)。
-- **網羅性ビュー (検証モード)**: 全イベントを「レポートのどこに表示されたか」で分類し、
-  レポート被覆率を計測。全 RawDiff を GTFS のファイル・行・値の形で列挙し、
-  各行から説明イベント → 表示先まで辿れる (3層トレーサビリティ)。
-- **決定的ルールベース**: 検出・分類に機械学習や LLM を使わない。閾値はすべて
-  `config/default.toml` で明示。同じ入力からは常に同じ結果が出る。
-- **JSON が安定インタフェース**: コアは「スナップショット2つ → ChangeEvent JSON」の
-  純粋関数。HTML ビューア・Markdown・Web はすべて JSON の消費者。
-- **色弱対応**: 全出力で太字・記号 (▲▼・新/廃)・線種・数値を第1チャネルとし、
-  色は補強に限る。
+## Features
 
-## インストール
+- **Explanation ledger**: level 0 enumerates every raw difference (all files,
+  all fields). Each one must either back a change event as evidence or be
+  reported as a residual — so "did we miss something?" has a measurable
+  answer (`explained_ratio`, typically 1.0 on our verification feeds).
+- **ID-independent matching**: even when `stop_id` / `route_id` / `trip_id`
+  are reassigned between versions, entities are re-identified from content —
+  names, coordinates, stop sequences, times. The resulting old↔new ID mapping
+  is itself an output (`mapping.json`), usable as a backbone for longitudinal
+  analysis across feed versions.
+- **Reports in cognitive units**: a self-contained HTML report in four parts
+  (whole feed / stops / per route / everything else). Route pages show the
+  old and new timetables merged in published-timetable format, with added,
+  removed and retimed trips marked.
+- **Verification view**: every raw difference can be traced from GTFS
+  file/row/value to the event that explains it to where it is displayed
+  (three-layer traceability).
+- **Deterministic, rule-based**: no ML or LLM in detection or classification.
+  All thresholds live in `config/default.toml`. Same input, same output.
+- **JSON as the stable interface**: the core is a pure function from two
+  snapshots to a ChangeEvent JSON stream; HTML, Markdown, the web service,
+  the JSON API and the MCP server are all consumers of it.
+- **Color-blind aware**: bold, symbols, line styles and numbers are the
+  primary channel in every output; color only reinforces.
 
-Python 3.11+ (開発は 3.14)。
+## Machine-readable outputs and AI integration
+
+The hosted service exposes every layer of a comparison result:
+
+| Layer | URL pattern | Content |
+|---|---|---|
+| Digest | `r/{pair}.digest.md` / `.digest.json` | Summary for LLMs and humans (currently Japanese; English planned) |
+| Route detail | `r/{pair}.routes.digest.json` | Per-route changed trips (old/new trip_ids), counts by time band |
+| ID mapping | `r/{pair}.mapping.json` | Adopted old↔new correspondences for stops / routes / trips |
+| Full events | see `r/{pair}/index.json` | All 44 event types with evidence, plus raw diffs |
+
+- **MCP server**: `https://diff.gtfs.jp/mcp` — register it as a connector in
+  Claude or ChatGPT (no auth) and query comparisons conversationally,
+  including running new comparisons.
+- Developer guide: [diff.gtfs.jp/developers.html](https://diff.gtfs.jp/developers.html) ·
+  API reference: [diff.gtfs.jp/docs/](https://diff.gtfs.jp/docs/README.md) ·
+  [llms.txt](https://diff.gtfs.jp/llms.txt)
+
+## Install
+
+Python 3.11+ (developed on 3.14).
 
 ```sh
-uv venv .venv.nosync --python 3.14   # リポジトリが iCloud 同期下にある場合 .nosync 必須 (下記)
+uv venv .venv.nosync --python 3.14   # .nosync needed if the repo is under iCloud sync (see note)
 ln -s .venv.nosync .venv
 uv pip install -e '.[dev]' --python .venv.nosync/bin/python
 ```
 
-> **注意 (macOS + iCloud)**: リポジトリが `~/Documents` 等 iCloud 同期下にある場合、
-> venv を `.venv` 直下に作ると iCloud が site-packages の `.pth` に hidden フラグを
-> 復元し続け、Python 3.14 がそれを無視するため import が壊れる。`*.nosync` ディレクトリ
-> は iCloud が同期しないため、この構成を使う。
+> **Note (macOS + iCloud)**: if the repository lives under an iCloud-synced
+> directory (e.g. `~/Documents`), a venv at `.venv` breaks: iCloud keeps
+> restoring a hidden flag on `.pth` files in site-packages, and Python 3.14
+> ignores hidden `.pth` files. Directories named `*.nosync` are excluded from
+> iCloud sync, hence the layout above.
 
-## 使い方
+## Usage
 
 ```sh
-# gtfs-data.jp から2世代を取得してキャッシュ (~/.cache/gtfs-semantic-diff)
-gtfs-semantic-diff fetch --org nagai-unyu --feed Nagaibus
+# Compare two local GTFS zips (older one first) into a self-contained HTML report
+gtfs-semantic-diff compare old.zip new.zip --html report.html
 
-# 比較して HTML レポート (自己完結・単一ファイル) を生成
+# Also emit ChangeEvent JSON / Markdown / raw diffs
+gtfs-semantic-diff compare old.zip new.zip \
+    -o events.json --report report.md --rawdiffs rawdiffs.json
+
+# Lightweight HTML (same "core" bundle as the web service) or app+data split output
+gtfs-semantic-diff compare old.zip new.zip --html-lite lite.html --html-dir out/
+
+# AI-oriented digest (Markdown / JSON, numbers guaranteed identical to the report)
+gtfs-semantic-diff compare old.zip new.zip --digest digest.md --digest-json digest.json
+
+# Japanese feeds: fetch generations directly from gtfs-data.jp
+gtfs-semantic-diff fetch --org nagai-unyu --feed Nagaibus
 gtfs-semantic-diff compare --org chitetsu --feed chitetsubus \
     --old prev_2 --new prev_1 --html report.html
 
-# ChangeEvent JSON / Markdown / RawDiff も出力できる
-gtfs-semantic-diff compare --org chitetsu --feed chitetsubus \
-    -o events.json --report report.md --rawdiffs rawdiffs.json
-
-# ローカル zip 同士の比較 (古い方が先)
-gtfs-semantic-diff compare old.zip new.zip --html report.html
-
-# 軽量 HTML (Web 配信と同じ core バンドル — 生差分は件数+サンプル) /
-# アプリ+データ分割出力 (http サーバー経由で閲覧)
-gtfs-semantic-diff compare old.zip new.zip --html-lite lite.html --html-dir out/
-
-# L1 同定だけを実行し、対応率と confidence 分布を確認
+# Run only the L1 identity stage and inspect match confidence
 gtfs-semantic-diff identity --org chitetsu --feed chitetsubus
 ```
 
-- `current` が存在しないフィード (有効期限切れ) は、rid 未指定なら利用可能な最新2世代に
-  自動フォールバックする。
-- `--config` で閾値設定 TOML を差し替え可能 (既定: `config/default.toml`)。
+- `--config` swaps the threshold TOML (default: `config/default.toml`).
+- The web service (`infra/`, AWS CDK; S3 + CloudFront + Lambda) powers
+  [diff.gtfs.jp](https://diff.gtfs.jp/) and can be deployed to your own AWS
+  account.
 
-### Web 版
+## How detection works
 
-ブラウザから事業者・世代を選ぶ (または zip をアップロードする) だけでレポートを生成する
-Web 版がある (S3 + CloudFront + Lambda のサーバレス構成、`infra/` に AWS CDK 定義、
-運用手順は [docs/ops/](docs/ops/))。自分の AWS アカウントにデプロイして使う。
-
-## 出力
-
-- **HTML レポート (推奨)**: 4部構成のレポートモード + 網羅性ビュー (検証モード) の
-  自己完結単一ファイル。地図 (地理院タイル + MapLibre) はオンライン時のみ表示。
-  ビューアは `viewer/` (Svelte)、ビルド成果物を同梱 (再ビルド: `scripts/build_viewer.sh`)。
-- **events.json (正出力)**: `schema_version / feed / events[] / accounting / context`。
-  各イベントは英語タイプ ID + 日本語表示名、subject、quantification、
-  evidence (根拠 RawDiff ID)、confidence、severity を持つ。
-  構造は [docs/design/architecture.md](docs/design/architecture.md) 参照。
-- **report.md**: 路線ごと章立ての Markdown レポート。
-
-## どういう変更をどう認識するか
-
-イベントは A(路線)・B(パターン)・C(便数時刻)・D(停留所)・E(カレンダー)・F(運賃・メタ) の
-6群・41タイプ。**検出ロジックの網羅的な仕様は
-[docs/spec/detection.md](docs/spec/detection.md)** にある (L0 生差分の列挙規則、
-L1 同定のスコア式、L2 各ルールの検出条件・evidence 消費規則・閾値の全対応表)。
-表示の要件・規則 (方向グループ・分冊・曜日タブ等) は
-[docs/design/presentation.md](docs/design/presentation.md)。
+Events fall into 6 groups (routes, stop patterns, trips/times, stops,
+calendars, fares/metadata), 44 types in total. The exhaustive detection
+specification is [docs/spec/detection.md](docs/spec/detection.md) (Japanese):
+L0 enumeration rules, L1 identity scoring, and per-rule detection conditions,
+evidence consumption and thresholds.
 
 ```
 zip ×2 | gtfs-data.jp API
-  → load/      正規化読み込み (day_type 正規化、全 .txt を文字列として保持)
-  → diff0/     L0: RawDiff 全列挙 (説明台帳の分母)
-  → identity/  L1: 停留所クラスタ / Route Family / 停車パターン / route_group の世代間同定
-  → events/    L2: ルールカスケード + 残差集計 → ChangeEvent JSON (正)
-  → report/    プレゼンテーションモデル (認知単位) → HTML / Markdown
+  → load/      normalized loading (day_type normalization, all .txt kept as strings)
+  → diff0/     L0: exhaustive RawDiff enumeration (the ledger's denominator)
+  → identity/  L1: cross-version identity — stop clusters / route families /
+               stop patterns / route groups
+  → events/    L2: rule cascade + residual accounting → ChangeEvent JSON (canonical)
+  → report/    presentation model (cognitive units) → HTML / Markdown / digest
 ```
 
-## バージョン
+## Versioning
 
-日付ベースの CalVer (`YYYY.M.D.N`、公開時点の日付 + 同日内のリリース通番。例: `2026.7.11.1`)。`pyproject.toml` の `version` が
-唯一の定義で、生成される HTML レポートのメタ情報 (`generated_at` とともに) にも
-埋め込まれる。
+Date-based CalVer (`YYYY.M.D.N` — release date plus a same-day sequence
+number, e.g. `2026.7.11.1`). `pyproject.toml` is the single source of the
+version; it is embedded in generated reports alongside `generated_at`.
 
-## 状態 (2026-07)
+## Status (2026-09)
 
-検証フィード (永井運輸・富山地方鉄道・川崎鶴見臨港バスほか計8フィード) で
-explained_ratio ≈ 1.0、pytest 157件。富山地鉄の令和8年4月1日改正では公式告知の
-主要変更 (フィーダーバス延伸・停留所改称・季節バス終了・通勤帯減便) をすべて検出
-([docs/verification/](docs/verification/))。処理時間は最大規模の検証ペア
-(30,700 RawDiff) で数秒。
+All roadmap milestones are complete. On the Japanese verification feeds
+`explained_ratio` is 1.0000; the international verification set (TriMet,
+MBTA, STM Montréal, Rome, national-scale Swiss and Netherlands feeds) runs to
+completion with explained_ratio 0.98–1.0. 276 tests. The largest Japanese
+verification pair (30,700 raw diffs) takes ~2 seconds; national-scale feeds
+finish in minutes ([docs/perf/](docs/perf/)).
 
-## ドキュメント
+## Documentation
 
-| ドキュメント | 内容 |
+Most documentation is in Japanese (development happens in Japanese); the
+external API guide is being translated (see [docs/design/i18n.md](docs/design/i18n.md)).
+
+| Document | Content |
 |---|---|
-| [docs/articles/internals_1_core.md](docs/articles/internals_1_core.md) | **技術解説記事 (前編)**: RawDiff・MatchGraph・TripDelta・ChangeEvent — 説明台帳のコア (実例付き) |
-| [docs/articles/internals_2_presentation.md](docs/articles/internals_2_presentation.md) | **技術解説記事 (後編)**: プレゼンテーション層 — 台帳の単位から認知の単位へ |
-| [docs/spec/detection.md](docs/spec/detection.md) | **変化検出仕様書** (実装準拠・網羅) |
-| [docs/design/presentation.md](docs/design/presentation.md) | レポート表示の要件 (R1〜R18)・改訂履歴 |
-| [docs/design/ontology.md](docs/design/ontology.md) | イベントカタログ (設計) |
-| [docs/design/architecture.md](docs/design/architecture.md) | アーキテクチャと JSON スキーマ |
-| [docs/design/roadmap.md](docs/design/roadmap.md) | マイルストーンと Definition of Done |
-| [docs/design/web.md](docs/design/web.md) | Web 版の設計 |
-| [docs/verification/](docs/verification/) | 実データ検証ログ (全マイルストーン・全レビューラウンド) |
-| [docs/perf/](docs/perf/) | 性能計測記録 |
-| [CLAUDE.md](CLAUDE.md) | 設計原則と開発ルール (AI エージェント向け指示書) |
+| [docs/articles/internals_1_core.md](docs/articles/internals_1_core.md) | Internals, part 1: RawDiff, MatchGraph, TripDelta, ChangeEvent — the ledger core |
+| [docs/articles/internals_2_presentation.md](docs/articles/internals_2_presentation.md) | Internals, part 2: the presentation layer — from ledger units to cognitive units |
+| [docs/spec/detection.md](docs/spec/detection.md) | Detection specification (implementation-accurate, exhaustive) |
+| [docs/design/presentation.md](docs/design/presentation.md) | Report display requirements and invariants |
+| [docs/design/ontology.md](docs/design/ontology.md) | Event catalog (design) |
+| [docs/design/architecture.md](docs/design/architecture.md) | Architecture and JSON schemas |
+| [docs/design/roadmap.md](docs/design/roadmap.md) | Milestones and Definitions of Done |
+| [docs/api/](docs/api/) | External API guide and reference (also served at [diff.gtfs.jp/docs/](https://diff.gtfs.jp/docs/README.md)) |
+| [docs/verification/](docs/verification/) | Real-data verification logs |
+| [docs/perf/](docs/perf/) | Performance measurement records |
+| [CLAUDE.md](CLAUDE.md) | Design principles and development rules (instructions for AI agents) |
 
-## 開発について
+## Development
 
-本リポジトリは [Claude Code](https://claude.com/claude-code) を使った人間+AI の
-協働で開発している。[CLAUDE.md](CLAUDE.md) がエージェントへの恒常的な指示書
-(設計原則・開発ルール) で、進め方は roadmap の Definition of Done 駆動
-——「完了」と記録できるのは検証フィードでの実行結果を確認したときのみ。
-設計判断・レビューでの指摘と対応・棄却した案は [docs/verification/](docs/verification/)
-と各設計文書の改訂履歴に残している。
+This repository is developed as a human + AI collaboration using
+[Claude Code](https://claude.com/claude-code). [CLAUDE.md](CLAUDE.md) is the
+standing instruction file (design principles, development rules); progress is
+driven by per-milestone Definitions of Done — nothing is recorded as "done"
+without an execution record on the verification feeds. Design decisions,
+review findings and rejected alternatives are kept in
+[docs/verification/](docs/verification/) and the revision histories of the
+design documents.
 
 ```sh
-.venv.nosync/bin/python -m pytest -q   # 157 tests
+.venv.nosync/bin/python -m pytest -q
 .venv.nosync/bin/ruff check src tests
 ```
 
-- 各検出ルールには「検出条件のドキュメント + 合成 GTFS 単体テスト + 実フィード目視確認例」
-  の3点を付ける。
-- 閾値のコード内リテラルは禁止。`config/default.toml` に集約する。
-- 検出ロジックを変更したら docs/spec/detection.md を、表示規則を変更したら
-  docs/design/presentation.md (凍結後の改訂履歴) を同期更新する。
+- Every detection rule ships with: documented detection conditions, a unit
+  test on synthetic GTFS, and a visually confirmed example on a real feed.
+- No threshold literals in code — everything in `config/default.toml`.
+- Changes to detection logic must update docs/spec/detection.md; changes to
+  display rules must update docs/design/presentation.md.
 
-## ライセンス・出典
+## License and attribution
 
-- コード: [MIT License](LICENSE)
-- 地図タイル: [国土地理院タイル](https://maps.gsi.go.jp/development/ichiran.html)
-  (レポート内に出典表記)。地図グリフ: Geolonia
-- フィードデータ: 各交通事業者が [gtfs-data.jp](https://gtfs-data.jp) で公開する
-  オープンデータ。レポートを再配布する場合は各フィードのライセンス表記に従うこと
+- Code: [MIT License](LICENSE)
+- Map tiles: [GSI tiles](https://maps.gsi.go.jp/development/ichiran.html)
+  (attribution shown in reports). Map glyphs: Geolonia
+- Feed data: open data published by transit agencies (for Japanese feeds, via
+  [gtfs-data.jp](https://gtfs-data.jp)). Follow each feed's license terms when
+  redistributing reports.
