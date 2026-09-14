@@ -28,111 +28,38 @@ input (zip x N generations | gtfs-data.jp API)
 - docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.4)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 現在の状態 (2026-07-24)
+## 現在の状態 (2026-09-14 更新)
 
-roadmap M0–M9 **全完了**。検証3フィードで explained_ratio 1.0000、pytest 167件、
-性能は最大ペア (30,700 RawDiff) で約2秒 (docs/perf/M5_timings.md)。
-検証ログは docs/verification/ (M2〜M9)。未実装項目は detection.md §7 に列挙
-(THROUGH_SERVICE、TIME_BAND_VARIANT、DWELL_TIME、多世代タイムライン等)。
-M8 (trip matching v2): 便対応は内容主導のコスト最小割当 (ID は弱い事前)。
-M9 (route identity v2): family 世代間対応も内容主導 (停留所翻訳+集合 Jaccard、
-N:M 成分 → RENAMED/MERGED/SPLIT/RESTRUCTURED、ページは新世代背骨+旧名称注記、
-lev1_trip_ratio を煙感知器に) — docs/design/route_identity_review.md。
-2026-07-28: confidence 完全同点のタイブレークを同点証拠階層 (向き→名称類似→
-未使用優先→辞書順) に統一 — docs/design/orientation.md。京都のラケット
-(連続運行対) の偽新設を解消、朝日町・名古屋等は同点0件で出力不変。
-同日 G2 (PI-6): 表示対の成立条件を「同一ページ・同一セル」に制約し、
-残余を閉包で廃止/新設列に — ヘッダ・③・④・delta の便数が全面一致し、
-self_check が京都・立川含め全零 (跨ぎ対のないフィードはバイト不変)。
-同日 G3 (PI-7): 循環でも向きを双方向と同一判定器で分け、①③④・地図が
-「◯◯ 循環（△△先回り）」の同一分割を共有 (京都 205/206/208/北8・桑名で確認、
-片回り循環は不変)。同日 G4: 第3部の路線順を自然順に、旧名称の帰属を割付基準に (関連注記で
-N:M 保持)。京都レビュー対応は roadmap §G として完了。**STM/swiss 型
-(シーズン同居) への設計 — 世界分解の精密化 (案X)・agency/シーズンの比較
-スコープ (ワンクッション) — は検討記録を docs/design/scope_and_seasons.md に
-残して 2026-07-29 に先送り (roadmap §SC1〜SC3)。STM group46 の self_check
-2件はその露頭として既知。**
-M10 (day_type 精密化): 曜日指定は dow_XXXXXXX として一級化 (「特定日」の実態は
-83%が規則的な曜日指定運行)、運行日ゼロは inactive、特定日の内訳 (置き換え/追加)
-を第1部に表示 — docs/design/day_types.md。2026-07-26: calendar_dates 列挙にも
-曜日プロファイル検出を適用 (同 §4 — 根室「毎週水曜」の weekday 誤分類解消、
-daily 断定は保守的閾値 0.9)。
-route_group (枝番系統の「路線ブランド」集約) も M7 で実装済み —
-仕様は docs/design/route_group.md と detection.md §2.5。
-HTML レポート: `gtfs-semantic-diff compare --html out.html` (自己完結・全量同梱) /
-`--html-lite` (Web と同じ軽量 core バンドル) / `--html-dir` (アプリ+データ分割)。
-ビューアは viewer/ (Svelte 4 + Vite)、ビルド成果物を
-src/gtfs_semantic_diff/report/viewer_template.html に同梱 (再ビルド: scripts/build_viewer.sh)。
-**P トラック (性能) 2026-07-24: P1 (LCS メモ化) に続き P2 完了 — IN-1 (ルール段
-O(n²) 2件: frequency グループ毎全走査・MatchGraph 照会毎全走査) と IN-2 (便対応
-Δt の trip 毎前計算) と IN-3 前半 (HTML バンドル遅延直列化) を修正。すべて出力
-バイト同一。mbta 1010→314s / rome 1523→320s、swiss・ovapi_nl (国家規模) 初完走、
-prt が Lambda 3008MB で完走 (旧 OOM)。docs/perf/P2_*.md。残: P3 (規模上限の
-明文化)。**
-**RD トラック (レポート配信再設計、設計: docs/design/report_delivery.md)
-2026-07-24: RD1a (core バンドル — rawdiffs 行レベル全量を Web に持たせない。
-evidence/生差分は件数+サンプル、網羅性は accounting の数値が保証) と
-RD1b (アプリ HTML + データ JSON gzip の分離配信、URL 体系不変・後方互換) 完了。
-名古屋 137MB→初期転送 ~4MB、永井 1.2MB。残: RD2 (検証モードに生データ DL)、
-RD3 (地図リッチ化・PMTiles・deep link)、RD4 (AI digest、X1 を併合)。
-RD4 は 2026-08-19 設計完了 (docs/design/ai_interface.md — 3層 L0 digest/
-L1 路線詳細/L2 events+rawdiffs、数値一致不変条件、digest→Web並置→MCP の順)。
-**RD4a 実装済み (同日 8/19)**: report/digest.py、compare `--digest/--digest-json/
---digest-route`。数値一致は test_digest で機械検査。EXP2 68項目の digest 再現検証済み
-(62完全+6部分・逆転0 — docs/verification/RD4a_exp2_digest.md)。
-RD4b (Web 並置)・RD4c-0 (API 体系の背骨 — routes.digest.json =
-L1全路線+時間帯別本数、ペア台帳の artifacts マニフェスト、フィード台帳
-feeds/{org}__{feed}.json、latest エイリアス一般化、docs/api の /docs/ 配信、
-CORS) も実装済み。IM トラック (ID 対応の提供) は IM1 (mapping.json —
-採択された対応のみ: 同名継続+STOP_RENAMED 採択対+M9成分。N:M は配列の
-まま) まで完了、検証は docs/verification/IM1_mapping.md。
-RD4c-1a (MCP サーバー) 実装済み: https://diff.gtfs.jp/mcp — SDK v2
-(2026-07-28 仕様・新旧両世代)、読み取り10ツール、contract test 5件
-(docs/design/mcp.md)。残: RD4c-1b (run_compare ツール)・RD4c-2 (EXP2
-エージェント版 A/B)・IM3 (消費者シミュレーション)。
-外部向け API 文書は docs/api/ (README=案内+レシピ、reference=CLI/Web/JSON
-スキーマ+イベント型44種カタログ+digest スキーマ)。**
-**UQ トラック (UI 品質) 2026-07-26: SD5 追従漏れの監査で不整合11件を検出・修正
-(第1部便数の表示便数化 PI-1、mixed の全面伝播 PI-2、日付ラン一本化 PI-3)。
-表示不変条件 PI を presentation.md に凍結、self_check を検証モードに常設、
-vitest (viewer/tests、16件) を build_viewer.sh に組込、bundle.schema_version=1
-導入。監査と仕組み: docs/design/ui_quality.md。**
-**SP トラック (時刻表分冊ポリシー) 2026-07-30 完了: 掛川大須賀線レビュー発端。
-可読性基準を1つ (avg_gap ≤ 1.5) に統合 — 「1枚で基準内ならそのまま / 超えたら
-全分冊が基準内に収まる範囲で枚数最少 + 実行不能領域 (経路変更対の列内在飛び)
-は no-harm 併合」。旧二重基準 (トリガー1.5/併合0.5) の両方向の崖 (小バケット
-砕きすぎ・大バケット束ねすぎ) を解消。config は sheet_max_gap_per_trip に統合。
-10フィード 3,171 バケット検証、変化47署名すべて想定類型、錨 (徳島川内循環・
-立道) 不変 — docs/design/sheet_policy.md。注記方式 (1枚+経由記号) は不採用。**
-国際化 (I トラック): I1 (国際検証データセット) 完了、I2〜I5 (入力 UI 英語化、
-JSON 言語中立化、地図タイル、README.en) は未着手。Web 公開 (W3) は全フェーズ
-完了・運用中。
-SD トラック (運行日モデル精緻化 SD1〜SD4) は 2026-07-23 完了 —
-設計: docs/design/service_days.md (実効運行日集合・窓内区間対比較・
-GENERATION_SCOPE・特定日の具体日付・運行日カレンダー)。世代同梱フィード
-(bus-vision 系は改正のたび約1週間流通) の「全便半減/倍増」誤説明を解消。
-ラベル語彙と便対応 v1 規則は不変、単一世代比較は現行挙動に退化。
-V トラック (認知単位のレポート再構築 V1〜V5) は 2026-07-07 に完了:
-レポートは4部構成 (①フィード全体 ②停留所 ③路線毎 ④その他) + 曜日タブ +
-検証モード=網羅性ビュー (レポート被覆率・ファイル別生差分)。要件は
-presentation.md R1〜R18 (凍結+改訂履歴)。コア・JSON スキーマ・説明台帳は不変。
-**W3 全フェーズ完了 (2026-07-11)**: W3-0 配信基盤 / W3-1 ジョブ API+入力 UI /
-W3-2a uid 正準 URL+不変版管理 (lazy 再生成) / W3-2b Google ログイン+履歴+
-zip 保存再利用+削除 / W3-2c 規約+フィードバック (SES)+コストガード。
-検証ログは docs/ops/w3_2*.md、コスト実績は docs/ops/costs.md。方針決定の経緯は
-docs/design/w3_2_directions.md (観測所構想などの将来案も §4〜5 に)。
-バージョンは CalVer `YYYY.M.D.N` (同日通番付き)。Web 本番:
-**https://diff.gtfs.jp/** (旧 d22mbbm5uatfcc.cloudfront.net も有効。
-DNS はさくら、docs/ops/domain.md)。(CDK は infra/、デプロイは
-AWS_PROFILE=AdministratorAccess-948645358251 で npx cdk deploy)。
-V6 本体 (運賃深掘り) は並行可能な残タスク (X1 は RD4 に併合済み)。**
+roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/UQ/SP/G/RD4a〜c/IM1) は
+**完了**。経緯・完了記録の正は docs/design/roadmap.md、検証ログは docs/verification/、
+性能記録は docs/perf/ — このファイルには要約と運用情報のみ置く。
+
+- コア: 検証3フィードで explained_ratio 1.0000、pytest 276件。最大ペア (RawDiff 3万)
+  約2秒、国家規模フィード (swiss・ovapi_nl 等) も完走 (docs/perf/P2_*.md)
+- 出力: HTML レポート (`compare --html` 自己完結 / `--html-lite` / `--html-dir` 分割)、
+  AI digest (`--digest*`)、routes.digest.json、mapping.json (ID 対応 — 説明台帳が採択した
+  対応のみ)、events/rawdiffs。AI/API 体系の設計は docs/design/ai_interface.md、
+  外部向け文書は docs/api/ (README=案内、reference=リファレンス)
+- Web 本番: **https://diff.gtfs.jp/** 運用中 (旧 d22mbbm5uatfcc.cloudfront.net も有効。
+  DNS はさくら — docs/ops/domain.md)。MCP サーバー https://diff.gtfs.jp/mcp
+  (docs/design/mcp.md)。docs/api は /docs/ で配信、開発者向けページ /developers.html
+- デプロイ: `cd infra && AWS_PROFILE=AdministratorAccess-948645358251 npx cdk deploy`
+  (Docker 必須。SSO 期限切れは `aws sso login --profile AdministratorAccess-948645358251`)
+- viewer は viewer/ (Svelte 4 + Vite)。`scripts/build_viewer.sh` で
+  src/gtfs_semantic_diff/report/viewer_template.html に同梱 (vitest 組込済み)
+- バージョンは CalVer `YYYY.M.D.N` (同日通番付き)
+
+残タスク: RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
+G2 恒久化 (Lambda 同時実行クォータ引き上げ申請 = ユーザーアクション)・P3 (規模上限の
+明文化)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化)・I2〜I5 (国際化)・V6 (運賃
+深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。STM group46 の
+self_check 2件はその既知の露頭)。未実装イベント型は detection.md §7 に列挙。
 
 ## 過去プロジェクトからの資産移植 (完了)
 
-前身: 2025年の GTFSDiff リポジトリ (ローカル参照のみ・本リポジトリ外)。
-M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / stop_analyzer
-(2段階クラスタリング部) / repository.py。対応表と移植方針は docs/PORTING.md。
-以後、旧リポジトリを参照する必要が生じるのは trip_matcher など「原則不使用」とした部分のみ。
+前身 GTFSDiff リポジトリ (2025、本リポジトリ外) からの移植は M2 で完了。
+対応表と移植方針は docs/PORTING.md (以後、旧リポジトリ参照が必要なのは
+trip_matcher など「原則不使用」とした部分のみ)。
 
 ## gtfs-data.jp API メモ (2026-07 動作確認済み)
 
@@ -173,6 +100,12 @@ M2 で移植完了 — pattern_clustering / route_analyzer (Family 抽出部) / 
 - 「完了」と記録してよいのは、検証フィードでの実行結果を確認したときのみ。
 - 各 ChangeEvent ルールには必ず: 検出条件のドキュメント、合成 GTFS による単体テスト、実フィードでの目視確認例、の3点を付ける。
 - 閾値(距離、類似度、時間帯ビン等)は `config/default.toml` に集約。コード内リテラル禁止。
+- **過剰適応しない**: 新しい検出・分類規則は (a) 決定的で config 閾値のみ (b) 効かない
+  ときは「何もしない」に退化 (誤結合より無動作) (c) 個別フィードの事例に特化しない、
+  を満たすこと。データに痕跡のない地域知識 (例: 名古屋守山の補助金由来の route 分割)
+  は守備範囲外と明示する — docs/design/route_identity_review.md §4。
+- **日付・CalVer 版番号を書く直前に必ず `date` で実時刻を確認する** (継続セッションで
+  文書の日付に引きずられた誤記事故の再発防止、2026-08-19)。
 - **GTFS-JP 固有フィールドに依存しない**: routes_jp の jp_parent_route_id 等は GTFS-JP の
   今後の改訂で非推奨方向にあるため、データに存在しても同定・分類ロジックの入力には
   使わない。標準 GTFS の内容 (名称・座標・停車列・時刻) から再構成する。
