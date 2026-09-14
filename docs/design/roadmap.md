@@ -478,16 +478,29 @@ v0.8 (SD5/SD6) 設計 2026-07-25 — 検証: docs/verification/day_pattern_surve
   公式アーカイブ/日付版/Wayback で世代ペアを恒久固定 (scripts/fetch_intl_feeds.py)。
   全ペア実行記録: 都市規模4件完走 (explained 0.98〜1.0)・国家規模2件タイムアウト。
   課題 IN-1〜7 を採番し P2/I3/I4 へ
-- **I2: Web/UI の英語対応** — 入力 UI・規約の ja/en 化 (初期言語は
-  navigator.language)、API エラーのコード化。DoD: 英語ブラウザで
-  アップロード比較〜マイページまで英語で完結
-- **I3: レポート英語品質** — JSON 値の日本語根絶 (leg「循環」→ kind 由来、
-  zip 表示名の構造化、OGP 題名)、ビューア初期言語、国際フィード実レポートの
-  英語通読チェック
-- **I4: 国際フィード技術対応** — 地図タイルの国際化 (bbox で地理院/国際タイル
-  自動切替 — 最大ブロッカー)、停留所名正規化の非日本語検証、残差精査
+2026-09-14 改訂 (言語方針の確定 — i18n.md §0.5): 非日本語環境には日本語を
+見せない (CJK 機械監査)、ja 出力は不変を機械検査、既存 URL 不変で en は併設、
+MCP は説明 en 一本化+本文は lang 引数、terms 英語は参考訳。
+実施順の推奨: I5 の README 先行 → I2 → I3 → I6 → I4 → I5 残り。
+
+- **I2: Web/UI の英語対応** — 入力 UI・規約 (参考訳)・**マイページ等ログイン後
+  UI 含む**の ja/en 化 (初期言語は navigator.language、en では gtfs-data.jp
+  ピッカーを控えめに)、API エラーのコード化+動的メッセージは error_en 併記。
+  DoD: 英語ブラウザでアップロード比較〜マイページまで英語で完結
+- **I3: レポート英語品質** — bundle への ja 焼き込み全数監査→キー化 (leg「循環」
+  → kind 由来、分冊名・日付整形・注記、zip 表示名の構造化、OGP 題名)、
+  ビューア初期言語、国際フィード実レポートの英語通読チェック。
+  DoD: ja は PI 準拠で不変+en は CJK 監査ゼロ
+- **I4: 国際フィード技術対応** — 地図タイル (bbox で地理院/OSM 系を既定切替+
+  **レイヤコントロールで利用者選択**。OSM 系は OpenFreeMap 等キー不要源 →
+  終着は RD3/PMTiles 自前配信)、停留所名正規化の非日本語検証、残差精査
   (Fares v2 等)。DoD: I1 全ペアで動作記録 + 日本フィード回帰不変
-- **I5: 公開整備** — README.en・英語ランディング文言
+- **I5: 公開整備** — **README.md を en 正に、ja は README.ja.md** (先行実施)。
+  docs/api の en 正+ja 併設、developers.html 導線
+- **I6: digest・MCP の言語対応**【新設】 — digest.en.md/.en.json 併設 (既存 ja
+  URL バイト不変、artifacts/alias/rel=alternate 拡張)、数値一致テストの en 適用、
+  MCP instructions・ツール説明 en 化+本文系ツールに lang 引数、llms.txt en 化。
+  DoD: ja 不変+en 数値一致+contract test+英語での実走記録
 
 ## G: 京都市交通局レビュー対応 【完了 2026-07-28 (docs/verification/kyoto_review.md)】
 
