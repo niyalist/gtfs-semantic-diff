@@ -206,9 +206,11 @@ significant changes will be announced on this page.</p>
 <!-- en:end -->
 
 <script>
+const TITLES = { ja: "利用規約・プライバシー — GTFS ダイヤ改正 意味的差分レポート", en: "Terms of Use & Privacy — GTFS Semantic Diff" };
 const setLang = (l) => {
   document.body.dataset.lang = l;
   document.documentElement.lang = l;
+  document.title = TITLES[l];
   localStorage.setItem("lang", l);
   document.querySelectorAll("#langbar button").forEach((b) =>
     b.classList.toggle("active", b.dataset.lang === l));

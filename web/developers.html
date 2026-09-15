@@ -239,9 +239,11 @@ bugs and requests via the feedback form on the top page.</p>
 <!-- en:end -->
 
 <script>
+const TITLES = { ja: "開発者向け — GTFS ダイヤ改正 意味的差分レポート", en: "For developers — GTFS Semantic Diff" };
 const setLang = (l) => {
   document.body.dataset.lang = l;
   document.documentElement.lang = l;
+  document.title = TITLES[l];
   localStorage.setItem("lang", l);
   document.querySelectorAll("#langbar button").forEach((b) =>
     b.classList.toggle("active", b.dataset.lang === l));
