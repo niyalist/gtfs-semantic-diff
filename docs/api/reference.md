@@ -79,14 +79,15 @@ GET /api/gtfs/files?org=<org>&feed=<feed>      # 世代一覧 (uid・有効期�
 | URL | 中身 |
 |---|---|
 | `/r/{pair}.html` | レポート入口 (常に最新版へ) |
-| `/r/{pair}.digest.md` / `.digest.json` / `.routes.digest.json` / `.mapping.json` | **最新版エイリアス** (.html を差し替えるだけ) |
+| `/r/{pair}.digest.md` / `.digest.en.md` / `.digest.json` / `.routes.digest.json` / `.mapping.json` | **最新版エイリアス** (.html を差し替えるだけ) |
 | `/r/{pair}/index.json` | 版台帳 (どの版があるか、latest) |
 | `/r/{pair}/v/{版}.html` | 特定版のレポート |
 | `/r/{pair}/v/{版}.json` | ビューア用データ (bundle。安定 IF ではない) |
 | `/r/{pair}/v/{版}.events.json` | ChangeEventSet 全件 (gzip 配信) |
 | `/r/{pair}/v/{版}.rawdiffs.json` | 生差分全件 (gzip 配信) |
-| `/r/{pair}/v/{版}.digest.md` | AI 向けダイジェスト Markdown (L0。§7) |
-| `/r/{pair}/v/{版}.digest.json` | 同 JSON |
+| `/r/{pair}/v/{版}.digest.md` | AI 向けダイジェスト Markdown (L0・日本語。§7) |
+| `/r/{pair}/v/{版}.digest.en.md` | 同・英語版 (I6、2026-09-15〜。見出しは en 契約: 1. Comparison overview 〜 7. Verification (explanation ledger)。数値は ja と同一) |
+| `/r/{pair}/v/{版}.digest.json` | 同 JSON (言語中立 — name_ja/name_en 両持ち。en 複製はない) |
 | `/r/{pair}/v/{版}.routes.digest.json` | 全路線の L1 詳細 (gzip 配信。§7) |
 | `/r/{pair}/v/{版}.mapping.json` | ID 対応表 (gzip 配信。§8) |
 | `/feeds/{org}__{feed}.json` | フィード台帳 (計算済みペア一覧・経年の入口) |

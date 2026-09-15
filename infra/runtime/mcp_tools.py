@@ -87,8 +87,8 @@ def _job_id(pair: str) -> str:
 
 def _pair_missing(pair: str) -> ValueError:
     return ValueError(
-        f"ペア '{pair}' の成果物が見つかりません。list_pairs で計算済みペアを"
-        "確認するか、run_compare (未提供の場合は POST /api/jobs) で生成してください")
+        f"No artifacts found for pair '{pair}'. Use list_pairs to see"
+        " computed pairs, or run_compare to generate this one")
 
 
 # --- 探索系 ---
@@ -97,7 +97,9 @@ def _pair_missing(pair: str) -> ValueError:
 def find_feeds(site: Site, pref: int | None = None, org: str | None = None,
                query: str | None = None) -> dict:
     if pref is None and not org:
-        raise ValueError("pref (県コード) か org (組織 ID) のどちらかが必要です")
+        raise ValueError(
+            "Either pref (prefecture code) or org (organization id)"
+            " is required")
     qs = f"pref={pref}" if pref is not None else f"org_id={urllib.parse.quote(org)}"
     data = site.json(f"/api/gtfs/feeds?{qs}")
     feeds = (data or {}).get("feeds", [])
@@ -117,17 +119,34 @@ def find_generations(site: Site, org: str, feed: str) -> dict:
 def list_pairs(site: Site, org: str, feed: str) -> dict:
     ledger = site.json(f"/feeds/{urllib.parse.quote(org)}__{urllib.parse.quote(feed)}.json")
     if ledger is None:
-        return {"pairs": [], "note": "このフィードで計算済みの比較はまだありません。"
-                "find_generations で世代を選び比較を実行してください"}
+        return {"pairs": [], "note": "No comparisons have been computed"
+                " for this feed yet. Pick versions with find_generations and"
+                " run run_compare"}
     return ledger
 
 
 # --- ペアの読み取り系 ---
 
 
-def get_digest(site: Site, pair: str) -> str:
+def get_digest(site: Site, pair: str, lang: str = "en") -> str:
+    """L0 digest (Markdown)。lang="en"/"ja" (I6)。
+
+    en が未生成の旧ペアは ja に自動フォールバックし、冒頭にその旨を
+    英語で注記する (数値・見出し構造は言語によらず同一)。"""
     pair = _canon_pair(pair)
-    md = site.text(f"/r/{urllib.parse.quote(pair)}.digest.md")
+    q = urllib.parse.quote(pair)
+    if lang == "en":
+        md = site.text(f"/r/{q}.digest.en.md")
+        if md is not None:
+            return md
+        md = site.text(f"/r/{q}.digest.md")
+        if md is None:
+            raise _pair_missing(pair)
+        return ("> Note: the English digest has not been generated for this"
+                " pair yet (generated before I6). The Japanese digest"
+                " follows; headings and numbers are structurally"
+                " identical.\n\n" + md)
+    md = site.text(f"/r/{q}.digest.md")
     if md is None:
         raise _pair_missing(pair)
     return md
@@ -147,7 +166,7 @@ def list_routes(site: Site, pair: str) -> dict:
         "routes": [{"name": r["name"], "day_totals": r["day_totals"],
                     "changes": r["changes"]} for r in d.get("routes", [])],
         "routes_unchanged": d.get("routes_unchanged"),
-        "note": "詳細は get_route_detail(pair, route)。",
+        "note": "Details: get_route_detail(pair, route).",
     }
 
 
@@ -158,8 +177,8 @@ def get_route_detail(site: Site, pair: str, route: str) -> dict:
         raise _pair_missing(pair)
     routes = d.get("routes", {})
     if route not in routes:
-        raise ValueError(f"路線 '{route}' が見つかりません。候補: "
-                         + "、".join(list(routes)[:30]))
+        raise ValueError(f"Route '{route}' not found. Candidates: "
+                         + ", ".join(list(routes)[:30]))
     return {"route_group": route, **routes[route]}
 
 
@@ -170,15 +189,16 @@ def get_stop_changes(site: Site, pair: str) -> dict:
 def get_residuals(site: Site, pair: str) -> dict:
     d = _digest_json(site, pair)
     return {"verification": d.get("verification", {}),
-            "note": "行レベルの精査は events.json / rawdiffs.json"
-                    " (index.json の artifacts 参照)"}
+            "note": "For row-level inspection use events.json /"
+                    " rawdiffs.json (see artifacts in index.json)"}
 
 
 def map_ids(site: Site, pair: str, stop_id: str | None = None,
             route_id: str | None = None, trip_id: str | None = None,
             name: str | None = None) -> dict:
     if not any([stop_id, route_id, trip_id, name]):
-        raise ValueError("stop_id / route_id / trip_id / name のいずれかを指定")
+        raise ValueError(
+            "Specify one of stop_id / route_id / trip_id / name")
     pair = _canon_pair(pair)
     mp = site.json(f"/r/{urllib.parse.quote(pair)}.mapping.json")
     if mp is None:
@@ -229,9 +249,9 @@ def get_events(site: Site, pair: str, type: str | None = None,  # noqa: A002 ツ
            or "/" + latest["key"].replace(".html", ".events.json"))
     size = site.head_length(url)
     if size and size > EVENTS_MAX_BYTES:
-        return {"events": [], "note": f"events.json が大きすぎるため ({size}B) "
-                f"サーバー側での抽出は行いません。直接取得してください: {url}",
-                "url": url}
+        return {"events": [], "note": f"events.json is too large"
+                f" ({size} bytes) to filter server-side. Fetch it directly:"
+                f" {url}", "url": url}
     data = site.json(url)
     events = (data or {}).get("events", [])
     total_all = len(events)
@@ -245,13 +265,15 @@ def get_events(site: Site, pair: str, type: str | None = None,  # noqa: A002 ツ
                          for v in (e.get("subject") or {}).values())]
     matched = len(events)
     slim = [{k: e.get(k) for k in
-             ("event_id", "type", "display_name_ja", "severity", "subject",
+             ("event_id", "type", "display_name_ja", "display_name_en",
+              "severity", "subject",
               "old_ref", "new_ref", "quantification")} | {
                  "evidence_count": len(e.get("evidence") or [])}
             for e in events[:limit]]
     return {"events": slim, "matched": matched, "total": total_all,
             "accounting": (data or {}).get("accounting"),
-            **({"note": f"{matched}件中{limit}件を表示。全量は {url}"}
+            **({"note": f"Showing {limit} of {matched} matches."
+                        f" Full data: {url}"}
                if matched > limit else {}),
             "url": url}
 
@@ -288,11 +310,13 @@ def run_compare(site: Site, submit, org: str, feed: str,
             body[f"{key}_rid"] = val
     status, payload = submit(body)
     if status == 429:
-        raise ValueError("計算ジョブの回数制限に達しました。時間をおいて"
-                         "再試行してください (計算済みペアの読み取りは制限なし)")
+        raise ValueError(
+            "The daily limit for new comparisons has been reached. Retry"
+            " later (reading already-computed pairs is not limited)")
     if status >= 400:
-        raise ValueError(f"投入エラー ({status}): "
-                         f"{(payload or {}).get('error', '')}")
+        raise ValueError(
+            f"Submission error ({status}): "
+            f"{(payload or {}).get('error_en') or (payload or {}).get('error', '')}")
     pair = payload["job_id"]
     out = {
         "pair": pair,
@@ -301,15 +325,16 @@ def run_compare(site: Site, submit, org: str, feed: str,
         "digest_url": f"{site.origin}/r/{pair}.digest.md",
     }
     if out["status"] == "succeeded":
-        out["note"] = "計算済みです。get_digest(pair) で読めます"
+        out["note"] = "Already computed. Read it with get_digest(pair)"
     else:
-        out["note"] = ("計算を開始しました (数十秒〜数分)。get_job_status(pair) で "
-                       "succeeded を確認してから get_digest(pair) を呼んでください")
+        out["note"] = ("Computation started (tens of seconds to a few"
+                       " minutes). Poll get_job_status(pair) until"
+                       " succeeded, then call get_digest(pair)")
     return out
 
 
 def get_job_status(site: Site, pair: str) -> dict:
     d = site.json(f"/api/jobs/{urllib.parse.quote(_job_id(pair))}")
     if d is None:
-        raise ValueError(f"ジョブ '{pair}' が見つかりません")
+        raise ValueError(f"Job '{pair}' not found")
     return d

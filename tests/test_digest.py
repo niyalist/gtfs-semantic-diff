@@ -126,3 +126,43 @@ def test_digest_md_stops_cap(tmp_path, config):
     md = render_digest_md(d, stops_max=50)
     assert "停49" in md and "停50" not in md
     assert "新設はほか 10 件" in md and "省略なし" in md
+
+
+def test_digest_md_en(tmp_path, config):
+    """I6: en 版 Markdown — 見出し契約・数値一致・CJK ゼロ (データ以外)。
+
+    合成フィードの停留所名は日本語なので、CJK 監査は「行の書き出し
+    (見出し・ラベル部)」に限定する (値 = データは日本語で正当)。"""
+    import re
+
+    d = build_digest(_bundle(tmp_path, config))
+    md_ja = render_digest_md(d)
+    md_en = render_digest_md(d, lang="en")
+    # 見出し契約 (固定 — reference.md と同期)
+    for h in ["# Change digest:", "## 1. Comparison overview", "## 2. Totals",
+              "## 3. Events by type", "## 4. Stop changes",
+              "## 5. Changes by route", "## 6. Changes not tied to a route",
+              "## 7. Verification (explanation ledger)"]:
+        assert h in md_en, h
+    # 数値一致: explained_ratio の行は言語間で数値部分が同一
+    ja_num = re.search(r"explained_ratio: ([\d.]+) \((\d+) / (\d+)\)", md_ja)
+    en_num = re.search(r"explained_ratio: ([\d.]+) \((\d+) / (\d+)\)", md_en)
+    assert ja_num and en_num and ja_num.groups() == en_num.groups()
+    # 見出し・箇条書きラベル部 (":" より前) に CJK が無い
+    cjk = re.compile(r"[ぁ-んァ-ヶ一-鿿々〜、。]")
+    for line in md_en.splitlines():
+        head = line.split(":", 1)[0]
+        if line.startswith(("#", "|", "-", "(")) and not line.startswith("| "):
+            continue  # 表の中身・値行はデータ (日本語停留所名) を含み得る
+        if line.startswith("## ") or line.startswith("# "):
+            assert not cjk.search(head), line
+
+
+def test_digest_ja_render_unchanged(tmp_path, config):
+    """I6 リファクタの ja 不変検査: lang 省略と lang="ja" が同一で、
+    従来の見出し・語彙のまま。"""
+    d = build_digest(_bundle(tmp_path, config))
+    assert render_digest_md(d) == render_digest_md(d, lang="ja")
+    md = render_digest_md(d)
+    for h in ["# 差分ダイジェスト:", "## 1. 比較の概要", "## 7. 検証 (説明台帳)"]:
+        assert h in md, h

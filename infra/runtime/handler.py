@@ -900,6 +900,7 @@ def _run_compare(job_id: str, job_input: dict) -> str:
             "events": f"{prefix}/{job_id}.events.json",
             "rawdiffs": f"{prefix}/{job_id}.rawdiffs.json",
             "digest_md": f"{prefix}/{job_id}.digest.md",
+            "digest_en_md": f"{prefix}/{job_id}.digest.en.md",
             "digest_json": f"{prefix}/{job_id}.digest.json",
             "routes_digest": f"{prefix}/{job_id}.routes.digest.json",
             "mapping": f"{prefix}/{job_id}.mapping.json",
@@ -924,6 +925,7 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         "events": versioning.events_key(job_id, version),
         "rawdiffs": versioning.rawdiffs_key(job_id, version),
         "digest_md": versioning.digest_md_key(job_id, version),
+        "digest_en_md": versioning.digest_en_md_key(job_id, version),
         "digest_json": versioning.digest_json_key(job_id, version),
         "routes_digest": versioning.routes_digest_key(job_id, version),
         "mapping": versioning.mapping_key(job_id, version),
@@ -947,8 +949,10 @@ def _digest_head_links(keys: dict) -> str:
     「結果 URL を AI に投げて分析させる」フローで、HTML を fetch した
     エージェントが機械可読の要約に一発で辿り着けるようにする。"""
     return (
-        f'<link rel="alternate" type="text/markdown" '
-        f'href="/{keys["digest_md"]}" title="AI digest (Markdown)">'
+        f'<link rel="alternate" type="text/markdown" hreflang="ja" '
+        f'href="/{keys["digest_md"]}" title="AI digest (Markdown, ja)">'
+        f'<link rel="alternate" type="text/markdown" hreflang="en" '
+        f'href="/{keys["digest_en_md"]}" title="AI digest (Markdown, en)">'
         f'<link rel="alternate" type="application/json" '
         f'href="/{keys["digest_json"]}" title="AI digest (JSON)">'
     )
@@ -976,6 +980,7 @@ def _bake_raw_urls(bundle: dict, keys: dict, events_bytes: int,
         "events": {"url": "/" + keys["events"], "bytes": events_bytes},
         "rawdiffs": {"url": "/" + keys["rawdiffs"], "bytes": rawdiffs_bytes},
         "digest_md": {"url": "/" + keys["digest_md"]},
+        "digest_en_md": {"url": "/" + keys["digest_en_md"]},
         "digest_json": {"url": "/" + keys["digest_json"]},
         "routes_digest": {"url": "/" + keys["routes_digest"], "bytes": routes_bytes},
         "mapping": {"url": "/" + keys["mapping"], "bytes": mapping_bytes},
@@ -991,14 +996,20 @@ def _put_digest(bundle: dict, keys: dict, config, cache: str) -> None:
     from gtfs_semantic_diff.report.digest import build_digest, render_digest_md
 
     dig = build_digest(bundle)
-    md = render_digest_md(
-        dig,
-        routes_max=config.get("report", "digest_routes_max", default=200),
-        stops_max=config.get("report", "digest_stops_max", default=50),
-    )
+    routes_max = config.get("report", "digest_routes_max", default=200)
+    stops_max = config.get("report", "digest_stops_max", default=50)
+    md = render_digest_md(dig, routes_max=routes_max, stops_max=stops_max)
     s3.put_object(
         Bucket=RESULTS_BUCKET, Key=keys["digest_md"],
         Body=md.encode("utf-8"),
+        ContentType="text/markdown; charset=utf-8", CacheControl=cache,
+    )
+    # I6: 英語版 Markdown (JSON は言語中立なので en 複製なし)
+    md_en = render_digest_md(dig, routes_max=routes_max, stops_max=stops_max,
+                             lang="en")
+    s3.put_object(
+        Bucket=RESULTS_BUCKET, Key=keys["digest_en_md"],
+        Body=md_en.encode("utf-8"),
         ContentType="text/markdown; charset=utf-8", CacheControl=cache,
     )
     s3.put_object(
@@ -1155,6 +1166,8 @@ def _write_versioned(pair: str, html_path: str, data_path: str, version: str,
         srcs = {
             "digest_md": (versioning.digest_md_key(pair, version),
                           "text/markdown; charset=utf-8", None),
+            "digest_en_md": (versioning.digest_en_md_key(pair, version),
+                             "text/markdown; charset=utf-8", None),
             "digest_json": (versioning.digest_json_key(pair, version),
                             "application/json; charset=utf-8", None),
             "routes_digest": (versioning.routes_digest_key(pair, version),

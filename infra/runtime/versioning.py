@@ -69,8 +69,14 @@ def digest_md_key(pair: str, version: str) -> str:
 
 
 def digest_json_key(pair: str, version: str) -> str:
-    """AI 向けダイジェスト JSON (RD4b)。版と並置・不変。"""
+    """AI 向けダイジェスト JSON (RD4b)。版と並置・不変。
+    JSON は言語中立 (name_ja/name_en 両持ち) のため en 複製は作らない。"""
     return f"r/{pair}/v/{version}.digest.json"
+
+
+def digest_en_md_key(pair: str, version: str) -> str:
+    """英語版ダイジェスト Markdown (I6)。ja (.digest.md) と併置・不変。"""
+    return f"r/{pair}/v/{version}.digest.en.md"
 
 
 def routes_digest_key(pair: str, version: str) -> str:
@@ -87,6 +93,7 @@ def entry_alias_keys(pair: str) -> dict[str, str]:
     """最新版エイリアス一式 (r/{pair}.{suffix})。suffix は成果物名と対応。"""
     return {
         "digest_md": f"r/{pair}.digest.md",
+        "digest_en_md": f"r/{pair}.digest.en.md",
         "digest_json": f"r/{pair}.digest.json",
         "routes_digest": f"r/{pair}.routes.digest.json",
         "mapping": f"r/{pair}.mapping.json",
@@ -102,7 +109,10 @@ def artifacts_of(pair: str, version: str) -> dict[str, dict]:
                         "stable": False},
         "events": {"url": "/" + events_key(pair, version), "gzip": True},
         "rawdiffs": {"url": "/" + rawdiffs_key(pair, version), "gzip": True},
-        "digest_md": {"url": "/" + digest_md_key(pair, version), "schema": 1},
+        "digest_md": {"url": "/" + digest_md_key(pair, version), "schema": 1,
+                      "lang": "ja"},
+        "digest_en_md": {"url": "/" + digest_en_md_key(pair, version),
+                         "schema": 1, "lang": "en"},
         "digest_json": {"url": "/" + digest_json_key(pair, version), "schema": 1},
         "routes_digest": {"url": "/" + routes_digest_key(pair, version),
                           "gzip": True, "schema": 1},

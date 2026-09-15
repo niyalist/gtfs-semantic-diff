@@ -40,6 +40,7 @@ class FakeSite(T.Site):
 def test_tools_pure_logic():
     site = FakeSite({
         "/r/p1.digest.md": "# 差分ダイジェスト: X",
+        "/r/p1.digest.en.md": "# Change digest: X",
         "/r/p1.digest.json": {
             "routes": [{"name": "A線", "day_totals": [], "changes": []}],
             "routes_unchanged": 2,
@@ -65,10 +66,13 @@ def test_tools_pure_logic():
             "accounting": {"explained_ratio": 1.0},
         },
     })
-    assert T.get_digest(site, "p1").startswith("# 差分ダイジェスト")
+    # I6: 既定 lang="en"。en 未生成の旧ペアは ja へフォールバック+英語注記
+    fb = T.get_digest(site, "p1")
+    assert fb == "# Change digest: X"  # en があればそのまま
+    assert T.get_digest(site, "p1", lang="ja").startswith("# 差分ダイジェスト")
     assert T.list_routes(site, "p1")["routes_unchanged"] == 2
     assert "A線" in T.get_route_detail(site, "p1", "A線")["route_group"]
-    with pytest.raises(ValueError, match="候補"):
+    with pytest.raises(ValueError, match="Candidates"):
         T.get_route_detail(site, "p1", "無い線")
     m = T.map_ids(site, "p1", stop_id="S1")
     assert m["matches"]["stops"]["total"] == 1
@@ -225,7 +229,7 @@ def test_run_compare_logic():
     def submit_429(body):
         return 429, {"error": "limit"}
 
-    with pytest.raises(ValueError, match="回数制限"):
+    with pytest.raises(ValueError, match="daily limit"):
         T.run_compare(site, submit_429, "o", "f")
 
     def submit_cached(body):
@@ -242,7 +246,17 @@ def test_upload_pair_normalization():
         "/r/u/u-fa22b3aff728.digest.md": "# 差分ダイジェスト: up",
         "/api/jobs/u-fa22b3aff728": {"status": "succeeded"},
     })
-    assert T.get_digest(site, "u/u-fa22b3aff728").startswith("# 差分")
-    assert T.get_digest(site, "u-fa22b3aff728").startswith("# 差分")
+    assert T.get_digest(site, "u/u-fa22b3aff728", lang="ja").startswith("# 差分")
+    assert T.get_digest(site, "u-fa22b3aff728", lang="ja").startswith("# 差分")
+    # en 未生成 → フォールバック注記付き
+    assert T.get_digest(site, "u-fa22b3aff728").startswith("> Note:")
     assert T.get_job_status(site, "u/u-fa22b3aff728")["status"] == "succeeded"
     assert T.get_job_status(site, "u-fa22b3aff728")["status"] == "succeeded"
+
+
+def test_get_digest_en_fallback():
+    # en 未生成の旧ペア: ja に自動フォールバックし英語注記を前置する (I6)
+    site = FakeSite({"/r/old1.digest.md": "# 差分ダイジェスト: legacy"})
+    out = T.get_digest(site, "old1")
+    assert out.startswith("> Note: the English digest has not been generated")
+    assert out.endswith("# 差分ダイジェスト: legacy")

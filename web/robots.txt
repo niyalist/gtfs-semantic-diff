@@ -1,7 +1,7 @@
-# diff.gtfs.jp — GTFS 意味的差分レポート
-# 全パス閲覧可。機械向けの案内は /llms.txt を参照してください。
-# AI エージェント向け: レポート URL の .html を .digest.md に変えると
-# 機械可読ダイジェスト (Markdown) が取得できます。
+# diff.gtfs.jp — GTFS semantic diff reports
+# Everything is crawlable. Machine-oriented guidance: /llms.txt
+# For AI agents: change .html to .digest.en.md (English) or .digest.md
+# (Japanese) in any report URL to get the machine-readable digest (Markdown).
 
 User-agent: *
 Allow: /

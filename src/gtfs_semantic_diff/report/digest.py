@@ -13,34 +13,64 @@ from __future__ import annotations
 
 from typing import Any
 
-# page digest の kind → 日本語の一言 (presentation._digest の語彙と対)
-_KIND_JA = {
-    "route_added": "路線新設",
-    "route_removed": "路線廃止",
-    "systems": "運行系統の増減",
-    "reroute": "経由・区間の変更",
-    "trips": "便数の増減",
-    "retime": "時刻変更",
-    "retime_minor": "ダイヤ微調整",
-    "notes_only": "経路形状・行先表示のみの変化",
+# page digest の kind → 一言 (presentation._digest の語彙と対)。
+# I6 (i18n.md): ja 文字列は不変、en を対で持ち lang 引数で選ぶ
+_KIND_LABEL = {
+    "ja": {
+        "route_added": "路線新設",
+        "route_removed": "路線廃止",
+        "systems": "運行系統の増減",
+        "reroute": "経由・区間の変更",
+        "trips": "便数の増減",
+        "retime": "時刻変更",
+        "retime_minor": "ダイヤ微調整",
+        "notes_only": "経路形状・行先表示のみの変化",
+    },
+    "en": {
+        "route_added": "route added",
+        "route_removed": "route discontinued",
+        "systems": "branches added/removed",
+        "reroute": "routing/section change",
+        "trips": "trip count change",
+        "retime": "retiming",
+        "retime_minor": "minor retiming",
+        "notes_only": "shape/headsign changes only",
+    },
 }
+_KIND_JA = _KIND_LABEL["ja"]  # 後方互換の別名
 
-_DAY_JA = {
-    "weekday": "平日", "saturday": "土曜", "sunday_holiday": "日祝",
-    "weekend": "土日祝", "daily": "毎日", "irregular": "特定日",
-    "inactive": "運行日なし",
+# 曜日区分の語彙は viewer の辞書 (i18n.js) と同一にする
+_DAY_LABEL = {
+    "ja": {
+        "weekday": "平日", "saturday": "土曜", "sunday_holiday": "日祝",
+        "weekend": "土日祝", "daily": "毎日", "irregular": "特定日",
+        "inactive": "運行日なし",
+    },
+    "en": {
+        "weekday": "Weekday", "saturday": "Saturday",
+        "sunday_holiday": "Sun/Hol", "weekend": "Weekend", "daily": "Daily",
+        "irregular": "Irregular", "inactive": "No service days",
+    },
 }
+_DOW_NAMES = {"ja": "月火水木金土日",
+              "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
+
+
+def _day_label(day_type: str, lang: str = "ja") -> str:
+    if day_type.startswith("dow_"):
+        bits = day_type[4:]
+        names = _DOW_NAMES[lang]
+        days = [n for n, b in zip(names, bits) if b == "1"]
+        if not days:
+            return day_type
+        return f"{''.join(days)}曜" if lang == "ja" else "/".join(days)
+    base, _, idx = day_type.partition("@")
+    label = _DAY_LABEL[lang].get(base, base)
+    return f"{label}({idx})" if idx else label
 
 
 def _day_ja(day_type: str) -> str:
-    if day_type.startswith("dow_"):
-        bits = day_type[4:]
-        names = "月火水木金土日"
-        days = "".join(n for n, b in zip(names, bits) if b == "1")
-        return f"{days}曜" if days else day_type
-    base, _, idx = day_type.partition("@")
-    label = _DAY_JA.get(base, base)
-    return f"{label}({idx})" if idx else label
+    return _day_label(day_type, "ja")
 
 
 # --- L0: 全体 digest ---
@@ -108,6 +138,7 @@ def build_digest(bundle: dict, config=None) -> dict[str, Any]:
         },
         "events_by_type": [
             {"type": t, "name_ja": catalog.get(t, {}).get("ja", t),
+             "name_en": catalog.get(t, {}).get("en", t),
              "category": catalog.get(t, {}).get("category", ""), "count": n}
             for t, n in sorted(by_type.items())
         ],
@@ -134,197 +165,277 @@ def build_digest(bundle: dict, config=None) -> dict[str, Any]:
     }
 
 
-def _fmt_trips(day_totals: list[dict]) -> str:
+def _fmt_trips(day_totals: list[dict], lang: str = "ja") -> str:
     parts = []
     for d in day_totals:
         arrow = f"{d['old']}→{d['new']}" if d["old"] != d["new"] else f"{d['new']}"
-        mixed = "(のべ)" if d.get("mixed") else ""
-        parts.append(f"{_day_ja(d['day_type'])} {arrow}便{mixed}")
-    return "、".join(parts)
+        if lang == "ja":
+            mixed = "(のべ)" if d.get("mixed") else ""
+            parts.append(f"{_day_ja(d['day_type'])} {arrow}便{mixed}")
+        else:
+            mixed = " (gross)" if d.get("mixed") else ""
+            parts.append(
+                f"{_day_label(d['day_type'], lang)} {arrow} trips{mixed}")
+    return ("、" if lang == "ja" else ", ").join(parts)
 
 
-def _fmt_change(c: dict) -> str:
+def _fmt_change(c: dict, lang: str = "ja") -> str:
     k = c.get("kind", "")
-    label = _KIND_JA.get(k, k)
+    label = _KIND_LABEL[lang].get(k, k)
+    ja = lang == "ja"
+    sep = "・" if ja else ", "
     if k in ("route_added", "route_removed"):
-        return f"{label} ({c.get('trips', '?')}便)"
+        return (f"{label} ({c.get('trips', '?')}便)" if ja
+                else f"{label} ({c.get('trips', '?')} trips)")
     if k == "systems":
         bits = []
         if c.get("added"):
-            bits.append(f"新設{c['added']}")
+            bits.append(f"新設{c['added']}" if ja else f"added {c['added']}")
         if c.get("removed"):
-            bits.append(f"消滅{c['removed']}")
-        return f"{label} ({'・'.join(bits)})"
+            bits.append(f"消滅{c['removed']}" if ja
+                        else f"removed {c['removed']}")
+        return f"{label} ({sep.join(bits)})"
     if k == "reroute":
-        return f"{label} {c.get('trips', '?')}便"
+        return (f"{label} {c.get('trips', '?')}便" if ja
+                else f"{label}: {c.get('trips', '?')} trips")
     if k == "trips":
-        days = "、".join(
-            f"{_day_ja(d['day_type'])} {d['old']}→{d['new']}便"
-            for d in c.get("days", []))
+        if ja:
+            days = "、".join(
+                f"{_day_ja(d['day_type'])} {d['old']}→{d['new']}便"
+                for d in c.get("days", []))
+        else:
+            days = ", ".join(
+                f"{_day_label(d['day_type'], lang)} {d['old']}→{d['new']} trips"
+                for d in c.get("days", []))
         return f"{label}: {days}"
     if k == "retime":
-        return f"{label} {c.get('trips', '?')}便 (±{c.get('minor_max_min', '?')}分超)"
+        return (f"{label} {c.get('trips', '?')}便 (±{c.get('minor_max_min', '?')}分超)"
+                if ja else
+                f"{label}: {c.get('trips', '?')} trips (beyond "
+                f"±{c.get('minor_max_min', '?')} min)")
     if k == "retime_minor":
-        return f"{label} {c.get('trips', '?')}便"
+        return (f"{label} {c.get('trips', '?')}便" if ja
+                else f"{label}: {c.get('trips', '?')} trips")
     if k == "notes_only":
         bits = []
         if c.get("shape"):
-            bits.append(f"経路形状 {c['shape']}件")
+            bits.append(f"経路形状 {c['shape']}件" if ja
+                        else f"shape {c['shape']}")
         if c.get("headsign"):
-            bits.append(f"行先表示 {c['headsign']}件")
-        return f"{label} ({'・'.join(bits) or '—'})"
+            bits.append(f"行先表示 {c['headsign']}件" if ja
+                        else f"headsign {c['headsign']}")
+        return f"{label} ({sep.join(bits) or '—'})"
     return label
 
 
-def _fmt_quant(q) -> str:
+def _fmt_quant(q, lang: str = "ja") -> str:
     """quantification の compact な文章化。dict をそのまま出さない。"""
+    sep = "、" if lang == "ja" else ", "
     if not q:
         return ""
     if not isinstance(q, dict):
         return str(q)
     cf = q.get("changed_fields")
     if isinstance(cf, dict):
-        return "、".join(f"{k}: {v}" for k, v in cf.items())
-    return "、".join(f"{k} {v}" for k, v in q.items())
+        return sep.join(f"{k}: {v}" for k, v in cf.items())
+    return sep.join(f"{k} {v}" for k, v in q.items())
 
 
 def render_digest_md(d: dict, routes_max: int = 200,
-                     stops_max: int = 50) -> str:
+                     stops_max: int = 50, lang: str = "ja") -> str:
     """L0 digest の Markdown。見出し構造は固定 (スキーマの一部)。
 
     routes_max / stops_max は Markdown 版の上限 (超過は件数を明示して
     JSON 版へ誘導 — 省略は必ず明示する)。JSON 版は常に全量。"""
+    ja = lang == "ja"
     meta = d["meta"]
     feed = meta.get("feed", {})
-    agency = "・".join(meta.get("agency_names") or []) or \
+    agency = ("・" if ja else " · ").join(meta.get("agency_names") or []) or \
         f"{feed.get('org_id', '')}/{feed.get('feed_id', '')}".strip("/")
     lines: list[str] = []
     a = lines.append
 
-    a(f"# 差分ダイジェスト: {agency or '(不明)'}")
+    a(f"# 差分ダイジェスト: {agency or '(不明)'}" if ja
+      else f"# Change digest: {agency or '(unknown)'}")
     a("")
-    a(f"生成: {meta.get('tool')} {meta.get('version')} / {meta.get('generated_at')}"
-      f" / digest_schema {d['digest_schema']}")
+    a((f"生成: {meta.get('tool')} {meta.get('version')}" if ja else
+       f"Generated: {meta.get('tool')} {meta.get('version')}")
+      + f" / {meta.get('generated_at')} / digest_schema {d['digest_schema']}")
     a("")
-    a("## 1. 比較の概要")
+    a("## 1. 比較の概要" if ja else "## 1. Comparison overview")
     a("")
-    for side, label in (("old", "旧"), ("new", "新")):
+    for side, label in (("old", "旧"), ("new", "新")) if ja else \
+            (("old", "Old"), ("new", "New")):
         b = d["data"].get(side) or {}
         src = feed.get(f"{side}_uid") or feed.get(f"{side}_source") or ""
         period = b.get("feed_info") or b.get("window") or None
-        span = f" {period[0]}〜{period[1]}" if isinstance(period, (list, tuple)) \
-            and len(period) == 2 else ""
+        dash = "〜" if ja else "–"
+        span = f" {period[0]}{dash}{period[1]}" \
+            if isinstance(period, (list, tuple)) and len(period) == 2 else ""
         a(f"- {label}: {src}{span}")
     if d["data"].get("comparison_scope"):
-        a("- 注: 同梱世代の比較範囲 (comparison_scope) が適用されている")
+        a("- 注: 同梱世代の比較範囲 (comparison_scope) が適用されている" if ja
+          else "- Note: a comparison_scope for co-packaged versions applies")
     note = d["data"].get("service_days_note")
     if isinstance(note, str) and note:
-        a(f"- 運行日の要点: {note}")
+        # 文字列 note は日本語文 (旧版バンドル互換) — en では出さず JSON へ誘導
+        if ja:
+            a(f"- 運行日の要点: {note}")
+        else:
+            a("- Service-days note: see service_days_note in the JSON digest")
     elif isinstance(note, dict) and note.get("overlap") is None and \
             note.get("old_window") and note.get("new_window"):
         # 構造化 note の詳細 (swap/no_service) は L0 では出さない — JSON に全量
-        a("- 注: 新旧の有効期間に重なりがない (期間の離れた世代の比較)")
+        a("- 注: 新旧の有効期間に重なりがない (期間の離れた世代の比較)" if ja
+          else "- Note: the validity periods do not overlap"
+               " (versions far apart in time)")
     a("")
-    a("## 2. 全体集計")
+    a("## 2. 全体集計" if ja else "## 2. Totals")
     a("")
-    a(f"- 便数 (1日あたり・曜日別): {_fmt_trips([{**t, 'mixed': t.get('mixed_old') or t.get('mixed_new')} for t in d['totals']['trips_by_day']])}")
-    a(f"- 路線ページ: {d['totals']['pages']} (変化あり {d['totals']['pages_changed']})")
+    trips_txt = _fmt_trips(
+        [{**t, 'mixed': t.get('mixed_old') or t.get('mixed_new')}
+         for t in d['totals']['trips_by_day']], lang)
+    a(f"- 便数 (1日あたり・曜日別): {trips_txt}" if ja
+      else f"- Trips per day (by day type): {trips_txt}")
+    a(f"- 路線ページ: {d['totals']['pages']} (変化あり {d['totals']['pages_changed']})"
+      if ja else
+      f"- Route pages: {d['totals']['pages']}"
+      f" ({d['totals']['pages_changed']} changed)")
     acc = d["totals"]["accounting"]
     a(f"- 説明台帳: 生差分 {acc['rawdiff_total']} 件中 {acc['explained']} 件を"
-      f"説明 (explained_ratio {acc['explained_ratio']:.4f})")
+      f"説明 (explained_ratio {acc['explained_ratio']:.4f})" if ja else
+      f"- Explanation ledger: {acc['explained']} of {acc['rawdiff_total']}"
+      f" raw diffs explained (explained_ratio {acc['explained_ratio']:.4f})")
     a("")
-    a("## 3. イベント種別")
+    a("## 3. イベント種別" if ja else "## 3. Events by type")
     a("")
     if d["events_by_type"]:
-        a("| type | 表示名 | 件数 |")
+        a("| type | 表示名 | 件数 |" if ja else "| type | name | count |")
         a("|---|---|---|")
         for row in d["events_by_type"]:
-            a(f"| {row['type']} | {row['name_ja']} | {row['count']} |")
+            name = row["name_ja"] if ja else row.get("name_en", row["type"])
+            a(f"| {row['type']} | {name} | {row['count']} |")
     else:
-        a("(イベントなし)")
+        a("(イベントなし)" if ja else "(no events)")
     a("")
-    a("## 4. 停留所の変化")
+    a("## 4. 停留所の変化" if ja else "## 4. Stop changes")
     a("")
     sc = d["stop_changes"]
     any_stop = False
-    for key, label in (("renamed", "改称"), ("added", "新設"),
-                       ("removed", "廃止"), ("relocated", "移設")):
+    kind_labels = (("renamed", "改称"), ("added", "新設"),
+                   ("removed", "廃止"), ("relocated", "移設")) if ja else \
+        (("renamed", "Renamed"), ("added", "Added"),
+         ("removed", "Removed"), ("relocated", "Relocated"))
+    for key, label in kind_labels:
         items = sc.get(key, [])
         for s in items[:stops_max]:
             any_stop = True
-            routes = "、".join(s.get("routes", []))
-            where = f" (路線: {routes})" if routes else ""
+            routes = ("、" if ja else ", ").join(s.get("routes", []))
+            where = (f" (路線: {routes})" if ja else f" (routes: {routes})") \
+                if routes else ""
             if key == "renamed":
-                a(f"- 改称: {s['old']} → {s['new']}{where}")
+                a(f"- {label}: {s['old']} → {s['new']}{where}")
             else:
                 a(f"- {label}: {s['name']}{where}")
         if len(items) > stops_max:
             a(f"- ({label}はほか {len(items) - stops_max} 件 — 全量は"
-              f" JSON 版の stop_changes に。省略なし)")
+              f" JSON 版の stop_changes に。省略なし)" if ja else
+              f"- ({len(items) - stops_max} more {label.lower()} — full list"
+              f" in stop_changes of the JSON digest. Nothing omitted.)")
     if not any_stop:
-        a("(なし)")
+        a("(なし)" if ja else "(none)")
     a("")
-    a("## 5. 路線別の変化")
+    a("## 5. 路線別の変化" if ja else "## 5. Changes by route")
     a("")
     routes = d["routes"]
     for p in routes[:routes_max]:
         a(f"### {p['name']}")
         a("")
         if p.get("former_names"):
-            a(f"- 旧名称: {'、'.join(p['former_names'])}")
-        a(f"- 便数: {_fmt_trips(p['day_totals'])}")
+            a(f"- 旧名称: {'、'.join(p['former_names'])}" if ja
+              else f"- Former names: {', '.join(p['former_names'])}")
+        a(f"- 便数: {_fmt_trips(p['day_totals'], lang)}" if ja
+          else f"- Trips: {_fmt_trips(p['day_totals'], lang)}")
         for c in p["changes"]:
-            a(f"- {_fmt_change(c)}")
+            a(f"- {_fmt_change(c, lang)}")
         a("")
     if len(routes) > routes_max:
         a(f"(ほか {len(routes) - routes_max} 路線に変化あり — 全量は JSON 版の"
-          f" routes に。省略なし)")
+          f" routes に。省略なし)" if ja else
+          f"({len(routes) - routes_max} more changed routes — full list in"
+          f" routes of the JSON digest. Nothing omitted.)")
         a("")
-    a(f"変化のない路線: {d['routes_unchanged']} ページ")
+    a(f"変化のない路線: {d['routes_unchanged']} ページ" if ja
+      else f"Routes without changes: {d['routes_unchanged']} pages")
     a("")
-    a("## 6. 路線に紐付かない変化")
+    a("## 6. 路線に紐付かない変化" if ja
+      else "## 6. Changes not tied to a route")
     a("")
     nr = d["non_route"]
-    names = {r["type"]: r["name_ja"] for r in d["events_by_type"]}
+    names = {r["type"]: (r["name_ja"] if ja else r.get("name_en", r["type"]))
+             for r in d["events_by_type"]}
     if nr["meta_events"] or nr["others"]:
         for e in nr["meta_events"]:
             a(f"- {names.get(e['type'], e['type'])}: "
-              f"{_fmt_quant(e.get('quantification'))}")
+              f"{_fmt_quant(e.get('quantification'), lang)}")
         for o in nr["others"]:
             a(f"- {names.get(o['type'], o['type'])} ({o['type']}): "
-              f"{o['count']} 件")
+              f"{o['count']} 件" if ja else
+              f"- {names.get(o['type'], o['type'])} ({o['type']}): "
+              f"{o['count']}")
     else:
-        a("(なし)")
+        a("(なし)" if ja else "(none)")
     a("")
-    a("## 7. 検証 (説明台帳)")
+    a("## 7. 検証 (説明台帳)" if ja
+      else "## 7. Verification (explanation ledger)")
     a("")
     v = d["verification"]
     a(f"- explained_ratio: {v['explained_ratio']:.4f}"
       f" ({v['explained']} / {v['rawdiff_total']})")
     resid = v.get("residual_breakdown_by_file") or {}
     if resid:
-        a("- 残差の所在: " + "、".join(f"{f} {n}件" for f, n in resid.items()))
+        a("- 残差の所在: " + "、".join(f"{f} {n}件" for f, n in resid.items())
+          if ja else
+          "- Residuals located in: "
+          + ", ".join(f"{f} ({n})" for f, n in resid.items()))
     a(f"- TECHNICAL_ID_CHURN (ID 張り替え): {v['technical_id_churn']} 件"
-      f" / UNEXPLAINED_RESIDUAL: {v['unexplained_residual']} 件")
-    a(f"- self_check: {len(v.get('self_check') or [])} 件")
+      f" / UNEXPLAINED_RESIDUAL: {v['unexplained_residual']} 件" if ja else
+      f"- TECHNICAL_ID_CHURN (ID reassignment): {v['technical_id_churn']}"
+      f" / UNEXPLAINED_RESIDUAL: {v['unexplained_residual']}")
+    a(f"- self_check: {len(v.get('self_check') or [])} 件" if ja
+      else f"- self_check: {len(v.get('self_check') or [])}")
     a("")
     ru = (d.get("meta") or {}).get("raw_urls") or {}
     if ru:
         # Web 生成時は実 URL 入りの深掘り節 (L0→L1→L2 を自走できる)
-        a("深掘り (このペアの実 URL):")
-        for key, label in (("routes_digest", "路線詳細 L1 全路線 (routes.digest.json)"),
-                           ("mapping", "ID 対応表 (mapping.json)"),
-                           ("events", "全イベント+証拠 L2 (events.json)"),
-                           ("rawdiffs", "生差分全件 L2 (rawdiffs.json)")):
+        a("深掘り (このペアの実 URL):" if ja
+          else "Deep dive (URLs for this pair):")
+        deep = (("routes_digest", "路線詳細 L1 全路線 (routes.digest.json)"),
+                ("mapping", "ID 対応表 (mapping.json)"),
+                ("events", "全イベント+証拠 L2 (events.json)"),
+                ("rawdiffs", "生差分全件 L2 (rawdiffs.json)")) if ja else \
+            (("routes_digest",
+              "per-route detail, L1, all routes (routes.digest.json)"),
+             ("mapping", "ID mapping tables (mapping.json)"),
+             ("events", "all events with evidence, L2 (events.json)"),
+             ("rawdiffs", "every raw diff, L2 (rawdiffs.json)"))
+        for key, label in deep:
             if key in ru:
                 a(f"- {label}: {ru[key]['url']}")
         a("")
         a("仕様は /docs/reference.md (このサイト) を参照。"
           "MCP コネクタ (https://diff.gtfs.jp/mcp) 登録済みなら、この URL の"
-          " r/〜.html の〜部分を pair 引数として各ツールで深掘りできる。")
+          " r/〜.html の〜部分を pair 引数として各ツールで深掘りできる。" if ja
+          else
+          "Spec: /docs/reference.md on this site. If the MCP connector"
+          " (https://diff.gtfs.jp/mcp) is registered, the {pair} part of"
+          " this page's r/{pair}.html URL is the pair argument of every"
+          " tool.")
     else:
         a("詳細 (証拠・行レベル) は events.json / rawdiffs.json"
-          " (docs/api/reference.md)。")
+          " (docs/api/reference.md)。" if ja else
+          "Details (evidence, row level): events.json / rawdiffs.json"
+          " (docs/api/reference.md).")
     return "\n".join(lines) + "\n"
 
 
