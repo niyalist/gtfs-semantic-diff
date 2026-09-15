@@ -94,20 +94,12 @@
 
 <section id="pane-upload" class="hidden">
   <div id="saved-note" class="note hidden" data-i18n="saved_note"></div>
-  <label for="pick-old" data-i18n="lbl_zip_old"></label>
+  <label for="file-old" data-i18n="lbl_zip_old"></label>
   <select id="saved-old" class="hidden"></select>
-  <span id="filewrap-old">
-    <button type="button" class="small" id="pick-old" data-i18n="choose_file"></button>
-    <span id="fname-old" class="note"></span>
-    <input id="file-old" type="file" accept=".zip" style="display:none">
-  </span>
-  <label for="pick-new" data-i18n="lbl_zip_new"></label>
+  <input id="file-old" type="file" accept=".zip">
+  <label for="file-new" data-i18n="lbl_zip_new"></label>
   <select id="saved-new" class="hidden"></select>
-  <span id="filewrap-new">
-    <button type="button" class="small" id="pick-new" data-i18n="choose_file"></button>
-    <span id="fname-new" class="note"></span>
-    <input id="file-new" type="file" accept=".zip" style="display:none">
-  </span>
+  <input id="file-new" type="file" accept=".zip">
   <p class="note" id="upload-policy"></p>
   <div><button id="run-upload" class="run" disabled data-i18n="btn_run"></button></div>
   <p class="note" data-i18n="terms_note_upload"></p>
@@ -174,7 +166,6 @@ const L = {
     saved_note: `ログイン中: アップロードした zip は保存され、
 次回からは下のプルダウンで再利用できます。結果 URL は削除されず残ります。`,
     lbl_zip_old: "旧世代の GTFS zip", lbl_zip_new: "新世代の GTFS zip",
-    choose_file: "ファイルを選択…", no_file: "選択されていません",
     policy_anon: "上限 100MB / ファイル。アップロードされた zip と結果は30日後に自動削除されます。",
     policy_authed: "上限 100MB / ファイル。ログイン中のため zip と結果は保存されます (マイページから再利用可能)。",
     hist_title: "比較の履歴", lbl_sort: "並べ替え",
@@ -263,7 +254,6 @@ rel="noopener">CLI version</a> locally.`,
     saved_note: `Signed in: uploaded zips are kept and can be reused from the
 dropdowns below next time. Result URLs are kept as well.`,
     lbl_zip_old: "Older GTFS zip", lbl_zip_new: "Newer GTFS zip",
-    choose_file: "Choose file…", no_file: "No file selected",
     policy_anon: "Up to 100 MB per file. Uploaded zips and results are deleted automatically after 30 days.",
     policy_authed: "Up to 100 MB per file. You are signed in, so zips and results are kept (reusable from My page).",
     hist_title: "Comparison history", lbl_sort: "Sort by",
@@ -361,8 +351,6 @@ function applyLang() {
   for (const o of prefSel.options) {
     if (o.value) o.textContent = (lang === "en" ? PREFS_EN : PREFS)[o.value - 1];
   }
-  renderFileName("old");
-  renderFileName("new");
   renderUserbar();
   if (histItems.length) { renderHistory(); renderZips(); }
 }
@@ -612,20 +600,13 @@ const sideReady = (side) =>
   ($(`saved-${side}`).value || "") !== "" || Boolean($(`file-${side}`).files[0]);
 const updateUploadButton = () =>
   ($("run-upload").disabled = !(sideReady("old") && sideReady("new")));
-const renderFileName = (side) => {
-  const f = $(`file-${side}`).files[0];
-  $(`fname-${side}`).textContent = f ? f.name : T("no_file");
-};
-for (const side of ["old", "new"]) {
-  $(`pick-${side}`).onclick = () => $(`file-${side}`).click();
-  $(`file-${side}`).onchange = () => { renderFileName(side); updateUploadButton(); };
-}
+$("file-old").onchange = $("file-new").onchange = updateUploadButton;
 $("saved-old").onchange = () => {
-  $("filewrap-old").classList.toggle("hidden", $("saved-old").value !== "");
+  $("file-old").classList.toggle("hidden", $("saved-old").value !== "");
   updateUploadButton();
 };
 $("saved-new").onchange = () => {
-  $("filewrap-new").classList.toggle("hidden", $("saved-new").value !== "");
+  $("file-new").classList.toggle("hidden", $("saved-new").value !== "");
   updateUploadButton();
 };
 
