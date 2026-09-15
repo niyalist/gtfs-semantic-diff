@@ -131,7 +131,7 @@
               {:else if cell.sym === "pass"}
                 <span class="skip">✓</span>
               {:else if cell.sym === "gone"}
-                <span class="gone">{$lang === "en" ? ".." : "・・"}</span>
+                <span class="gone">・・</span>
               {:else if cell.sym === "blank"}
                 {""}
               {:else if cell.cls === "dropped"}

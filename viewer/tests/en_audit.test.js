@@ -18,8 +18,10 @@ function cjkLeaks(container) {
   const leaks = [];
   const walk = (node) => {
     if (node.nodeType === 3) {
-      if (CJK.test(node.textContent)) {
-        leaks.push(node.textContent.trim().slice(0, 80));
+      const text = node.textContent.trim();
+      // 「・・」(通らない停留所の印) は言語共通の記号 — 単独ノードのみ許容
+      if (text !== "・・" && CJK.test(node.textContent)) {
+        leaks.push(text.slice(0, 80));
       }
       return;
     }
