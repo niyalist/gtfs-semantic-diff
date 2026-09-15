@@ -127,7 +127,8 @@
         const parts = [];
         const pc = q.price_changes || [];
         if (pc.length) {
-          const ex = pc.slice(0, 3).map((c) => tt("fo_yen", c.old_price, c.new_price));
+          const ex = pc.slice(0, 3).map((c) =>
+            tt("fo_price", q.currency, c.old_price, c.new_price));
           parts.push(`${tt("fo_fare_price", pc.length)} (${ex.join(", ")}${pc.length > 3 ? ", …" : ""})`);
         }
         if (q.removed_fares?.length) parts.push(tt("fo_fare_removed", q.removed_fares.length));

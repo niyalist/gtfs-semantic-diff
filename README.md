@@ -10,9 +10,8 @@ accounted for: it either becomes evidence for a change event or is reported as
 an unexplained residual, and the coverage ratio is measured on every run.
 
 Try it: **[diff.gtfs.jp](https://diff.gtfs.jp/)** — upload any two GTFS zips,
-free, no sign-up. (The input UI is currently Japanese-first; the report viewer
-has an English mode. Full English support is being rolled out — see
-[docs/design/i18n.md](docs/design/i18n.md).)
+free, no sign-up. The site and reports are bilingual (English / Japanese,
+following your browser language).
 
 ## Features
 
@@ -46,7 +45,7 @@ The hosted service exposes every layer of a comparison result:
 
 | Layer | URL pattern | Content |
 |---|---|---|
-| Digest | `r/{pair}.digest.md` / `.digest.json` | Summary for LLMs and humans (currently Japanese; English planned) |
+| Digest | `r/{pair}.digest.en.md` (English) / `.digest.md` (Japanese) / `.digest.json` | Summary for LLMs and humans — numbers identical in both languages |
 | Route detail | `r/{pair}.routes.digest.json` | Per-route changed trips (old/new trip_ids), counts by time band |
 | ID mapping | `r/{pair}.mapping.json` | Adopted old↔new correspondences for stops / routes / trips |
 | Full events | see `r/{pair}/index.json` | All 44 event types with evidence, plus raw diffs |
@@ -133,14 +132,15 @@ version; it is embedded in generated reports alongside `generated_at`.
 All roadmap milestones are complete. On the Japanese verification feeds
 `explained_ratio` is 1.0000; the international verification set (TriMet,
 MBTA, STM Montréal, Rome, national-scale Swiss and Netherlands feeds) runs to
-completion with explained_ratio 0.98–1.0. 276 tests. The largest Japanese
+completion with explained_ratio 0.98–1.0. 287 tests. The largest Japanese
 verification pair (30,700 raw diffs) takes ~2 seconds; national-scale feeds
 finish in minutes ([docs/perf/](docs/perf/)).
 
 ## Documentation
 
-Most documentation is in Japanese (development happens in Japanese); the
-external API guide is being translated (see [docs/design/i18n.md](docs/design/i18n.md)).
+Development documentation is in Japanese (development happens in
+Japanese). The external API guide and reference ([docs/api/](docs/api/))
+are English-first with Japanese companions.
 
 | Document | Content |
 |---|---|
@@ -151,7 +151,7 @@ external API guide is being translated (see [docs/design/i18n.md](docs/design/i1
 | [docs/design/ontology.md](docs/design/ontology.md) | Event catalog (design) |
 | [docs/design/architecture.md](docs/design/architecture.md) | Architecture and JSON schemas |
 | [docs/design/roadmap.md](docs/design/roadmap.md) | Milestones and Definitions of Done |
-| [docs/api/](docs/api/) | External API guide and reference (also served at [diff.gtfs.jp/docs/](https://diff.gtfs.jp/docs/README.md)) |
+| [docs/api/](docs/api/) | External API guide and reference — English, with Japanese companions (served at [diff.gtfs.jp/docs/](https://diff.gtfs.jp/docs/README.md)) |
 | [docs/verification/](docs/verification/) | Real-data verification logs |
 | [docs/perf/](docs/perf/) | Performance measurement records |
 | [CLAUDE.md](CLAUDE.md) | Design principles and development rules (instructions for AI agents) |

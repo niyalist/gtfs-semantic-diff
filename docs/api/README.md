@@ -1,172 +1,189 @@
-# gtfs-semantic-diff を外から使う — 案内
+# Using gtfs-semantic-diff from outside — a guide
 
-このディレクトリは、gtfs-semantic-diff を**プログラム・AI・外部システムから**
-使う人のためのドキュメントです (Web では https://diff.gtfs.jp/developers.html
-が導入ページ、本文書は /docs/ で配信)。人間が読むことと、LLM にそのまま渡して
-文脈にすることの両方を想定しています。仕様の正確な定義は
-[reference.md](reference.md) にあります。
+*日本語版: [README.ja.md](README.ja.md)*
 
-## このツールは何をするものか
+This directory documents how to use gtfs-semantic-diff **from programs, AIs
+and external systems** (on the web, https://diff.gtfs.jp/developers.html is
+the introduction page; this document is served under /docs/). It is written
+both for humans and to be handed to an LLM as context. The precise
+specification lives in [reference.md](reference.md).
 
-複数世代の GTFS フィード (バスのダイヤデータ) を比較し、変化を
-**人間が認識できる意味** — 路線廃止、減便、経由変更、停留所改称、乗り場変更
-など **44種類の ChangeEvent** — として抽出します。特徴は**説明台帳**:
-2世代間の生の差分 (ファイル・フィールド単位の全件) は、必ずいずれかの
-イベントの証拠 (evidence) に紐づくか「未説明の残差」として計上され、
-被覆率 (explained_ratio) が常に出ます。**どこまで説明できて何が説明できて
-いないかが数値で保証される**のが、単純な diff ツールとの違いです。
+## What this tool does
 
-検出は決定的ルールベースで、LLM や機械学習はコアに入っていません。
-同じ入力からは常に同じ出力が出ます。閾値はすべて設定ファイルにあります。
+It compares two versions of a GTFS feed (bus schedule data) and extracts the
+changes as **meaning people can recognize** — route discontinued, service
+reduced, rerouting, stop renamed, platform changed and so on: **44
+ChangeEvent types**. Its distinguishing feature is the **explanation
+ledger**: every raw difference between the two versions (all files, all
+fields) must either back an event as evidence or be counted as an
+unexplained residual, and the coverage ratio (explained_ratio) is always
+published. **How much is explained, and what is not, is guaranteed as a
+number** — that is what separates this from a plain diff tool.
 
-## 何ができるか (ユースケース)
+Detection is deterministic and rule-based; no LLM or machine learning is
+involved in the core. The same input always yields the same output. All
+thresholds live in a configuration file.
 
-- **データのエラーチェック**: 残差 (UNEXPLAINED_RESIDUAL) や
-  ID 張り替え (TECHNICAL_ID_CHURN)、説明台帳の数値から、フィード作成時の
-  ミス (service_id の付け間違い、停留所の重複登録など) を洗い出す。
-- **改正内容の要約・告知文づくり**: イベントと数値 (どの路線が何便減ったか、
-  どの停留所が改称されたか) を素材に、人間向けの文章を書く。事実・数値は
-  本ツールの出力から、文章化は利用側 (人間や LLM) で、という役割分担。
-- **公式告知との突合**: 事業者の改正告知に書かれた項目が、データにも
-  反映されているか (またはデータにしかない変化がないか) を照合する。
-- **研究・分析**: 減便・路線再編・運行日区分の変化を、地域横断・時系列で
-  集計する。運転手不足・交通空白などの研究の入力になる。
-- **差分を乗り越えるシステムの部品**: mapping.json (ID 対応表) を使うと、
-  世代を跨いで stop_id / route_id / trip_id を結合できる — 乗客データの
-  経年分析、shapes.txt 等の手作り資産の新世代への引き継ぎ、設定移行など、
-  「フィード更新でキーが変わる」問題を抱えるあらゆるシステムの土台になる。
+## What you can do with it (use cases)
 
-## 出力の3層 — どれを使うか
+- **Data error checking**: use residuals (UNEXPLAINED_RESIDUAL), ID
+  reassignments (TECHNICAL_ID_CHURN) and the ledger numbers to hunt down
+  feed-authoring mistakes (mis-assigned service_ids, duplicated stops, ...).
+- **Summaries and rider notices**: use the events and numbers (which route
+  lost how many trips, which stops were renamed) as the raw material for
+  human-facing prose. Facts and numbers come from this tool's output; the
+  writing is done by the consumer (human or LLM).
+- **Cross-checking official announcements**: verify that every item in an
+  operator's revision notice is reflected in the data — and that the data
+  contains no changes missing from the notice.
+- **Research and analysis**: aggregate service reductions, network
+  restructurings and service-day changes across regions and over time —
+  input for studies on driver shortages, transit deserts and more.
+- **A building block for diff-resilient systems**: mapping.json (the ID
+  correspondence tables) lets you join stop_id / route_id / trip_id across
+  versions — longitudinal ridership analysis, carrying hand-maintained
+  assets like shapes.txt forward to a new version, configuration migration:
+  a foundation for any system troubled by "the keys change every feed
+  update".
 
-| 層 | 中身 | 向く用途 | 大きさの目安 |
+## The output layers — which one to use
+
+| Layer | Contents | Good for | Typical size |
 |---|---|---|---|
-| digest | 全体要約+路線毎の要約行。ID なし | 翻訳・告知・突合。LLM に最初に渡すもの | 数十〜数百 KB |
-| routes.digest.json | 全路線の詳細 (変化便レコード・時間帯別本数・trip_id 付き) | 路線の深掘り | 〜数 MB |
-| mapping.json | stop_id / route_id / trip_id の**旧新対応表** | 経年データ結合・資産引き継ぎのバックエンド | 〜数 MB |
-| events.json | ChangeEvent 全件+証拠+説明台帳 | エラーチェック、プログラム連携。**安定インタフェース** | 〜数十 MB |
-| rawdiffs.json | 生差分の全件 (L0) | 残差の精査、完全な検証 | 〜数百 MB |
+| digest | Whole-feed summary + one summary line per route. No IDs | Notices, cross-checks. Hand this to an LLM first | tens–hundreds of KB |
+| routes.digest.json | Detail for every route (changed-trip records, counts by time band, trip_ids) | Drilling into a route | up to a few MB |
+| mapping.json | **Old↔new correspondence tables** for stop_id / route_id / trip_id | Backbone for longitudinal joins and asset carry-over | up to a few MB |
+| events.json | Every ChangeEvent + evidence + the ledger | Error checking, programmatic use. **The stable interface** | tens of MB |
+| rawdiffs.json | Every raw diff (L0) | Residual inspection, full verification | hundreds of MB |
 
-原則: **広く浅い用途は上の層から、狭く深い用途ほど下の層へ**。
-HTML レポート (ビューア) は人間の閲覧用で、その内部データ (bundle) は
-安定インタフェースではありません — プログラムからは events.json を使って
-ください。
+Rule of thumb: **broad, shallow uses read the upper layers; narrow, deep
+uses go lower**. The HTML report (viewer) is for humans; its internal data
+(bundle) is not a stable interface — programs should use events.json.
 
-## クイックスタート
+## Quick start
 
-### CLI (ローカル)
+### CLI (local)
 
 ```bash
-# gtfs-data.jp から世代を取って比較 (zip を直接渡すこともできる)
+# Fetch two versions from gtfs-data.jp and compare (local zips also work)
 gtfs-semantic-diff compare --org nagai-unyu --feed Nagaibus \
     --old prev_2 --new prev_1 \
     --digest digest.md -o events.json --html report.html
 ```
 
-- `digest.md` — AI 向けダイジェスト (LLM にそのまま渡せる要約。`--digest-json` で JSON)
-- `events.json` — 機械可読の全イベント+説明台帳
-- `report.html` — 自己完結ビューア (ブラウザで開く)
+- `digest.md` — the AI digest (a summary you can hand straight to an LLM;
+  `--digest-json` for JSON)
+- `events.json` — all events + the explanation ledger, machine-readable
+- `report.html` — the self-contained viewer (open in a browser)
 
-1路線を深掘りするなら `--digest-route "路線名" --digest route.md`
-(変化した便の一覧が trip_id 付きで出る)。全路線一括は
-`--digest-routes routes.json`、ID 対応表は `--mapping mapping.json`。
+To drill into one route: `--digest-route "ROUTE NAME" --digest route.md`
+(lists every changed trip with trip_ids). All routes at once:
+`--digest-routes routes.json`; ID mapping tables: `--mapping mapping.json`.
 
-ローカルの zip 2つを比較するなら `compare old.zip new.zip` (古い方が先)。
+To compare two local zips: `compare old.zip new.zip` (older one first).
 
 ### Web API (https://diff.gtfs.jp/)
 
 ```bash
-# 1) 比較ジョブを投入 (uid は gtfs-data.jp の世代のフル UUID)
+# 1) Submit a comparison job (uid = the version's full UUID on gtfs-data.jp)
 curl -X POST https://diff.gtfs.jp/api/jobs \
   -H "Content-Type: application/json" \
   -d '{"type":"gtfs_data_jp","org":"nagai-unyu","feed":"Nagaibus",
        "old_uid":"<full-uid>","new_uid":"<full-uid>"}'
 # → {"job_id": "<pair>", "status_url": "/api/jobs/<pair>"}
 
-# 2) 完了をポーリング (succeeded になるまで)
+# 2) Poll until succeeded
 curl https://diff.gtfs.jp/api/jobs/<pair>
 
-# 3) 成果物 (版付き・不変)
-#    レポート:      https://diff.gtfs.jp/r/<pair>.html
-#    ダイジェスト:   https://diff.gtfs.jp/r/<pair>.digest.md (最新版。LLM にはまずこれ)
-#    イベント JSON: https://diff.gtfs.jp/r/<pair>/v/<版>.events.json
-#    生差分 JSON:   https://diff.gtfs.jp/r/<pair>/v/<版>.rawdiffs.json
+# 3) Artifacts (versioned, immutable)
+#    Report:        https://diff.gtfs.jp/r/<pair>.html
+#    Digest:        https://diff.gtfs.jp/r/<pair>.digest.en.md (latest, English;
+#                   .digest.md is Japanese — hand one of these to an LLM first)
+#    Events JSON:   https://diff.gtfs.jp/r/<pair>/v/<version>.events.json
+#    Raw diffs:     https://diff.gtfs.jp/r/<pair>/v/<version>.rawdiffs.json
 ```
 
-uid の代わりに `"old_rid":"prev_1","new_rid":"current"` でも投入できます。
-計算済みペアの一覧は **フィード台帳** `https://diff.gtfs.jp/feeds/<org>__<feed>.json`、
-各ペアの全成果物 URL は **ペア台帳** `…/r/<pair>/index.json` の
-versions[].artifacts にあります (URL 規則の暗記は不要)。
+Instead of uids you can submit `"old_rid":"prev_1","new_rid":"current"`.
+The list of computed pairs is in the **feed ledger**
+`https://diff.gtfs.jp/feeds/<org>__<feed>.json`; every artifact URL of a
+pair is in the **pair ledger** `…/r/<pair>/index.json` under
+versions[].artifacts (no need to memorize URL rules).
 
-uid の探し方 (gtfs-data.jp の世代一覧):
+Finding uids (version list on gtfs-data.jp):
 
 ```bash
-curl "https://diff.gtfs.jp/api/gtfs/feeds?pref=10"          # フィード一覧 (県別)
-curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # 世代一覧
+curl "https://diff.gtfs.jp/api/gtfs/feeds?pref=10"          # feeds by prefecture
+curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&feed=Nagaibus"  # versions
 ```
 
-## MCP サーバー (AI エージェント向け)
+## MCP server (for AI agents)
 
-`https://diff.gtfs.jp/mcp` — MCP (Model Context Protocol) エンドポイント。
-認証不要・読み取り専用。上の HTTP 面と同じ内容をツールとして提供します:
-探索 (find_feeds / find_generations / list_pairs)、要約 (get_digest /
-list_routes / get_route_detail / get_stop_changes / get_residuals)、
-ID 対応 (map_ids)、イベント検索 (get_events)、**比較の実行**
-(run_compare / get_job_status — 未計算の世代ペアもその場で計算できる。
-日次の回数ガードあり)。
+`https://diff.gtfs.jp/mcp` — a Model Context Protocol endpoint. No
+authentication. It exposes the same surface as the HTTP layer above, as
+tools: exploration (find_feeds / find_generations / list_pairs), summaries
+(get_digest / list_routes / get_route_detail / get_stop_changes /
+get_residuals), ID correspondence (map_ids), event search (get_events), and
+**running comparisons** (run_compare / get_job_status — uncomputed version
+pairs can be computed on the spot; a daily rate guard applies). Text tools
+take lang="en" (default) or "ja".
 
-- **Claude**: 設定 → コネクタ → カスタムコネクタ追加で URL を登録
-- **ChatGPT**: Settings → Developer mode を有効化 → コネクタ追加
-- プロトコルは 2026-07-28 版と旧世代 (initialize 方式) の両対応
+- **Claude**: Settings → Connectors → Add custom connector → enter the URL
+- **ChatGPT**: Settings → enable Developer mode → add a connector
+- Speaks both the 2026-07-28 protocol and the legacy (initialize-style)
+  generation
 
-## ユースケース別レシピ
+## Recipes by use case
 
-### エラーチェック (データ作成者)
+### Error checking (feed authors)
 
-1. events.json の `accounting.explained_ratio` を見る。1.0 に近いほど
-   全差分が意味づけできている。`residual_breakdown_by_file` で残差の
-   所在 (どのファイルか) を確認。
-2. `type == "UNEXPLAINED_RESIDUAL"` と `TECHNICAL_ID_CHURN` のイベントを
-   列挙する。ID 張り替えが大量にあるのは、内容が同じなのに trip_id や
-   service_id を作り直している兆候 (それ自体は無害だが、意図的か確認に値する)。
-3. 各イベントの `evidence` (rawdiff ID のリスト) から rawdiffs.json の
-   該当行に遡ると、GTFS のどのファイル・どの行が根拠か分かる。
+1. Look at `accounting.explained_ratio` in events.json. The closer to 1.0,
+   the more of the diff has been given meaning. Check
+   `residual_breakdown_by_file` for where residuals live.
+2. List events with `type == "UNEXPLAINED_RESIDUAL"` and
+   `TECHNICAL_ID_CHURN`. Mass ID reassignment means trip_ids / service_ids
+   were regenerated with identical content (harmless in itself, but worth
+   confirming it was intentional).
+3. From each event's `evidence` (a list of rawdiff IDs), follow into
+   rawdiffs.json to see exactly which GTFS file and row backs it.
 
-### 改正の要約 (翻訳)
+### Summarizing a revision (translation into prose)
 
-1. events.json を `severity` (major > minor > info) と `type` で絞る。
-   路線・停留所の名前は `subject` に入っている (表示名は
-   `display_name_ja` / `display_name_en`)。
-2. 数値は `quantification` から取る (便数、率、日数など)。**文章を生成する
-   側は数値を再計算しない** — 事実は必ず出力から引く。
-3. digest (`--digest`) はこの手順を1ファイルに前処理したもの。まずこれを使う。
+1. Filter events.json by `severity` (major > minor > info) and `type`.
+   Route and stop names are in `subject` (display names:
+   `display_name_ja` / `display_name_en`).
+2. Take numbers from `quantification` (trip counts, ratios, day counts).
+   **The prose generator must not recompute** — facts always come from the
+   output.
+3. The digest (`--digest`) is this procedure pre-baked into one file. Use
+   it first.
 
-### 突合 (公式告知との照合)
+### Cross-checking (against official notices)
 
-告知の項目 (例: 「4月1日から○○線を減便」) ごとに、events.json から
-該当路線の SERVICE_REDUCED / PATTERN_TRUNCATED 等を探す。逆方向
-(データにあって告知にない変化) は severity=major のイベントを列挙して
-告知と照らす。
+For each item in the notice (e.g. "route X reduced from April 1"), find the
+corresponding SERVICE_REDUCED / PATTERN_TRUNCATED events for that route in
+events.json. For the reverse direction (changes in the data missing from
+the notice), list severity=major events and compare against the notice.
 
-## AI に渡すときの推奨
+## Recommendations when handing output to an AI
 
-- レポート URL (`…/r/<pair>.html`) をそのまま AI に渡しても、HTML の
-  `link rel="alternate"` とサイトの `/llms.txt` から digest に誘導されます。
-  確実なのは最初から `…/r/<pair>.digest.md` を渡すこと。
+- Passing a report URL (`…/r/<pair>.html`) to an AI works — the HTML's
+  `link rel="alternate"` and the site's `/llms.txt` steer it to the digest.
+  The most reliable is to pass `…/r/<pair>.digest.en.md` directly.
+- Start with the digest; hand over the relevant part of events.json only
+  when deeper detail is needed. Full events.json reaches tens of MB on
+  large feeds — filter by `type` or `subject` first.
+- Passing the event-type catalog in [reference.md](reference.md) alongside
+  stabilizes interpretation.
+- Have the AI quote facts and numbers only from the JSON output and never
+  fill gaps by guessing (the same principle this tool is built on).
 
-- まず digest (`--digest out.md`) を渡し、深掘りが要るときだけ
-  events.json の該当部分を渡す。events.json 全体は大規模フィードで
-  数十 MB になるので、`type` や `subject` でフィルタしてから渡すこと。
-- イベント型の意味は [reference.md](reference.md) の型カタログを併せて
-  渡すと解釈が安定する。
-- 事実・数値は出力の JSON からのみ引用させ、推測での補完をさせない
-  (本ツールの設計原則と同じ)。
+## Constraints and cautions
 
-## 制約・注意
-
-- 比較は常に「旧→新」の2世代ペア。多世代タイムラインは未対応。
-- Web のジョブ実行は計算資源を使うため、大量の自動投入はしないこと。
-  日次の計算ジョブ数に上限があり、超過時は 429 (Retry-After 付き) が返る
-  (キャッシュ済みペアの再取得は消費しない)。研究等でまとまった量を
-  回したい場合は CLI をローカルで使うのが確実。
-- 出力の日本語はデータ由来 (停留所名・路線名)。イベント型 ID と JSON の
-  キーは英語で安定。
+- A comparison is always one old→new pair. Multi-version timelines are not
+  supported yet.
+- Web jobs consume compute; do not mass-submit automatically. A daily job
+  limit applies and returns 429 with Retry-After when exceeded (re-reading
+  cached pairs costs nothing). For bulk research workloads, run the CLI
+  locally.
+- Japanese text in the output comes from the data itself (stop and route
+  names). Event type IDs and JSON keys are English and stable.

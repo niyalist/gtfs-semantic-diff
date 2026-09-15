@@ -168,7 +168,14 @@ const DICT = {
     fo_fare_removed: (n) => `廃止された運賃区分 ${n}件`,
     fo_fare_added: (n) => `新設された運賃区分 ${n}件`,
     fo_fare_rules: (n) => `適用区間 (fare_rules) の差分 ${n}行`,
-    fo_yen: (o, n) => `${o}円→${n}円`,
+    // 通貨はイベントの quantification.currency から。未指定 (旧バンドル・
+    // 日本フィード) は JPY = 従来表示のまま
+    fo_price: (cur, o, n) => {
+      const c = Array.isArray(cur) ? cur[0] : cur;
+      if (!c || c === "JPY") return `${o}円→${n}円`;
+      const sym = { USD: "$", EUR: "€", GBP: "£" }[c];
+      return sym ? `${sym}${o}→${sym}${n}` : `${o}→${n} ${c}`;
+    },
     fo_daytypes_arrow: " → ",
     cov_title: "網羅性 (説明台帳)",
     src_line: "出典",
@@ -380,7 +387,11 @@ const DICT = {
     fo_fare_removed: (n) => `${n} fare class(es) removed`,
     fo_fare_added: (n) => `${n} fare class(es) added`,
     fo_fare_rules: (n) => `${n} fare_rules row(s) changed`,
-    fo_yen: (o, n) => `¥${o}→¥${n}`,
+    fo_price: (cur, o, n) => {
+      const c = Array.isArray(cur) ? cur[0] : cur;
+      const sym = { JPY: "¥", USD: "$", EUR: "€", GBP: "£" }[c || "JPY"];
+      return sym ? `${sym}${o}→${sym}${n}` : `${o}→${n} ${c}`;
+    },
     fo_daytypes_arrow: " → ",
     cov_title: "Coverage (explanation ledger)",
     src_line: "Source",

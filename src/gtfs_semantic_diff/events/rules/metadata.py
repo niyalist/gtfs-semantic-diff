@@ -72,6 +72,18 @@ def _fare(ctx: RuleContext) -> None:
         for d in ctx.index.by_file.get("fare_rules.txt", [])
     )
     quantification = {"fare_rules_diffs": rules_changed}
+    # I4: 通貨はデータから (表示層の円決め打ちをやめる)。新世代優先・最頻値
+    currencies = []
+    for snap in (ctx.new, ctx.old):
+        fa = snap.table("fare_attributes")
+        if fa is not None and "currency_type" in getattr(fa, "columns", ()):
+            currencies = sorted(
+                {str(c).strip().upper() for c in fa["currency_type"] if str(c).strip()})
+            if currencies:
+                break
+    if currencies:
+        quantification["currency"] = currencies[0] if len(currencies) == 1 \
+            else currencies
     if removed:
         quantification["removed_fares"] = removed[:20]
     if added:

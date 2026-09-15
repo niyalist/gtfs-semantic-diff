@@ -89,3 +89,22 @@ describe("partsLabel (I3)", () => {
     expect(partsLabel("駅前 → 病院前", undefined, "ja")).toBe("駅前 → 病院前");
   });
 });
+
+// --- I4: 運賃の通貨表示 (円決め打ちの解消) ---
+describe("fo_price (I4)", () => {
+  const ja = translator("ja");
+  const en = translator("en");
+  test("未指定・JPY は従来どおり (ja 表示不変)", () => {
+    expect(ja("fo_price", undefined, 220, 250)).toBe("220円→250円");
+    expect(ja("fo_price", "JPY", 220, 250)).toBe("220円→250円");
+    expect(en("fo_price", "JPY", 220, 250)).toBe("¥220→¥250");
+  });
+  test("USD/EUR は記号、未知コードはコード後置", () => {
+    expect(ja("fo_price", "USD", "2.50", "2.80")).toBe("$2.50→$2.80");
+    expect(en("fo_price", "EUR", "1.50", "2.00")).toBe("€1.50→€2.00");
+    expect(en("fo_price", "CAD", "3.25", "3.50")).toBe("3.25→3.50 CAD");
+  });
+  test("複数通貨 (配列) は先頭を使う", () => {
+    expect(en("fo_price", ["USD", "CAD"], 1, 2)).toBe("$1→$2");
+  });
+});
