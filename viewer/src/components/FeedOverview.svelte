@@ -116,7 +116,7 @@
         const win = q.overlap_window;
         const parts = [dayLabel(e.subject?.day_type ?? "")];
         if (q.substantive && win) {
-          parts.push(`${tt("fo_hx_window", isoDate(win[0]), isoDate(win[1]))} ${within}件`);
+          parts.push(`${tt("fo_hx_window", isoDate(win[0]), isoDate(win[1]))} ${tt("fo_hx_count", within)}`);
         } else {
           parts.push(tt("fo_hx_none"));
         }

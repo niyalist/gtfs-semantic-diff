@@ -98,6 +98,7 @@
 {#if !index}
   <p>{tt("no_data")}</p>
 {:else}
+  {#key $lang}
   <div class="lang-toggle">
     <button class:active={mode === "report"} on:click={() => (mode = "report")}>
       {tt("mode_normal")}
@@ -113,16 +114,16 @@
   <p class="meta">
     {#if agencyNames.length && feedIds}<code>{feedIds}</code> /{/if}
     {tt("old_gen")}: <code>{feed.old_rid || feed.old_source || "?"}</code>
-    {#if feed.old_period?.[0]}({feed.old_period[0]} 〜 {feed.old_period[1]}){/if}
+    {#if feed.old_period?.[0]}({feed.old_period[0]} {$lang === "en" ? "–" : "〜"} {feed.old_period[1]}){/if}
     → {tt("new_gen")}: <code>{feed.new_rid || feed.new_source || "?"}</code>
-    {#if feed.new_period?.[0]}({feed.new_period[0]} 〜 {feed.new_period[1]}){/if}
+    {#if feed.new_period?.[0]}({feed.new_period[0]} {$lang === "en" ? "–" : "〜"} {feed.new_period[1]}){/if}
     <br />
     {tt("generated")}: {index.meta?.generated_at} / {index.meta?.tool} {index.meta?.version}
     / explained_ratio {index.accounting.explained_ratio.toFixed(4)}
     {#if feed.feed_license}
       <br />
       {tt("src_line")}: <a href="https://gtfs-data.jp" target="_blank"
-        rel="noopener">GTFSデータリポジトリ</a>
+        rel="noopener">{$lang === "en" ? "GTFS Data Repository (gtfs-data.jp)" : "GTFSデータリポジトリ"}</a>
       <code>{feedIds}</code> — {tt("src_license")}: {feed.feed_license}
     {/if}
   </p>
@@ -240,6 +241,7 @@
 
   <FeedbackForm ownVersion={index.meta?.version || ""} />
   <p class="note">{tt("attribution_note")}</p>
+  {/key}
 {/if}
 
 <style>

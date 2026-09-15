@@ -114,7 +114,9 @@
     const out = [];
     let prev = -1;
     for (const { s, i } of kept) {
-      if (prev >= 0 && i > prev + 1) out.push(`…(${i - prev - 1}停)…`);
+      if (prev >= 0 && i > prev + 1)
+        out.push($lang === "en" ? `…(${i - prev - 1} stops)…`
+                                 : `…(${i - prev - 1}停)…`);
       out.push(s);
       prev = i;
     }

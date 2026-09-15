@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import maplibregl from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
-  import { t } from "../lib/i18n.js";
+  import { lang, t } from "../lib/i18n.js";
 
   export let changes; // presentation.stop_changes
 
@@ -40,7 +40,7 @@
       const feats = [];
       const moveLines = [];
       let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90, found = false;
-      const pfx = (key) => `【${tt(key)}】`;
+      const pfx = (key) => ($lang === "en" ? `[${tt(key)}] ` : `【${tt(key)}】`);
       const push = (kind, lat, lon, label) => {
         if (lat == null || lon == null) return;
         found = true;
