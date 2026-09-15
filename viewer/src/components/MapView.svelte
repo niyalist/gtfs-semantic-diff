@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import maplibregl from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
+  import { lang } from "../lib/i18n.js";
+  import { BASEMAPS, baseStyle, defaultBasemap, switchBasemap } from "../lib/basemap.js";
 
   export let geometry; // FeatureCollection
   export let baseNames = []; // ハイライトする停留所基底名
@@ -9,6 +11,20 @@
 
   let container;
   let map;
+  // 初期基図の自動判定用: 最初の座標 (GeoJSON は [lon, lat])
+  let _lat0 = null, _lon0 = null;
+  for (const f of geometry?.features || []) {
+    const c = f.geometry.type === "Point"
+      ? f.geometry.coordinates : f.geometry.coordinates[0];
+    if (c) { [_lon0, _lat0] = c; break; }
+  }
+  let basemap = defaultBasemap(_lat0, _lon0);
+
+  function setBase(k) {
+    basemap = k;
+    if (map) switchBasemap(map, k);
+  }
+
 
   const STATUS_COLOR = { added: "#0b6e4f", removed: "#c62828", matched: "#7a8391" };
 
@@ -47,18 +63,7 @@
     const { points, lines } = relevant();
     map = new maplibregl.Map({
       container,
-      style: {
-        version: 8,
-        sources: {
-          gsi: {
-            type: "raster",
-            tiles: ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            attribution: "国土地理院",
-          },
-        },
-        layers: [{ id: "gsi", type: "raster", source: "gsi" }],
-      },
+      style: baseStyle(basemap),  // I4: 地理院/OSM 自動判定+切替
       attributionControl: { compact: true },
     });
     map.on("load", () => {
@@ -117,4 +122,13 @@
   onDestroy(() => map?.remove());
 </script>
 
-<div class="map-box" bind:this={container}></div>
+<div class="map-wrap">
+  <div class="basemap-toggle">
+    {#each Object.keys(BASEMAPS) as k}
+      <button class:active={basemap === k} on:click={() => setBase(k)}>
+        {BASEMAPS[k].label[$lang] ?? BASEMAPS[k].label.ja}
+      </button>
+    {/each}
+  </div>
+  <div class="map-box" bind:this={container}></div>
+</div>

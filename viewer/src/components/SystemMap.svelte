@@ -3,6 +3,7 @@
   import maplibregl from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
   import { lang, t, partsLabel } from "../lib/i18n.js";
+  import { BASEMAPS, baseStyle, defaultBasemap, switchBasemap } from "../lib/basemap.js";
 
   // R2 改: 描画単位は leg (時刻表単位・曜日統合)。
   // 各 leg は極大パターンの線集合 (lines) を持ち、同色・同レーンで重ね描きする —
@@ -14,6 +15,19 @@
 
   let container;
   let map;
+  // 初期基図の自動判定用: 最初の座標 (polyline は [lat, lon])
+  let _lat0 = null, _lon0 = null;
+  for (const lg of legs || []) {
+    const p = (lg.lines || [])[0]?.polyline?.[0];
+    if (p) { [_lat0, _lon0] = p; break; }
+  }
+  let basemap = defaultBasemap(_lat0, _lon0);
+
+  function setBase(k) {
+    basemap = k;
+    if (map) switchBasemap(map, k);
+  }
+
   $: tt = $t;
 
   // 原則5: 色 + 線デザインの二重チャネル。凡例にも同じ組を出す。
@@ -32,20 +46,9 @@
   onMount(() => {
     map = new maplibregl.Map({
       container,
-      style: {
-        version: 8,
-        // 日本語ラベル用グリフ (オンライン時のみ。タイルと同様の外部依存)
-        glyphs: "https://glyphs.geolonia.com/{fontstack}/{range}.pbf",
-        sources: {
-          gsi: {
-            type: "raster",
-            tiles: ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            attribution: "国土地理院",
-          },
-        },
-        layers: [{ id: "gsi", type: "raster", source: "gsi" }],
-      },
+      // 基図は basemap.js に抽象化 (I4: 地理院/OSM の自動判定+利用者切替)
+      style: baseStyle(basemap,
+        { glyphs: "https://glyphs.geolonia.com/{fontstack}/{range}.pbf" }),
       attributionControl: { compact: true },
     });
     map.on("load", () => {
@@ -230,7 +233,16 @@
   onDestroy(() => map?.remove());
 </script>
 
-<div class="map-box" bind:this={container}></div>
+<div class="map-wrap">
+  <div class="basemap-toggle">
+    {#each Object.keys(BASEMAPS) as k}
+      <button class:active={basemap === k} on:click={() => setBase(k)}>
+        {BASEMAPS[k].label[$lang] ?? BASEMAPS[k].label.ja}
+      </button>
+    {/each}
+  </div>
+  <div class="map-box" bind:this={container}></div>
+</div>
 <p class="note">
   {tt("legend")}:
   {#each legs as lg, i}
