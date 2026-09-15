@@ -48,7 +48,7 @@ _DAY_LABEL = {
     },
     "en": {
         "weekday": "Weekday", "saturday": "Saturday",
-        "sunday_holiday": "Sun/Hol", "weekend": "Weekend", "daily": "Daily",
+        "sunday_holiday": "Sunday", "weekend": "Weekend", "daily": "Daily",
         "irregular": "Irregular", "inactive": "No service days",
     },
 }

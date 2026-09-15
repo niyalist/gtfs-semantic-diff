@@ -248,7 +248,7 @@ const DICT = {
     structure: "Service branches (mostly disjoint stop sequences)",
     band_table: "Trips per time band (old→new)", direction: "Dir", day: "Days", total: "Total",
     outbound: "Outbound", inbound: "Inbound",
-    weekday: "Weekday", saturday: "Saturday", sunday_holiday: "Sun/Hol", weekend: "Weekend",
+    weekday: "Weekday", saturday: "Saturday", sunday_holiday: "Sunday", weekend: "Weekend",
     daily: "Daily", irregular: "Irregular", inactive: "No service days",
     day_added_to: (base) => ` (extra on ${base})`,
     fo_special_title: "Irregular / inactive services",

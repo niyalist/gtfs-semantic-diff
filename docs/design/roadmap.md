@@ -493,11 +493,11 @@ MCP は説明 en 一本化+本文は lang 引数、terms 英語は参考訳。
   → kind 由来、分冊名・日付整形・注記、zip 表示名の構造化、OGP 題名)、
   ビューア初期言語、国際フィード実レポートの英語通読チェック。
   DoD: ja は PI 準拠で不変+en は CJK 監査ゼロ
-- **I4: 国際フィード技術対応** — 地図タイル (bbox で地理院/OSM 系を既定切替+
+- **I4: 国際フィード技術対応** 【完了 2026-09-16 (docs/verification/I4_intl_tech.md)】 — 地図タイル (bbox で地理院/OSM 系を既定切替+
   **レイヤコントロールで利用者選択**。OSM 系は OpenFreeMap 等キー不要源 →
   終着は RD3/PMTiles 自前配信)、停留所名正規化の非日本語検証、残差精査
   (Fares v2 等)。DoD: I1 全ペアで動作記録 + 日本フィード回帰不変
-- **I5: 公開整備** — **README.md を en 正に、ja は README.ja.md** (先行実施)。
+- **I5: 公開整備** 【完了 2026-09-16 — README (9/14 先行)・docs/api en 正+ja 併設・developers 導線】 — **README.md を en 正に、ja は README.ja.md** (先行実施)。
   docs/api の en 正+ja 併設、developers.html 導線
 - **I6: digest・MCP の言語対応**【実装済み 2026-09-15 (2026.9.15.5、docs/verification/I6_digest_mcp_i18n.md)。残: 英語実走記録】 — digest.en.md/.en.json 併設 (既存 ja
   URL バイト不変、artifacts/alias/rel=alternate 拡張)、数値一致テストの en 適用、
