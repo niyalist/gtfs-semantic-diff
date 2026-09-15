@@ -1050,14 +1050,15 @@ def _page_meta(bundle: dict[str, Any]) -> tuple[str, str, str, str]:
     meta = bundle.get("meta", {})
     feed = meta.get("feed", {}) or {}
     names = meta.get("agency_names") or []
-    subject = "・".join(names) or "/".join(
-        v for v in (feed.get("org_id"), feed.get("feed_id")) if v)
+    ids = "/".join(v for v in (feed.get("org_id"), feed.get("feed_id")) if v)
+    subject = "・".join(names) or ids
+    subject_en = " · ".join(names) or ids  # en 題名は CJK 区切りを使わない
     old_from = (feed.get("old_period") or ["", ""])[0]
     new_from = (feed.get("new_period") or ["", ""])[0]
     period = f" ({old_from} → {new_from})" if old_from or new_from else ""
     if subject:
         title = f"{subject} のダイヤ改正 意味的差分レポート{period}"
-        title_en = f"{subject} — GTFS timetable change report{period}"
+        title_en = f"{subject_en} — GTFS timetable change report{period}"
     else:
         title = f"GTFS 比較レポート{period}"
         title_en = f"GTFS comparison report{period}"

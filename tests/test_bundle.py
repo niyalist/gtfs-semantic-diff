@@ -450,3 +450,15 @@ def test_write_html_split_head_links(tmp_path, config):
                      html, tmp_path / "o.json", "/d.json", head_links=link)
     out = html.read_text(encoding="utf-8")
     assert link + "</head>" in out
+
+
+def test_page_title_en_uses_ascii_separator():
+    # I3: 複数事業者の連結は ja 題名は「・」、en 題名は " · " (TriMet 実例)
+    from gtfs_semantic_diff.report.bundle import _page_meta
+
+    bundle = {"meta": {"agency_names": ["Alpha Bus", "Beta Tram"],
+                       "feed": {"org_id": "o", "feed_id": "f"}}}
+    title, _desc, title_en, _desc_en = _page_meta(bundle)
+    assert "・" in title
+    assert "・" not in title_en
+    assert "Alpha Bus · Beta Tram" in title_en
