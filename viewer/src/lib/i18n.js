@@ -1,7 +1,21 @@
 import { writable, derived } from "svelte/store";
 
 // JSON (バンドル) は言語中立。言語はこのラベル層だけで切り替える (docs/design/web.md)。
-export const lang = writable("ja");
+// I3 (i18n.md G7): 初期言語はブラウザ設定。localStorage "lang" を
+// diff.gtfs.jp の入力 UI と共有し、トグルでの変更は保存する
+const _storedLang = (() => {
+  try { return localStorage.getItem("lang"); } catch { return null; }
+})();
+export const lang = writable(
+  _storedLang === "en" || _storedLang === "ja" ? _storedLang
+    : (typeof navigator !== "undefined"
+        && (navigator.language || "").toLowerCase().startsWith("ja"))
+      ? "ja" : "en");
+let _langFirst = true;
+lang.subscribe((l) => {
+  if (_langFirst) { _langFirst = false; return; }
+  try { localStorage.setItem("lang", l); } catch { /* private mode 等 */ }
+});
 
 const DICT = {
   ja: {
@@ -459,6 +473,21 @@ export function dayName(dayType, language) {
   }
   const v = DICT[language]?.[dayType] ?? DICT.ja[dayType];
   return typeof v === "string" ? v : dayType;
+}
+
+// I3: 日本語を合成した生成ラベル (循環・先回り・経由・経路N) の英語版を
+// bundle の label_parts から組み立てる。ja は常に焼き込み済みラベル文字列を
+// そのまま使う (ja 表示の不変を構造的に保証)
+export function partsLabel(label, parts, language) {
+  if (language !== "en" || !parts) return label ?? "";
+  const dup = parts.dup ? ` (${parts.dup})` : "";
+  if (parts.kind === "loop") return `${parts.stop} loop${dup}`;
+  if (parts.kind === "loop_dir")
+    return `${parts.stop} loop (${parts.first} first)${dup}`;
+  if (parts.kind === "via") return `via ${parts.stops.join(" / ")}${dup}`;
+  if (parts.kind === "first") return `${parts.stop} first${dup}`;
+  if (parts.kind === "route_n") return `Route ${parts.n}${dup}`;
+  return label ?? "";
 }
 
 export function eventName(catalog, type, language) {

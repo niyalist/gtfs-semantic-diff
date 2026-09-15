@@ -1,5 +1,5 @@
 <script>
-  import { lang, t, dayName } from "../lib/i18n.js";
+  import { lang, t, dayName, partsLabel } from "../lib/i18n.js";
 
   export let matrix; // {bands, rows}
   $: tt = $t;
@@ -36,7 +36,7 @@
       {#each matrix.rows as r}
         <tr class:agg={r.kind === "aggregate"} class:leg={r.kind === "leg"}>
           <td class={r.kind === "system" ? "indent2" : r.kind === "leg" ? "indent" : ""}>
-            {r.kind === "system" ? "└ " : r.kind === "leg" ? "└ " : ""}{r.label}
+            {r.kind === "system" ? "└ " : r.kind === "leg" ? "└ " : ""}{partsLabel(r.label, r.label_parts, $lang)}
           </td>
           <td>{dayJa(r.day_type)}</td>
           {#each bands as b}

@@ -213,6 +213,7 @@ API・MCP・機械可読データは <a href="/developers.html">開発者向け�
     del_hist_repo: "この履歴を削除します (共通の公開レポート自体は残ります)。よろしいですか?",
     del_fail: (m) => `削除に失敗: ${m}`,
     del_zip: (name) => `保存済み zip「${name}」を削除します。よろしいですか?`,
+    zip_name: (n, f, u) => `${n}${f ? ` ${f}〜` : ""}${u ? ` (アップロード ${u})` : ""}`,
     checking_latest: "最新世代を確認しています…",
     no_latest: "最新世代を取得できません",
     still_latest: " (この比較の新側が現在も最新です)",
@@ -301,6 +302,7 @@ newer side for the current latest version.`,
     del_hist_repo: "Delete this history entry? (The shared public report itself remains.)",
     del_fail: (m) => `Delete failed: ${m}`,
     del_zip: (name) => `Delete the saved zip "${name}"?`,
+    zip_name: (n, f, u) => `${n}${f ? ` from ${f}` : ""}${u ? ` (uploaded ${u})` : ""}`,
     checking_latest: "Checking the latest version…",
     no_latest: "Could not fetch the latest version",
     still_latest: " (the newer side of this comparison is still the latest)",
@@ -610,6 +612,16 @@ $("saved-new").onchange = () => {
   updateUploadButton();
 };
 
+// I3: zip / 履歴の表示名 — サーバ保存の部品があれば言語別に組み立てる
+const zipName = (z) => (lang === "ja" || !z.agency_name)
+  ? z.display_name
+  : T("zip_name", z.agency_name, z.from_date || "", z.uploaded_date || "");
+const histSideLabel = (label, parts, fallback) => {
+  if (parts && lang === "en")
+    return T("zip_name", parts.n || fallback, parts.f || "", parts.u || "");
+  return label || fallback;
+};
+
 let savedZips = [];
 async function loadSavedZipSelectors() {
   if (!AUTH.token) return;
@@ -623,7 +635,7 @@ async function loadSavedZipSelectors() {
     for (const z of savedZips) {
       const o = document.createElement("option");
       o.value = z.zip_id;
-      o.textContent = T("saved_prefix", z.display_name);
+      o.textContent = T("saved_prefix", zipName(z));
       sel.appendChild(o);
     }
   }
@@ -679,8 +691,10 @@ function histLabel(it) {
       ? `${it.old_from_date || "?"} → ${it.new_from_date || "?"}` : "";
     return { name, gens };
   }
-  const name = [it.old_label || it.old_name || T("old_zip"),
-                it.new_label || it.new_name || T("new_zip")].join(" ⇔ ");
+  const name = [
+    histSideLabel(it.old_label, it.old_label_parts, it.old_name || T("old_zip")),
+    histSideLabel(it.new_label, it.new_label_parts, it.new_name || T("new_zip")),
+  ].join(" ⇔ ");
   return { name: T("upload_label", name), gens: "" };
 }
 
@@ -740,7 +754,7 @@ async function deleteHistory(it) {
 }
 
 async function deleteZip(z) {
-  if (!confirm(T("del_zip", z.display_name))) return;
+  if (!confirm(T("del_zip", zipName(z)))) return;
   try {
     const r = await fetch(`/api/me/zips?id=${encodeURIComponent(z.zip_id)}`,
       { method: "DELETE", headers: authHeaders() });
@@ -779,7 +793,7 @@ function renderZips() {
   const mb = (n) => (Number(n || 0) / 1048576).toFixed(1);
   box.innerHTML = `<table class="hist"><tr><th>${T("th_name")}</th><th>${T("th_size")}</th><th>${T("th_saved")}</th><th></th></tr>` +
     savedZips.map((z, i) =>
-      `<tr><td>${esc(z.display_name)}</td><td>${mb(z.size)} MB</td>` +
+      `<tr><td>${esc(zipName(z))}</td><td>${mb(z.size)} MB</td>` +
       `<td>${esc(jdate(z.created_at))}</td>` +
       `<td><button class="small" data-zdel="${i}">${T("del")}</button></td></tr>`).join("") +
     `</table><p class="note">${T("zip_reuse")}</p>`;

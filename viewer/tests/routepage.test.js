@@ -2,6 +2,9 @@
 // しんぐうバグ (タブ切替で日付が再描画されない — Svelte リアクティビティ) と
 // 立川バグ (折りたたみヘッダが mixed を知らない) の再発防止
 import { describe, expect, test } from "vitest";
+import { lang } from "../src/lib/i18n.js";
+// I3: 初期言語はブラウザ依存になった (jsdom は en)。ja 表示の検証なので固定する
+lang.set("ja");
 import { render, fireEvent } from "@testing-library/svelte";
 import RoutePage from "../src/components/RoutePage.svelte";
 import { shinguPage, tachikawaPage } from "./fixtures.js";

@@ -1,5 +1,5 @@
 <script>
-  import { lang, t, dayName, formatDateRuns } from "../lib/i18n.js";
+  import { lang, t, dayName, formatDateRuns, partsLabel } from "../lib/i18n.js";
   import { countText, runsText } from "../lib/format.js";
   import DateCalendar from "./DateCalendar.svelte";
 
@@ -186,7 +186,7 @@
          バス停列の縦線が全行で揃う (grid の列幅は最長ラベルに合わせて共有) -->
     <div class="axis-grid">
       {#each axisRows as row}
-        <span class="axis-label">{row.label}</span>
+        <span class="axis-label">{partsLabel(row.label, row.label_parts, $lang)}</span>
         <span class="axis-stops pattern">
           {#each elideByKeyStops(row.stops, keyStops, 11) as s, i}
             {#if i > 0}<span class="arrow">{row.kind === "pair" ? "—" : "→"}</span>{/if}<span class="stop">{s}</span>
@@ -309,7 +309,7 @@
         {@const chipsText = tbChips(tb)}
         <details class="tt-section" open={changed && changedTables.length <= 4}>
           <summary>
-            {tb.label}{#if tb.sheet_label}<span class="sheet-label">({tb.sheet_label})</span>{/if}
+            {partsLabel(tb.label, tb.label_parts, $lang)}{#if tb.sheet_label}<span class="sheet-label">({partsLabel(tb.sheet_label, tb.sheet_label_parts, $lang)})</span>{/if}
             <span class="count">
               {tbCount(tb)}{chipsText ? ` | ${chipsText}` : ""}
             </span>

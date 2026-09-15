@@ -1,7 +1,7 @@
 // 表示整形の純関数テスト (ui_quality.md S4)。PI-1/PI-2/PI-3 の実装を固定する
 import { describe, expect, test } from "vitest";
 import { countText, runsText } from "../src/lib/format.js";
-import { dayName, formatDateRuns, translator } from "../src/lib/i18n.js";
+import { dayName, formatDateRuns, partsLabel, translator } from "../src/lib/i18n.js";
 
 const tt = translator("ja");
 
@@ -60,5 +60,32 @@ describe("dayName", () => {
   });
   test("dow_ は曜日集合から生成", () => {
     expect(dayName("dow_1010100", "ja")).toBe("月・水・金曜");
+  });
+});
+
+// --- I3: partsLabel (生成ラベルの en 組み立て / ja 不変) ---
+describe("partsLabel (I3)", () => {
+  const cases = [
+    ["駅前 循環", { kind: "loop", stop: "駅前" }, "駅前 loop"],
+    ["駅前 循環（停あ先回り）", { kind: "loop_dir", stop: "駅前", first: "停あ" },
+     "駅前 loop (停あ first)"],
+    ["A・B経由", { kind: "via", stops: ["A", "B"] }, "via A / B"],
+    ["市役所前先回り", { kind: "first", stop: "市役所前" }, "市役所前 first"],
+    ["経路2", { kind: "route_n", n: 2 }, "Route 2"],
+    ["駅前 循環（2）", { kind: "loop", stop: "駅前", dup: 2 }, "駅前 loop (2)"],
+  ];
+  test("en は parts から組み立てる", () => {
+    for (const [ja, parts, en] of cases) {
+      expect(partsLabel(ja, parts, "en")).toBe(en);
+    }
+  });
+  test("ja は焼き込みラベルをそのまま返す (表示不変)", () => {
+    for (const [ja, parts] of cases) {
+      expect(partsLabel(ja, parts, "ja")).toBe(ja);
+    }
+  });
+  test("parts が無ければ言語によらずラベルをそのまま返す", () => {
+    expect(partsLabel("駅前 → 病院前", null, "en")).toBe("駅前 → 病院前");
+    expect(partsLabel("駅前 → 病院前", undefined, "ja")).toBe("駅前 → 病院前");
   });
 });

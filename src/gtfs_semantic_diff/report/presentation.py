@@ -378,15 +378,18 @@ def _sheet_sort_key(specs: list[tuple]) -> str:
     return min((nw or o).trip_id for _, o, nw in specs)
 
 
-def sheet_labels(sheets: list[list[tuple]]) -> list[str | None]:
-    """各分冊のラベル。1枚なら None。
+def sheet_labels(sheets: list[list[tuple]]) -> list[tuple[str | None, dict | None]]:
+    """各分冊の (ラベル, 構造化 parts)。1枚なら (None, None)。
 
     - 識別停留所 (その分冊にだけある停留所) があれば頻度上位2つで「A・B経由」
     - 無い (同一停留所集合で順序違い = 循環の逆回り等) なら、代表停車列同士の
       最初の相違停留所で「◯◯先回り」
+
+    parts は I3 (i18n.md): ja ラベル文字列は従来どおり不変で、en 表示は
+    viewer が parts ({kind, stops|stop|n, dup?}) から組み立てる。
     """
     if len(sheets) <= 1:
-        return [None] * len(sheets)
+        return [(None, None)] * len(sheets)
 
     def stop_freq(specs) -> dict[str, int]:
         freq: dict[str, int] = defaultdict(int)
@@ -403,7 +406,7 @@ def sheet_labels(sheets: list[list[tuple]]) -> list[str | None]:
         return max(counts, key=lambda s: (counts[s], s))
 
     stop_sets = [set(stop_freq(sp)) for sp in sheets]
-    labels: list[str | None] = []
+    labels: list[tuple[str | None, dict | None]] = []
     for i, specs in enumerate(sheets):
         others: set[str] = set()
         for j, ss in enumerate(stop_sets):
@@ -413,30 +416,31 @@ def sheet_labels(sheets: list[list[tuple]]) -> list[str | None]:
         if dist:
             freq = stop_freq(specs)
             top = sorted(dist, key=lambda s: (-freq[s], s))[:2]
-            labels.append("・".join(top) + "経由")
+            labels.append(("・".join(top) + "経由",
+                           {"kind": "via", "stops": top}))
             continue
         mine = rep_seq(specs)
         other = rep_seq(sheets[0] if i else sheets[1])
-        label = None
+        pair = None
         for a, b in zip(mine, other):
             if a != b:
-                label = f"{a}先回り"
+                pair = (f"{a}先回り", {"kind": "first", "stop": a})
                 break
-        labels.append(label or f"経路{i + 1}")
+        labels.append(pair or (f"経路{i + 1}", {"kind": "route_n", "n": i + 1}))
     # 同名ラベルの重複解消 (「六地蔵先回り」×2 等): 2つ目以降に連番
     seen: dict[str, int] = defaultdict(int)
-    for i, lb in enumerate(labels):
+    for i, (lb, parts) in enumerate(labels):
         if lb is None:
             continue
         seen[lb] += 1
         if seen[lb] > 1:
-            labels[i] = f"{lb}（{seen[lb]}）"
+            labels[i] = (f"{lb}（{seen[lb]}）", {**parts, "dup": seen[lb]})
     return labels
 
 
 def _loop_leg_label(group_label: str, terminal: str,
-                    mine: list[str], other: list[str]) -> str:
-    """循環の向き (leg) の表示名: 「◯◯ 循環（△△先回り）」。
+                    mine: list[str], other: list[str]) -> tuple[str, dict]:
+    """循環の向き (leg) の表示名: (「◯◯ 循環（△△先回り）」, parts)。
 
     △△ = 自回りの代表停車列が相手回りと最初に食い違う停留所 —
     分冊ラベル (sheet_labels) と同じ規則で、B層 (向き) と D層 (分冊) が
@@ -446,8 +450,9 @@ def _loop_leg_label(group_label: str, terminal: str,
     相違が見つからない縮退では群ラベルのみ返す (呼び出し側で連番)。"""
     for a, b in zip(mine, other):
         if a != b and a != terminal:
-            return f"{group_label}（{a}先回り）"
-    return group_label
+            return (f"{group_label}（{a}先回り）",
+                    {"kind": "loop_dir", "stop": terminal, "first": a})
+    return group_label, {"kind": "loop", "stop": terminal}
 
 
 # --- 停留所軸の併合 (R17) ---
@@ -1373,8 +1378,13 @@ class _Builder:
                     else "forward"
                 )
             has_reverse = any(s["leg"] == "reverse" for s in group_systems)
+            # label_parts (I3): 日本語を合成するラベルに限り構造化 parts を併記
+            # (ja ラベル文字列は不変。en は viewer が parts から組み立てる)。
+            # 矢印だけの「A → B」「A ⇄ B」は言語中立なので parts 不要
+            label_parts: dict | None = None
             if loop:
                 kind, label = "loop", f"{canon['first_stop']} 循環"
+                label_parts = {"kind": "loop", "stop": canon["first_stop"]}
             elif has_reverse:
                 kind = "bidirectional"
                 label = f"{canon['first_stop']} ⇄ {canon['last_stop']}"
@@ -1389,16 +1399,17 @@ class _Builder:
                     key=lambda s: (-(s["trips_new"] + s["trips_old"]),
                                    s["earliest_departure"], s["system_id"]),
                 )
-                leg_labels = {
-                    "forward": _loop_leg_label(
-                        label, canon["first_stop"],
-                        canon["stops"], rev_canon["stops"]),
-                    "reverse": _loop_leg_label(
-                        label, canon["first_stop"],
-                        rev_canon["stops"], canon["stops"]),
-                }
+                fwd, fwd_parts = _loop_leg_label(
+                    label, canon["first_stop"],
+                    canon["stops"], rev_canon["stops"])
+                rev, rev_parts = _loop_leg_label(
+                    label, canon["first_stop"],
+                    rev_canon["stops"], canon["stops"])
+                leg_labels = {"forward": fwd, "reverse": rev}
+                leg_label_parts = {"forward": fwd_parts, "reverse": rev_parts}
                 if leg_labels["forward"] == leg_labels["reverse"]:
                     leg_labels["reverse"] += "（2）"
+                    leg_label_parts["reverse"] = {**rev_parts, "dup": 2}
             else:
                 # ④時刻表の表題・③本数表の方向行に共通で使う「起点 → 終点」
                 # 形式 (dg ラベル「A ⇄ B」との対応が読み取れるように
@@ -1408,11 +1419,16 @@ class _Builder:
                     f"{canon['first_stop']} → {canon['last_stop']}",
                     "reverse": f"{canon['last_stop']} → {canon['first_stop']}",
                 }
+                # 片回りのみの循環: forward = 「◯◯ 循環」なので parts を引き継ぐ
+                leg_label_parts = (
+                    {"forward": label_parts, "reverse": None} if loop else None)
             dgroups.append({
                 "id": "",  # 後で採番
                 "kind": kind,
                 "label": label,
+                "label_parts": label_parts,
                 "leg_labels": leg_labels,
+                "leg_label_parts": leg_label_parts,
                 "systems": sorted(group_systems,
                                   key=lambda s: (-s["trips_new"] - s["trips_old"],
                                                  s["system_id"])),
@@ -1483,6 +1499,7 @@ class _Builder:
                 legs.append({
                     "leg": leg,
                     "label": g["leg_labels"][leg],
+                    "label_parts": (g.get("leg_label_parts") or {}).get(leg),
                     "axis": list(build_stop_axis(ordered)),
                     "status": ("removed" if statuses == {"removed"} else
                                "added" if statuses == {"added"} else "continued"),
@@ -1493,11 +1510,13 @@ class _Builder:
                     and legs[0]["axis"] == list(reversed(legs[1]["axis"]))):
                 # kind=pair は双方向 (停留所間は — で結ぶ)、leg は片方向 (→ で結ぶ)
                 g["axis_rows"] = [
-                    {"label": g["label"], "kind": "pair", "stops": legs[0]["axis"]}
+                    {"label": g["label"], "label_parts": g.get("label_parts"),
+                     "kind": "pair", "stops": legs[0]["axis"]}
                 ]
             else:
                 g["axis_rows"] = [
-                    {"label": lg["label"], "kind": "leg", "stops": lg["axis"]}
+                    {"label": lg["label"], "label_parts": lg.get("label_parts"),
+                     "kind": "leg", "stops": lg["axis"]}
                     for lg in legs
                 ]
 
@@ -1642,6 +1661,7 @@ class _Builder:
                     "direction_group": g["id"],
                     "day_type": day,
                     "label": g["label"],
+                    "label_parts": g.get("label_parts"),
                     "cells": dict(agg),
                     "total": agg_total,
                     "changed": any(v[0] != v[1] for v in agg.values()),
@@ -1658,6 +1678,8 @@ class _Builder:
                             "day_type": day,
                             "leg": leg,
                             "label": g["leg_labels"][leg],
+                            "label_parts": (g.get("leg_label_parts")
+                                            or {}).get(leg),
                             "cells": dict(la),
                             "total": [sum(v[0] for v in la.values()),
                                       sum(v[1] for v in la.values())],
@@ -1927,9 +1949,12 @@ class _Builder:
                          self._dlabel("n", t))]["new"].append(t)
 
         dg_label = {}
+        dg_parts = {}
         for g in dgroups:
             for leg, label in g["leg_labels"].items():
                 dg_label[(g["id"], leg)] = label
+                dg_parts[(g["id"], leg)] = (g.get("leg_label_parts")
+                                            or {}).get(leg)
 
         tables = []
         max_avg_gap = self.config.get(
@@ -1976,7 +2001,8 @@ class _Builder:
                 )
             sheets.sort(key=lambda sp: (-len(sp), _sheet_sort_key(sp)))
             labels = sheet_labels(sheets)
-            for sheet_no, (specs, sheet_label) in enumerate(zip(sheets, labels)):
+            for sheet_no, (specs, (sheet_label, sheet_parts)) in enumerate(
+                    zip(sheets, labels)):
                 # 軸は経路変更 trip の旧停車列も含めた超列にする
                 # (差分表示で旧時刻も並べるため)
                 seqs = set()
@@ -2009,8 +2035,10 @@ class _Builder:
                     "direction_group": dg,
                     "leg": leg,
                     "label": dg_label.get((dg, leg), ""),
+                    "label_parts": dg_parts.get((dg, leg)),
                     "sheet": sheet_no,
                     "sheet_label": sheet_label,
+                    "sheet_label_parts": sheet_parts,
                     "day_type": day,
                     "trips_old": trips_old,
                     "trips_new": trips_new,

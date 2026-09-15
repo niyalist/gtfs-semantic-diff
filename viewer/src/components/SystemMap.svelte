@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import maplibregl from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
-  import { t } from "../lib/i18n.js";
+  import { lang, t, partsLabel } from "../lib/i18n.js";
 
   // R2 改: 描画単位は leg (時刻表単位・曜日統合)。
   // 各 leg は極大パターンの線集合 (lines) を持ち、同色・同レーンで重ね描きする —
@@ -247,7 +247,7 @@
           <line x1="0" y1="5" x2="34" y2="5" stroke="#fff" stroke-width="2" />
         {/if}
       </svg>
-      {lg.label}
+      {partsLabel(lg.label, lg.label_parts, $lang)}
       {#if lg.status === "added"}[{tt("col_added")}]{/if}
       {#if lg.status === "removed"}[{tt("col_removed")}]{/if}
     </span>

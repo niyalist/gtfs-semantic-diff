@@ -1,5 +1,8 @@
 // 特定日カレンダー (2026-07-29 仕様) と年付きラン列挙のテスト
 import { describe, expect, test } from "vitest";
+import { lang } from "../src/lib/i18n.js";
+// I3: 初期言語はブラウザ依存になった (jsdom は en)。ja 表示の検証なので固定する
+lang.set("ja");
 import { render } from "@testing-library/svelte";
 import DateCalendar from "../src/components/DateCalendar.svelte";
 import { runsText } from "../src/lib/format.js";

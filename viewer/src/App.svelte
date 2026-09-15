@@ -25,6 +25,12 @@
   // 表題は GTFS の agency_name (無ければ gtfs-data.jp の org/feed ID にフォールバック)
   const agencyNames = index?.meta?.agency_names ?? [];
   const title = agencyNames.length ? agencyNames.join("・") : feedIds;
+  // I3: タブ題名を言語に追従 (head の焼き込みは ja、OGP 用)
+  $: if (typeof document !== "undefined" && index?.meta?.page_title) {
+    document.title = $lang === "en"
+      ? (index.meta.page_title_en || index.meta.page_title)
+      : index.meta.page_title;
+  }
 
   $: pages = presentation?.route_pages ?? [];
   $: changedPages = pages.filter((p) => p.has_changes);

@@ -133,6 +133,10 @@ def build_bundle(
             "agency_names": _agency_names(new) or _agency_names(old),
         },
     }
+    # 言語別の題名 (I3): HTML head (OGP) は ja を焼き込み、viewer が
+    # 言語切替時に document.title をこの値で更新する
+    (bundle["meta"]["page_title"], _d,
+     bundle["meta"]["page_title_en"], _de) = _page_meta(bundle)
     if core:
         return _core_bundle(bundle, rawdiffs, config)
     return bundle
@@ -942,7 +946,7 @@ def _split_template(bundle: dict[str, Any], template_html: str) -> tuple[str, st
 
     タイトル・説明 (OGP) は静的に焼き込む — SNS のクローラは JS を実行しない
     ため、共有時のプレビューはここで焼き込んだ値が使われる。"""
-    title, desc = _page_meta(bundle)
+    title, desc, _title_en, _desc_en = _page_meta(bundle)
     prepared = (template_html
                 .replace("__GTFS_SEMDIFF_TITLE__", html_lib.escape(title, quote=True))
                 .replace("__GTFS_SEMDIFF_DESC__", html_lib.escape(desc, quote=True)))
@@ -1041,7 +1045,7 @@ def write_html_split(
             f.write(chunk)
 
 
-def _page_meta(bundle: dict[str, Any]) -> tuple[str, str]:
+def _page_meta(bundle: dict[str, Any]) -> tuple[str, str, str, str]:
     """レポートの題名と説明文 (OGP 用)。欠損時は一般名にフォールバック。"""
     meta = bundle.get("meta", {})
     feed = meta.get("feed", {}) or {}
@@ -1053,8 +1057,12 @@ def _page_meta(bundle: dict[str, Any]) -> tuple[str, str]:
     period = f" ({old_from} → {new_from})" if old_from or new_from else ""
     if subject:
         title = f"{subject} のダイヤ改正 意味的差分レポート{period}"
+        title_en = f"{subject} — GTFS timetable change report{period}"
     else:
         title = f"GTFS 比較レポート{period}"
+        title_en = f"GTFS comparison report{period}"
     desc = ("GTFS 2世代の変化を路線・便数・時刻・停留所の観点で"
             "自動で読み解いたレポートです。diff.gtfs.jp")
-    return title, desc
+    desc_en = ("What changed between two GTFS versions — routes, trips, "
+               "times and stops, explained automatically. diff.gtfs.jp")
+    return title, desc, title_en, desc_en

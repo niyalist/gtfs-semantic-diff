@@ -1046,6 +1046,7 @@ def _save_user_zips(job_input: dict, snaps: dict) -> None:
     # 表示名に焼き込む日付はユーザー向けなので JST (データの created_at は UTC)
     jst = now.astimezone(datetime.timezone(datetime.timedelta(hours=9)))
     labels = {}
+    label_parts = {}
     for side in ("old", "new"):
         name, from_date = _snapshot_label_parts(snaps[side])
         src_name = job_input.get(f"{side}_name", "") or f"{side}.zip"
@@ -1053,6 +1054,10 @@ def _save_user_zips(job_input: dict, snaps: dict) -> None:
                                           jst.isoformat(timespec="seconds"),
                                           fallback=src_name)
         labels[side] = label
+        # I3: 表示名の部品 (en は index.html が言語別に組み立てる。
+        # ja は display_name / old_label をそのまま使うので表示は不変)
+        label_parts[side] = {"n": name or src_name, "f": from_date,
+                             "u": jst.isoformat()[:10]}
         if side not in job_input.get("save", []):
             continue  # 保存済み zip の再利用分は複製しない
         zip_id = secrets.token_hex(6)
@@ -1066,12 +1071,19 @@ def _save_user_zips(job_input: dict, snaps: dict) -> None:
             "zip_id": zip_id, "display_name": label, "s3_key": dest,
             "size": head["ContentLength"], "created_at": created,
             "source_name": src_name,
+            "agency_name": label_parts[side]["n"],
+            "from_date": label_parts[side]["f"],
+            "uploaded_date": label_parts[side]["u"],
         })
     if job_input.get("history_sk"):
         _userdata_table().update_item(
             Key={"user_id": user_id, "sk": job_input["history_sk"]},
-            UpdateExpression="SET old_label = :o, new_label = :n",
-            ExpressionAttributeValues={":o": labels["old"], ":n": labels["new"]},
+            UpdateExpression=("SET old_label = :o, new_label = :n, "
+                              "old_label_parts = :op, new_label_parts = :np"),
+            ExpressionAttributeValues={
+                ":o": labels["old"], ":n": labels["new"],
+                ":op": label_parts["old"], ":np": label_parts["new"],
+            },
         )
 
 

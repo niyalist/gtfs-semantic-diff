@@ -374,3 +374,15 @@ R 要件 (部単位の「何を出すか」) とは別に、**どこに現れて
 
 **バンドル契約**: `bundle.schema_version` (整数、2026-07-26 に 1 で導入)。
 ビューアの互換分岐はフィールドの嗅ぎ分けでなく版番号で行う。
+
+## 改訂 (2026-09-15, I3): 生成ラベルの言語中立化 (label_parts)
+
+日本語を合成する生成ラベル (「◯◯ 循環」「…（△△先回り）」「A・B経由」
+「経路N」と重複連番) に、構造化 `label_parts` ({kind, stop|stops|first|n,
+dup?}) を **additive に併記**する (presentation の dg / legs / axis_rows /
+band_matrix 行 / timetables / sheet_label_parts、bundle meta の
+page_title_en)。**ja のラベル文字列は従来どおり焼き込みで不変** — viewer は
+ja では常に焼き込みラベルを表示し (partsLabel の恒等性を vitest で固定)、
+en でのみ parts から組み立てる。矢印だけの「A → B」「A ⇄ B」は言語中立の
+ためこの対象外。ビューア初期言語は navigator.language (localStorage "lang"
+を入力 UI と共有)。設計: docs/design/i18n.md I3。

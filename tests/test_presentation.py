@@ -242,7 +242,7 @@ def test_axis_rows_mirror_collapsed(tmp_path, config):
     page = page_of(model, "1")
     dg = page["overview"]["direction_groups"][0]
     assert dg["axis_rows"] == [{
-        "label": "駅前 ⇄ 病院前", "kind": "pair",
+        "label": "駅前 ⇄ 病院前", "label_parts": None, "kind": "pair",
         "stops": ["駅前", "市役所前", "病院前"],
     }]
 
@@ -458,6 +458,10 @@ def test_sheet_split_loop_variants(tmp_path, config):
     assert len(tables) == 2
     labels = sorted(tb["sheet_label"] for tb in tables)
     assert labels == ["市役所前先回り", "病院前先回り"]
+    # I3: 分冊ラベルにも構造化 parts (先回り = kind "first")
+    parts = sorted((tb["sheet_label_parts"]["kind"], tb["sheet_label_parts"]["stop"])
+                   for tb in tables)
+    assert parts == [("first", "市役所前"), ("first", "病院前")]
 
 
 def test_sheet_merges_to_fewest_readable(tmp_path, config):
@@ -1407,6 +1411,16 @@ def test_loop_orientation_splits_legs(tmp_path, config):
                              if r["kind"] == "leg")
     assert band_leg_labels == leg_labels
     assert b["presentation"]["self_check"] == []
+    # I3 (i18n.md): 日本語を合成したラベルには構造化 parts が併記され、
+    # ①④③のすべての面で ja ラベルと対で流通する (en は viewer が組み立てる)
+    assert dg["label_parts"] == {"kind": "loop", "stop": "駅前"}
+    leg_parts = sorted((lg["label_parts"]["kind"], lg["label_parts"]["first"])
+                       for lg in dg["legs"])
+    assert leg_parts == [("loop_dir", "停あ"), ("loop_dir", "停さ")]
+    assert all(t["label_parts"]["kind"] == "loop_dir"
+               for t in page["timetables"])
+    assert all(r["label_parts"]["kind"] == "loop_dir"
+               for r in page["band_matrix"]["rows"] if r["kind"] == "leg")
 
 
 def test_natural_sort_key():
