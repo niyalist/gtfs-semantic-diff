@@ -30,19 +30,32 @@ class GtfsLoadError(ValueError):
     """GTFS として読めない入力 (必須ファイル欠落など)。
 
     メッセージはそのままエンドユーザーに表示される前提で、原因のファイル・行と
-    「入力データ側の不備である」ことが分かる日本語で書く。"""
+    「入力データ側の不備である」ことが分かる日本語で書く。`en` に英語版を持ち、
+    Web の error_en に載る (i18n.md I2。省略時は日本語文で代用)。"""
+
+    def __init__(self, message: str, en: str | None = None):
+        super().__init__(message)
+        self.en = en or message
 
 
-def _parser_error_message(name: str, e: Exception) -> str:
+def _parser_error_message(name: str, e: Exception) -> tuple[str, str]:
+    """(日本語文, 英語文)。"""
     m = re.search(r"Expected (\d+) fields in line (\d+), saw (\d+)", str(e))
     if m:
         expected, line, saw = m.groups()
         return (
             f"{name} の {line}行目: 列数がヘッダ ({expected}列) と一致しません "
             f"(この行は {saw}列)。カンマを含む値が引用符 \" で囲まれていない等、"
-            "フィード側データの CSV 形式の不備が原因です"
+            "フィード側データの CSV 形式の不備が原因です",
+            f"{name} line {line}: the number of columns ({saw}) does not match "
+            f"the header ({expected}). Likely an unquoted comma inside a value "
+            "— a CSV formatting defect in the feed data",
         )
-    return f"{name}: CSV として解析できません (フィード側データの形式不備): {e}"
+    return (
+        f"{name}: CSV として解析できません (フィード側データの形式不備): {e}",
+        f"{name}: cannot be parsed as CSV (a formatting defect in the feed "
+        f"data): {e}",
+    )
 
 
 def _read_csv_bytes(data: bytes, name: str) -> pd.DataFrame:
@@ -71,10 +84,13 @@ def _read_csv_bytes(data: bytes, name: str) -> pd.DataFrame:
             # CSV 形式の不備 (実例: 立山町旧世代の translations.txt —
             # 引用符なしカンマで列数超過)。壊れた行を黙って読み飛ばすと
             # L0 網羅性が崩れるため、原因を明示して失敗させる
-            raise GtfsLoadError(_parser_error_message(name, e)) from e
+            ja, en = _parser_error_message(name, e)
+            raise GtfsLoadError(ja, en=en) from e
     raise GtfsLoadError(
         f"{name}: 文字コードが UTF-8 / cp932 (Shift_JIS) のいずれでもなく"
-        "読み込めません (フィード側データの形式不備)"
+        "読み込めません (フィード側データの形式不備)",
+        en=f"{name}: the file is neither UTF-8 nor cp932 (Shift_JIS) encoded "
+           "(a defect in the feed data)",
     )
 
 
@@ -134,16 +150,20 @@ def load_snapshot(
 
     if path.is_file():
         if not zipfile.is_zipfile(path):
-            raise GtfsLoadError(f"zip ファイルではありません: {path}")
+            raise GtfsLoadError(f"zip ファイルではありません: {path}",
+                                en=f"Not a zip file: {path}")
         raw_files = _collect_txt_from_zip(path)
     elif path.is_dir():
         raw_files = _collect_txt_from_dir(path)
     else:
-        raise GtfsLoadError(f"入力が見つかりません: {path}")
+        raise GtfsLoadError(f"入力が見つかりません: {path}",
+                            en=f"Input not found: {path}")
 
     missing = REQUIRED_FILES - set(raw_files)
     if missing:
-        raise GtfsLoadError(f"必須 GTFS ファイルがありません: {sorted(missing)} ({path})")
+        raise GtfsLoadError(
+            f"必須 GTFS ファイルがありません: {sorted(missing)} ({path})",
+            en=f"Required GTFS files are missing: {sorted(missing)} ({path})")
 
     tables: dict[str, pd.DataFrame] = {}
     for filename, data in raw_files.items():
@@ -152,7 +172,8 @@ def load_snapshot(
         # 成立しないので、原因を明示して失敗させる
         if len(df.columns) == 0 and filename in REQUIRED_FILES:
             raise GtfsLoadError(
-                f"{filename} が空です (フィード側データの不備)"
+                f"{filename} が空です (フィード側データの不備)",
+                en=f"{filename} is empty (a defect in the feed data)",
             )
         tables[filename.removesuffix(".txt")] = df
 

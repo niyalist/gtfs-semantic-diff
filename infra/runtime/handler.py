@@ -86,8 +86,11 @@ def _resp(status: int, body: dict, headers: dict | None = None) -> dict:
     }
 
 
-def _bad(msg: str) -> dict:
-    return _resp(400, {"error": msg})
+def _bad(msg: str, en: str | None = None) -> dict:
+    body = {"error": msg}
+    if en:
+        body["error_en"] = en
+    return _resp(400, body)
 
 
 def _safe_id(value: str) -> str:
@@ -500,7 +503,7 @@ def _api_feedback(body: dict) -> dict:
 
     message = str(body.get("message", "")).strip()
     if not message:
-        return _bad("報告内容が空です")
+        return _bad("報告内容が空です", en="The report text is empty")
     item = {
         "feedback_id": f"fb-{secrets.token_hex(6)}",
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(
@@ -593,7 +596,8 @@ def _api_submit(body: dict, user_id: str | None = None,
         old_uid = versioning.safe_uid(old_uid)
         new_uid = versioning.safe_uid(new_uid)
         if old_uid == new_uid:
-            return _bad("新旧に同じ世代が指定されています")
+            return _bad("新旧に同じ世代が指定されています",
+                        en="The same version is specified on both sides")
         job_id = versioning.pair_id(org, feed, old_uid, new_uid)
         job_input = {"type": input_type, "org": org, "feed": feed,
                      "old_uid": old_uid, "new_uid": new_uid}
@@ -647,7 +651,8 @@ def _api_submit(body: dict, user_id: str | None = None,
                          "sk": webusers.zip_sk(_safe_id(zip_id))}
                 ).get("Item")
                 if not rec:
-                    return _bad("保存済みデータが見つかりません")
+                    return _bad("保存済みデータが見つかりません",
+                            en="The saved zip was not found")
                 sides[side] = rec["s3_key"]
             else:
                 return _bad("invalid upload keys")
@@ -677,6 +682,8 @@ def _api_submit(body: dict, user_id: str | None = None,
         return _resp(429, {
             "error": "計算ジョブの回数制限に達しました。時間をおいて再試行するか、"
                      "まとまった処理は CLI をローカルでご利用ください",
+            "error_en": "The daily limit for new comparisons has been reached."
+                        " Retry later, or run the CLI locally for bulk work",
         }, headers={"retry-after": "3600"})
     now = int(time.time())
     _jobs_table().put_item(Item={
@@ -708,12 +715,15 @@ def _api_status(job_id: str) -> dict:
         if since and time.time() - since > WORKER_MAX_SECONDS:
             status = "failed"
             _update(job_id, status="failed",
-                    error="処理が制限時間 (15分) を超えました")
+                    error="処理が制限時間 (15分) を超えました",
+                    error_en="The job exceeded the 15-minute time limit")
     body = {"job_id": job_id, "status": status}
     if "result_url" in item:
         body["result_url"] = item["result_url"]
     if "error" in item:
         body["error"] = item["error"]
+    if "error_en" in item:
+        body["error_en"] = item["error_en"]
     if "error_kind" in item:
         body["error_kind"] = item["error_kind"]
     return _resp(200, body)
@@ -732,28 +742,34 @@ def _update(job_id: str, **attrs) -> None:
     )
 
 
-def _user_error(e: Exception) -> str:
-    """ジョブ失敗をユーザー向けメッセージへ変換する。
+def _user_error(e: Exception) -> tuple[str, str]:
+    """ジョブ失敗をユーザー向けメッセージ (ja, en) へ変換する。
 
     この文字列は index.html のエラー表示・履歴・admin・MCP get_job_status に
     そのまま出る。入力データの不備 (GtfsLoadError / ValueError — 日本語の説明を
-    持つ想定) はそのまま、想定外の例外は「内部エラー」と明示して生メッセージを
-    調査用に添える。"""
+    持つ想定、`en` 属性があれば英語版) はそのまま、想定外の例外は「内部エラー」と
+    明示して生メッセージを調査用に添える。"""
     if isinstance(e, ValueError):
-        return str(e)[:500]
-    return (f"内部エラーが発生しました ({type(e).__name__})。時間をおいて再試行"
-            "しても失敗する場合はフィードバックからお知らせください"
-            f" [{str(e)[:250]}]")
+        en = getattr(e, "en", None) or str(e)
+        return str(e)[:500], en[:500]
+    ja = (f"内部エラーが発生しました ({type(e).__name__})。時間をおいて再試行"
+          "しても失敗する場合はフィードバックからお知らせください"
+          f" [{str(e)[:250]}]")
+    en = (f"An internal error occurred ({type(e).__name__}). If it still fails"
+          " after a while, please let us know via the feedback form"
+          f" [{str(e)[:250]}]")
+    return ja, en
 
 
-def _load_labeled(label: str, path, config, meta=None):
-    """load_snapshot の失敗に旧/新どちら側かを付ける (エラー表示用)。"""
+def _load_labeled(label_ja: str, label_en: str, path, config, meta=None):
+    """load_snapshot の失敗に旧/新どちら側かを付ける (エラー表示用、ja/en)。"""
     from gtfs_semantic_diff.load import GtfsLoadError, load_snapshot
 
     try:
         return load_snapshot(path, config=config, meta=meta)
     except GtfsLoadError as e:
-        raise GtfsLoadError(f"{label}: {e}") from e
+        raise GtfsLoadError(f"{label_ja}: {e}",
+                            en=f"{label_en}: {e.en}") from e
 
 
 def worker(event, context):  # noqa: ARG001 - Lambda signature
@@ -773,8 +789,9 @@ def worker(event, context):  # noqa: ARG001 - Lambda signature
         # error_kind: input = 入力データ起因 (再試行しても結果は変わらない)、
         # internal = ツール側の想定外 (フロントの文言出し分けに使う)
         kind = "input" if isinstance(e, ValueError) else "internal"
-        _update(job_id, status="failed", error=_user_error(e), error_kind=kind,
-                finished_at=now, duration_s=now - t0)
+        err_ja, err_en = _user_error(e)
+        _update(job_id, status="failed", error=err_ja, error_en=err_en,
+                error_kind=kind, finished_at=now, duration_s=now - t0)
 
 
 def _run_compare(job_id: str, job_input: dict) -> str:
@@ -797,15 +814,22 @@ def _run_compare(job_id: str, job_input: dict) -> str:
         by_uid = {f.uid: f for f in files}
         for side in ("old_uid", "new_uid"):
             if job_input[side] not in by_uid:
-                raise ValueError(
+                err = ValueError(
                     f"世代 (uid={job_input[side]}) が見つかりません。"
                     "リポジトリ側で削除された可能性があります"
                 )
+                err.en = (f"Version (uid={job_input[side]}) was not found."
+                          " It may have been removed from the repository")
+                raise err
         fo, fn = by_uid[job_input["old_uid"]], by_uid[job_input["new_uid"]]
-        old = _load_labeled(f"旧世代 ({fo.from_date}〜)", repo.download(fo).path,
-                            config, meta=fo.snapshot_meta())
-        new = _load_labeled(f"新世代 ({fn.from_date}〜)", repo.download(fn).path,
-                            config, meta=fn.snapshot_meta())
+        old = _load_labeled(f"旧世代 ({fo.from_date}〜)",
+                            f"older version (from {fo.from_date})",
+                            repo.download(fo).path, config,
+                            meta=fo.snapshot_meta())
+        new = _load_labeled(f"新世代 ({fn.from_date}〜)",
+                            f"newer version (from {fn.from_date})",
+                            repo.download(fn).path, config,
+                            meta=fn.snapshot_meta())
         pair_feed_info = {
             "org": job_input["org"], "feed": job_input["feed"],
             "old_uid": fo.uid, "new_uid": fn.uid,
@@ -817,12 +841,14 @@ def _run_compare(job_id: str, job_input: dict) -> str:
                           ("new", job_input["new_key"])):
             head = s3.head_object(Bucket=RESULTS_BUCKET, Key=key)
             if head["ContentLength"] > MAX_UPLOAD_BYTES:
-                raise ValueError("アップロードサイズが上限を超えています")
+                err = ValueError("アップロードサイズが上限を超えています")
+                err.en = "The upload exceeds the size limit"
+                raise err
             path = Path(f"/tmp/{side}.zip")
             s3.download_file(RESULTS_BUCKET, key, str(path))
             paths[side] = path
-        old = _load_labeled("旧側の zip", paths["old"], config)
-        new = _load_labeled("新側の zip", paths["new"], config)
+        old = _load_labeled("旧側の zip", "the older zip", paths["old"], config)
+        new = _load_labeled("新側の zip", "the newer zip", paths["new"], config)
         if job_input.get("user_id"):
             _save_user_zips(job_input, {"old": old, "new": new})
 

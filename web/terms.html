@@ -17,9 +17,22 @@
   th, td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
   th { background: #f4f5f6; }
   .note { color: #555; font-size: 0.85em; }
+  #langbar { float: right; font-size: 0.85em; }
+  #langbar button { font: inherit; cursor: pointer; border: none; background: none;
+    padding: 0 0.3rem; color: #1a4f8b; text-decoration: underline; }
+  #langbar button.active { font-weight: 700; text-decoration: none; color: #1c1e21;
+    cursor: default; }
+  body[data-lang="en"] .lang-ja { display: none; }
+  body[data-lang="ja"] .lang-en { display: none; }
 </style>
 </head>
-<body>
+<body data-lang="ja">
+<div id="langbar">
+  <button data-lang="ja">日本語</button> |
+  <button data-lang="en">English</button>
+</div>
+
+<div class="lang-ja">
 <p><a href="/">← トップへ戻る</a></p>
 <h1>利用規約・プライバシーポリシー</h1>
 <p>「GTFS ダイヤ改正 意味的差分レポート」(以下「本サービス」) は、公共交通の
@@ -96,5 +109,114 @@ rel="noopener">GitHub Issues</a> からお寄せください。正当な依頼�
 
 <p class="note">制定: 2026-07-11。本規約は必要に応じて改訂され、重要な変更は
 このページで告知します。</p>
+</div>
+
+<!-- en:begin -->
+<div class="lang-en">
+<p><a href="/">← Back to top</a></p>
+<h1>Terms of Use &amp; Privacy Policy</h1>
+<p class="note"><strong>Note:</strong> this English text is a courtesy
+translation provided for reference. The Japanese text is the official version
+and prevails in case of any discrepancy.</p>
+<p>The "GTFS Semantic Diff Report" service (the "Service") is operated as a
+research project that analyzes and visualizes changes between versions of
+public-transport open data (GTFS). By using the Service (running a comparison
+or viewing a result), you are deemed to have agreed to these terms.</p>
+<p>Operator: Masaki Ito (Research Center for Advanced Science and Technology
+of Social ICT, Graduate School of Information Science and Technology, The
+University of Tokyo — <a href="https://itolab.t.u-tokyo.ac.jp" target="_blank"
+rel="noopener">https://itolab.t.u-tokyo.ac.jp</a>)</p>
+
+<h2>1. Visibility of result URLs</h2>
+<ul>
+  <li>Results created from public feeds on the
+  <a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFS Data
+  Repository (gtfs-data.jp)</a> are <strong>public pages</strong> with a URL
+  shared by everyone for the same pair of feed versions (they are mechanical
+  derivatives of public data — anyone running the same comparison gets the
+  same result).</li>
+  <li>Results created from uploaded zips are <strong>unlisted pages</strong>
+  with an unguessable random URL (accessible only to those who know the URL).
+  They are not indexed by search engines, but anyone you share the URL with
+  can view them.</li>
+</ul>
+
+<h2>2. Data retention</h2>
+<table>
+  <tr><th>Item</th><th>Anonymous use</th><th>Signed-in use</th></tr>
+  <tr><td>Uploaded zips</td><td>Deleted automatically after 7 days</td>
+      <td>Kept (reusable and deletable from My Page)</td></tr>
+  <tr><td>Result pages from uploads</td><td>Deleted automatically after 30 days</td>
+      <td>Kept (deletable from My Page)</td></tr>
+  <tr><td>Result pages from public feeds</td><td colspan="2">Kept (as a shared
+      cache; the inputs live in the repository, so no zips are stored)</td></tr>
+</table>
+<p>Sign-in uses your Google account; the Service never holds a password. What
+is stored with your account: your e-mail address, your comparison history,
+and any saved zips with their display names.</p>
+
+<h2>3. Usage logging and research use</h2>
+<p>The Service records the following usage information: what was compared
+(operator, feed and version IDs), when it was run, generation and viewing of
+result pages, feedback contents, and metadata of uploaded files (such as
+size). IP addresses are kept for a short period (at most 90 days) solely for
+abuse prevention.</p>
+<p><strong>These records are used for academic research (papers,
+presentations, etc.) only in anonymized, aggregated form.</strong> Account
+information such as e-mail addresses is kept separate from research data and
+is never published in a personally identifiable form. The operator may
+inspect these records to the extent necessary to run the Service (incident
+response, abuse prevention); the contents of uploaded GTFS data are not
+inspected. <strong>Uploaded GTFS data itself (the contents of your zips) is
+not used for research</strong> — it is stored only to reproduce and verify
+results and for your own reuse.</p>
+
+<h2>4. Handling confidential data</h2>
+<p>Uploaded data may be stored on our servers. If you need to analyze data
+that must not leave your environment, do not upload it — use the open-source
+CLI version (<a href="https://github.com/niyalist/gtfs-semantic-diff"
+target="_blank" rel="noopener">gtfs-semantic-diff</a>) locally instead. The
+CLI produces the same analysis as a single self-contained HTML file and sends
+nothing over the network.</p>
+
+<h2>5. Attribution and licenses</h2>
+<p>Result pages derived from the GTFS Data Repository display the source
+operator's name and license (mostly CC BY 4.0). Reuse of result pages must
+follow the license of the source data. For results derived from uploads, you
+are responsible for the rights in the data you upload (do not upload data
+that infringes third-party rights).</p>
+
+<h2>6. Disclaimer</h2>
+<p>Reports are generated mechanically by deterministic rules; no guarantee is
+made of their accuracy or completeness. Always confirm service information
+with each operator's official sources. The operator accepts no liability for
+damages arising from use of the Service. The Service may change or be
+discontinued without notice.</p>
+
+<h2>7. Removal requests and contact</h2>
+<p>Removal requests from data rights holders or transit operators, and any
+other inquiries, can be sent via the "report a problem" form on result pages
+or via <a href="https://github.com/niyalist/gtfs-semantic-diff/issues"
+target="_blank" rel="noopener">GitHub Issues</a>. Legitimate requests are
+handled promptly.</p>
+
+<p class="note">Established 2026-07-11. These terms may be revised as needed;
+significant changes will be announced on this page.</p>
+</div>
+<!-- en:end -->
+
+<script>
+const setLang = (l) => {
+  document.body.dataset.lang = l;
+  document.documentElement.lang = l;
+  localStorage.setItem("lang", l);
+  document.querySelectorAll("#langbar button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.lang === l));
+};
+document.querySelectorAll("#langbar button").forEach((b) =>
+  b.onclick = () => setLang(b.dataset.lang));
+setLang(localStorage.getItem("lang") ||
+  ((navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en"));
+</script>
 </body>
 </html>

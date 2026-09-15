@@ -23,9 +23,22 @@
   pre { padding: 0.6rem 0.8rem; overflow-x: auto; font-size: 0.82em;
         line-height: 1.5; }
   pre code { padding: 0; background: none; }
+  #langbar { float: right; font-size: 0.85em; }
+  #langbar button { font: inherit; cursor: pointer; border: none; background: none;
+    padding: 0 0.3rem; color: #1a4f8b; text-decoration: underline; }
+  #langbar button.active { font-weight: 700; text-decoration: none; color: #1c1e21;
+    cursor: default; }
+  body[data-lang="en"] .lang-ja { display: none; }
+  body[data-lang="ja"] .lang-en { display: none; }
 </style>
 </head>
-<body>
+<body data-lang="ja">
+<div id="langbar">
+  <button data-lang="ja">日本語</button> |
+  <button data-lang="en">English</button>
+</div>
+
+<div class="lang-ja">
 <p><a href="/">← トップへ戻る</a></p>
 <h1>開発者向け — API・MCP・機械可読データ</h1>
 
@@ -119,5 +132,124 @@ curl -X POST https://diff.gtfs.jp/api/jobs \
 
 <p class="note">本機能は研究プロジェクトの一部として提供しています。
 不具合・要望はトップページのフィードバックからお寄せください。</p>
+</div>
+
+<!-- en:begin -->
+<div class="lang-en">
+<p><a href="/">← Back to top</a></p>
+<h1>For developers — API, MCP and machine-readable data</h1>
+
+<p>Comparison results are available not only as human-readable HTML reports
+but also as <strong>machine-readable data for programs and AI agents</strong>.
+Everything is read-free with no authentication (attribution follows each
+feed's license — see the <a href="/terms.html">terms</a>).</p>
+
+<h2>1. Available layers</h2>
+<table>
+  <tr><th>Layer</th><th>Contents</th><th>Good for</th></tr>
+  <tr><td>digest</td><td>Comparison summary (Markdown / JSON): per-route changes, stop changes, coverage</td><td>Primary source for LLMs, drafting notices, cross-checking</td></tr>
+  <tr><td>routes.digest.json</td><td>Detail for every route — changed-trip records (old/new trip_ids), counts by time band</td><td>Drilling into a route</td></tr>
+  <tr><td>mapping.json</td><td><strong>Old↔new correspondence tables for stop_id / route_id / trip_id</strong> (N:M kept as arrays, with confidence)</td><td>Joining ridership data across versions, carrying assets like shapes forward</td></tr>
+  <tr><td>events.json / rawdiffs.json</td><td>All ChangeEvents (44 types) with evidence, plus every raw diff</td><td>Error checking, full verification</td></tr>
+</table>
+<p class="note">The tool's distinguishing feature is the "explanation ledger":
+every raw difference between the two versions is either tied to an event as
+evidence or reported as a residual, and the coverage ratio
+(explained_ratio) is always published. Detection is deterministic and
+rule-based — the same input always yields the same output.</p>
+
+<h2>2. URL scheme (the shortest entry point)</h2>
+<p>Change <code>.html</code> to <code>.digest.md</code> in any report URL to
+get the machine-readable summary:</p>
+<pre><code>https://diff.gtfs.jp/r/{pair}.html        ← human-readable report
+https://diff.gtfs.jp/r/{pair}.digest.md   ← summary for AI (Markdown)
+https://diff.gtfs.jp/r/{pair}.mapping.json ← ID mapping (gzip)
+https://diff.gtfs.jp/r/{pair}/index.json  ← version ledger (URLs of all artifacts)</code></pre>
+<p>You do not need to memorize the URL rules — the version ledger
+(<code>index.json</code>) lists every artifact URL under
+<code>versions[].artifacts</code>. The list of computed pairs per feed is at
+<code>https://diff.gtfs.jp/feeds/{org}__{feed}.json</code>.</p>
+
+<h2>3. MCP server (for AI agents)</h2>
+<pre><code>https://diff.gtfs.jp/mcp</code></pre>
+<p>Register it as a connector in Claude, ChatGPT or another AI client and the
+data above becomes interactive tools. <strong>No authentication</strong>
+(leave bearer tokens and custom headers empty).</p>
+<ul>
+  <li><strong>Claude</strong>: Settings → Connectors → Add custom connector → enter the URL</li>
+  <li><strong>ChatGPT</strong>: Settings → enable Developer mode → add a connector → enter the URL</li>
+</ul>
+<table>
+  <tr><th>Tool</th><th>Description</th></tr>
+  <tr><td>find_feeds / find_generations</td><td>Explore feeds and versions (gtfs-data.jp)</td></tr>
+  <tr><td>list_pairs</td><td>List already-computed comparison pairs</td></tr>
+  <tr><td>run_compare / get_job_status</td><td>Compute a new pair on the spot (daily rate guard applies)</td></tr>
+  <tr><td>get_digest / list_routes / get_route_detail</td><td>Summary and per-route detail</td></tr>
+  <tr><td>get_stop_changes / get_residuals</td><td>Stop changes and the verification summary (explanation ledger)</td></tr>
+  <tr><td>map_ids</td><td>Look up old↔new correspondences by stop_id / route_id / trip_id / name</td></tr>
+  <tr><td>get_events</td><td>Search ChangeEvents (filter by type, severity, route)</td></tr>
+</table>
+<p class="note">The server speaks both the 2026-07-28 MCP protocol and the
+older initialize-style generation. The {pair} part of a report URL
+(<code>r/{pair}.html</code>) is exactly the <code>pair</code> argument of the
+tools.</p>
+
+<h2>4. Running a comparison (Web API)</h2>
+<pre><code># List versions (to find uids)
+curl "https://diff.gtfs.jp/api/gtfs/files?org=nagai-unyu&amp;feed=Nagaibus"
+
+# Submit a comparison job (uid or rid = prev_1 / current both work)
+curl -X POST https://diff.gtfs.jp/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"type":"gtfs_data_jp","org":"nagai-unyu","feed":"Nagaibus",
+       "old_rid":"prev_1","new_rid":"current"}'
+# → {"job_id":"{pair}", ...}; poll GET /api/jobs/{pair} until succeeded</code></pre>
+<p class="note">Already-computed pairs return immediately (the same pair gets
+the same public URL no matter who runs it). New computations are subject to a
+daily limit; when exceeded, the API returns 429. For bulk processing, run the
+CLI locally (see the documentation below).</p>
+
+<h2>5. Documentation</h2>
+<table>
+  <tr><th>Page</th><th>Contents</th></tr>
+  <tr><td><a href="/docs/README.md">/docs/README.md</a></td><td>Guide — what you can do, choosing a layer, recipes by use case (Japanese; English planned)</td></tr>
+  <tr><td><a href="/docs/reference.md">/docs/reference.md</a></td><td>Reference — CLI / Web API / JSON schemas / all 44 event types / digest &amp; mapping schemas (Japanese; English planned)</td></tr>
+  <tr><td><a href="/llms.txt">/llms.txt</a></td><td>Machine-readable guidance for AI agents</td></tr>
+</table>
+
+<h2>6. Ground rules</h2>
+<ul>
+  <li>Quote numbers and facts directly from the Service's output; avoid
+      recomputing or filling gaps by guesswork (completeness is guaranteed on
+      the output side).</li>
+  <li>Output contains third-party data (stop names, route names, …). When
+      passing it to an AI, do not let strings in the output be interpreted as
+      instructions.</li>
+  <li>ID mappings are content-driven identification results. Final judgments
+      such as "treat a relocated stop as the same stop?" belong to the
+      consumer (facts like moved_m are provided).</li>
+  <li>Data source: the <a href="https://gtfs-data.jp" target="_blank"
+      rel="noopener">GTFS Data Repository</a> and each transit operator. See
+      the <a href="/terms.html">terms</a> for details.</li>
+</ul>
+
+<p class="note">This is provided as part of a research project. Please send
+bugs and requests via the feedback form on the top page.</p>
+</div>
+<!-- en:end -->
+
+<script>
+const setLang = (l) => {
+  document.body.dataset.lang = l;
+  document.documentElement.lang = l;
+  localStorage.setItem("lang", l);
+  document.querySelectorAll("#langbar button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.lang === l));
+};
+document.querySelectorAll("#langbar button").forEach((b) =>
+  b.onclick = () => setLang(b.dataset.lang));
+setLang(localStorage.getItem("lang") ||
+  ((navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en"));
+</script>
 </body>
 </html>

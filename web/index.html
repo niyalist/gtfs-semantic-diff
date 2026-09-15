@@ -8,13 +8,15 @@
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:title" content="GTFS ダイヤ改正 意味的差分レポート">
-<meta property="og:description" content="2世代の GTFS フィードを比較し、路線・便数・時刻・停留所の変化を自動で読み解きます。GTFSデータリポジトリの公開フィードにも対応。">
+<meta property="og:description" content="2世代の GTFS フィードを比較し、路線・便数・時刻・停留所の変化を自動で読み解きます。GTFSデータリポジトリの公開フィードにも対応。/ Compare two GTFS feed versions and see what changed — routes, trips, times, stops.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://diff.gtfs.jp/">
 <meta property="og:image" content="https://diff.gtfs.jp/ogp.png">
 <meta property="og:site_name" content="diff.gtfs.jp">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:locale:alternate" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="description" content="2世代の GTFS フィードを比較し、路線・便数・時刻・停留所の変化を自動で読み解きます。">
+<meta name="description" content="2世代の GTFS フィードを比較し、路線・便数・時刻・停留所の変化を自動で読み解きます。/ Compare two GTFS feed versions and see what changed.">
 <style>
   :root { --line: #ccc; --bg-soft: #f4f5f6; --accent: #1a4f8b; }
   body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0 auto;
@@ -45,7 +47,13 @@
   #status a { font-weight: 700; }
   .note { color: #555; font-size: 0.85em; }
   .hidden { display: none; }
-  #userbar { float: right; font-size: 0.85em; text-align: right; }
+  #topbar { float: right; font-size: 0.85em; text-align: right; }
+  #langbar { margin-bottom: 0.3rem; }
+  #langbar button { font: inherit; font-size: 1em; cursor: pointer; border: none;
+    background: none; padding: 0 0.3rem; color: var(--accent);
+    text-decoration: underline; }
+  #langbar button.active { font-weight: 700; text-decoration: none;
+    color: #1c1e21; cursor: default; }
   #userbar button { font: inherit; cursor: pointer; }
   table.hist { border-collapse: collapse; width: 100%; font-size: 0.88em; }
   table.hist th, table.hist td { border: 1px solid var(--line);
@@ -54,75 +62,65 @@
 </style>
 </head>
 <body>
-<div id="userbar"></div>
-<h1>GTFS ダイヤ改正 意味的差分レポート</h1>
-<p>2世代の GTFS フィードを比較し、路線ごとの変化 (系統・経由・便数・時刻)、
-停留所の変化、フィード全体の変化をレポートします。
-<a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFSデータリポジトリ</a>
-の公開フィードから選ぶか、zip を2つアップロードしてください。</p>
+<div id="topbar">
+  <div id="langbar">
+    <button data-lang="ja">日本語</button> |
+    <button data-lang="en">English</button>
+  </div>
+  <div id="userbar"></div>
+</div>
+<h1 data-i18n="h1"></h1>
+<p data-i18n="intro"></p>
 
 <div class="tabs" role="tablist">
-  <button id="tab-repo" class="active" role="tab">gtfs-data.jp から選択</button>
-  <button id="tab-upload" role="tab">zip をアップロード</button>
-  <button id="tab-my" class="hidden" role="tab">マイページ</button>
+  <button id="tab-repo" class="active" role="tab"></button>
+  <button id="tab-upload" role="tab"></button>
+  <button id="tab-my" class="hidden" role="tab"></button>
 </div>
 
 <section id="pane-repo">
-  <p class="note">公開フィード同士の比較結果は、同じ世代ペアで共通の公開 URL に
-  なります (生成済みなら即座に表示されます)。</p>
-  <label for="pref">都道府県</label>
-  <select id="pref"><option value="">選択してください</option></select>
-  <label for="feed">事業者・フィード</label>
-  <select id="feed" disabled><option value="">都道府県を選択してください</option></select>
-  <label for="gen-old">旧世代 (比較元)</label>
+  <p class="note" data-i18n="repo_note"></p>
+  <label for="pref" data-i18n="lbl_pref"></label>
+  <select id="pref"><option value="" id="opt-pref-ph"></option></select>
+  <label for="feed" data-i18n="lbl_feed"></label>
+  <select id="feed" disabled><option value="" id="opt-feed-ph"></option></select>
+  <label for="gen-old" data-i18n="lbl_old"></label>
   <select id="gen-old" disabled></select>
-  <label for="gen-new">新世代 (比較先)</label>
+  <label for="gen-new" data-i18n="lbl_new"></label>
   <select id="gen-new" disabled></select>
-  <div><button id="run-repo" class="run" disabled>比較レポートを作成</button></div>
-  <p class="note">実行すると<a href="/terms.html" target="_blank">利用規約</a>に同意した
-  ものとみなします — 利用状況ログは匿名化・集計した形でのみ研究利用します
-  (GTFS データの中身は研究に使いません)。</p>
+  <div><button id="run-repo" class="run" disabled data-i18n="btn_run"></button></div>
+  <p class="note" data-i18n="terms_note_repo"></p>
 </section>
 
 <section id="pane-upload" class="hidden">
-  <div id="saved-note" class="note hidden">ログイン中: アップロードした zip は保存され、
-  次回からは下のプルダウンで再利用できます。結果 URL は削除されず残ります。</div>
-  <label for="file-old">旧世代の GTFS zip</label>
+  <div id="saved-note" class="note hidden" data-i18n="saved_note"></div>
+  <label for="file-old" data-i18n="lbl_zip_old"></label>
   <select id="saved-old" class="hidden"></select>
   <input id="file-old" type="file" accept=".zip">
-  <label for="file-new">新世代の GTFS zip</label>
+  <label for="file-new" data-i18n="lbl_zip_new"></label>
   <select id="saved-new" class="hidden"></select>
   <input id="file-new" type="file" accept=".zip">
-  <p class="note" id="upload-policy">上限 100MB / ファイル。アップロードされた zip と結果は
-  30日後に自動削除されます。</p>
-  <div><button id="run-upload" class="run" disabled>比較レポートを作成</button></div>
-  <p class="note">実行すると<a href="/terms.html" target="_blank">利用規約</a>に同意した
-  ものとみなします — 利用状況ログは匿名化・集計した形でのみ研究利用します
-  (GTFS データの中身は研究に使いません)。外部に出せないデータは
-  <a href="https://github.com/niyalist/gtfs-semantic-diff" target="_blank" rel="noopener">CLI 版</a>
-  をローカルでご利用ください。</p>
+  <p class="note" id="upload-policy"></p>
+  <div><button id="run-upload" class="run" disabled data-i18n="btn_run"></button></div>
+  <p class="note" data-i18n="terms_note_upload"></p>
 </section>
 
 <section id="pane-my" class="hidden">
-  <h2 style="font-size:1.05rem">比較の履歴</h2>
-  <label for="hist-sort">並べ替え</label>
+  <h2 style="font-size:1.05rem" data-i18n="hist_title"></h2>
+  <label for="hist-sort" data-i18n="lbl_sort"></label>
   <select id="hist-sort">
-    <option value="date">日付 (新しい順)</option>
-    <option value="operator">事業者順</option>
-    <option value="gen">世代 (開始日) 順</option>
+    <option value="date" data-i18n="sort_date"></option>
+    <option value="operator" data-i18n="sort_operator"></option>
+    <option value="gen" data-i18n="sort_gen"></option>
   </select>
-  <div id="hist-box" style="margin-top:0.6rem"><p class="note">読み込み中…</p></div>
-  <h2 style="font-size:1.05rem; margin-top:1.4rem">保存済みのアップロード zip</h2>
-  <div id="zips-box"><p class="note">読み込み中…</p></div>
+  <div id="hist-box" style="margin-top:0.6rem"></div>
+  <h2 style="font-size:1.05rem; margin-top:1.4rem" data-i18n="zips_title"></h2>
+  <div id="zips-box"></div>
 </section>
 
 <div id="status" role="status"></div>
 
-<p class="note">計算には数十秒〜数分かかります (フィードの規模によります)。
-本ツールは決定的ルールで全差分を分類し、レポートの「検証モード」から
-全ての生差分に到達できます。地図: 国土地理院タイル。
-API・MCP・機械可読データは <a href="/developers.html">開発者向けページ</a> を
-参照してください。</p>
+<p class="note" data-i18n="footer"></p>
 
 <script>
 const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
@@ -131,13 +129,239 @@ const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山�
  "三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県",
  "島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県",
  "福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+const PREFS_EN = ["Hokkaido","Aomori","Iwate","Miyagi","Akita","Yamagata",
+ "Fukushima","Ibaraki","Tochigi","Gunma","Saitama","Chiba","Tokyo","Kanagawa",
+ "Niigata","Toyama","Ishikawa","Fukui","Yamanashi","Nagano","Gifu","Shizuoka",
+ "Aichi","Mie","Shiga","Kyoto","Osaka","Hyogo","Nara","Wakayama","Tottori",
+ "Shimane","Okayama","Hiroshima","Yamaguchi","Tokushima","Kagawa","Ehime",
+ "Kochi","Fukuoka","Saga","Nagasaki","Kumamoto","Oita","Miyazaki","Kagoshima",
+ "Okinawa"];
+
+// ---- 言語 (I2: docs/design/i18n.md。localStorage "lang" を全ページで共有) ----
+const L = {
+  ja: {
+    title: "GTFS ダイヤ改正 意味的差分レポート (gtfs-semantic-diff)",
+    h1: "GTFS ダイヤ改正 意味的差分レポート",
+    intro: `2世代の GTFS フィードを比較し、路線ごとの変化 (系統・経由・便数・時刻)、
+停留所の変化、フィード全体の変化をレポートします。
+<a href="https://gtfs-data.jp" target="_blank" rel="noopener">GTFSデータリポジトリ</a>
+の公開フィードから選ぶか、zip を2つアップロードしてください。`,
+    tab_repo: "gtfs-data.jp から選択", tab_upload: "zip をアップロード",
+    tab_my: "マイページ",
+    repo_note: `公開フィード同士の比較結果は、同じ世代ペアで共通の公開 URL に
+なります (生成済みなら即座に表示されます)。`,
+    lbl_pref: "都道府県", lbl_feed: "事業者・フィード",
+    lbl_old: "旧世代 (比較元)", lbl_new: "新世代 (比較先)",
+    btn_run: "比較レポートを作成",
+    opt_select: "選択してください", opt_select_pref: "都道府県を選択してください",
+    loading: "読み込み中…",
+    terms_note_repo: `実行すると<a href="/terms.html" target="_blank">利用規約</a>に同意した
+ものとみなします — 利用状況ログは匿名化・集計した形でのみ研究利用します
+(GTFS データの中身は研究に使いません)。`,
+    terms_note_upload: `実行すると<a href="/terms.html" target="_blank">利用規約</a>に同意した
+ものとみなします — 利用状況ログは匿名化・集計した形でのみ研究利用します
+(GTFS データの中身は研究に使いません)。外部に出せないデータは
+<a href="https://github.com/niyalist/gtfs-semantic-diff" target="_blank" rel="noopener">CLI 版</a>
+をローカルでご利用ください。`,
+    saved_note: `ログイン中: アップロードした zip は保存され、
+次回からは下のプルダウンで再利用できます。結果 URL は削除されず残ります。`,
+    lbl_zip_old: "旧世代の GTFS zip", lbl_zip_new: "新世代の GTFS zip",
+    policy_anon: "上限 100MB / ファイル。アップロードされた zip と結果は30日後に自動削除されます。",
+    policy_authed: "上限 100MB / ファイル。ログイン中のため zip と結果は保存されます (マイページから再利用可能)。",
+    hist_title: "比較の履歴", lbl_sort: "並べ替え",
+    sort_date: "日付 (新しい順)", sort_operator: "事業者順", sort_gen: "世代 (開始日) 順",
+    zips_title: "保存済みのアップロード zip",
+    footer: `計算には数十秒〜数分かかります (フィードの規模によります)。
+本ツールは決定的ルールで全差分を分類し、レポートの「検証モード」から
+全ての生差分に到達できます。地図: 国土地理院タイル。
+API・MCP・機械可読データは <a href="/developers.html">開発者向けページ</a> を
+参照してください。`,
+    login_failed: "ログインに失敗しました",
+    login_error: (m) => `ログインエラー: ${m}`,
+    loggedin_as: (email) => `<strong>${email}</strong> でログイン中`,
+    btn_logout: "ログアウト", btn_login: "Google でログイン",
+    login_benefit: "ログインすると履歴・再比較・zip の保存が使えます",
+    feeds_fail: (m) => `フィード一覧の取得に失敗: ${m}`,
+    gens_fail: (m) => `世代一覧の取得に失敗: ${m}`,
+    no_two_gens: "このフィードには比較できる世代が2つ以上ありません。",
+    gen_range: (f) => `${f.rid} (${f.from_date || "?"} 〜 ${f.to_date || "?"})`,
+    submitting: "ジョブを投入しています…",
+    cached: (url) => `生成済みの結果があります → <a href="${url}">レポートを開く</a>`,
+    done: (url) => `完成しました → <a href="${url}">レポートを開く</a>`,
+    share_note: "この URL は後から共有・再訪できます",
+    computing: (sec) => `計算中… (${sec}秒経過)。フィードの規模によっては数分かかります。`,
+    fail_head: "比較できませんでした", fail_fallback: "比較に失敗しました",
+    fail_input_hint: `入力データ側の問題のため、同じデータでは再試行しても
+結果は変わりません。フィード世代の比較なら別の世代の組み合わせを、
+アップロードなら該当ファイルを修正した zip をお試しください。`,
+    same_gen: "新旧に同じ世代が選ばれています。",
+    err: (m) => `エラー: ${m}`,
+    geturl: "アップロード用 URL を取得しています…",
+    upload_fail: (code) => `アップロードに失敗 (HTTP ${code})`,
+    too_big: "ファイルが上限 (100MB) を超えています",
+    uploading: (side) => `${side === "old" ? "旧" : "新"}世代をアップロード中…`,
+    new_upload_opt: "新しくアップロードする…",
+    saved_prefix: (name) => `保存済み: ${name}`,
+    old_zip: "旧zip", new_zip: "新zip",
+    upload_label: (name) => `(アップロード) ${name}`,
+    hist_empty: "まだ履歴がありません。比較を実行するとここに残ります。",
+    th_date: "日付", th_target: "比較対象", open: "開く",
+    re_same: "同条件で再比較", re_latest: "新側を最新にして再比較", del: "削除",
+    latest_note: `「新側を最新にして再比較」は旧世代 (比較元) はそのまま、
+新側だけを現在の最新世代に差し替えて比較します。`,
+    del_hist_upload: "この履歴と結果レポート (アップロード比較の URL) を削除します。よろしいですか?",
+    del_hist_repo: "この履歴を削除します (共通の公開レポート自体は残ります)。よろしいですか?",
+    del_fail: (m) => `削除に失敗: ${m}`,
+    del_zip: (name) => `保存済み zip「${name}」を削除します。よろしいですか?`,
+    checking_latest: "最新世代を確認しています…",
+    no_latest: "最新世代を取得できません",
+    still_latest: " (この比較の新側が現在も最新です)",
+    recompare_note: (oldFrom, newFrom, same) =>
+      `旧世代 (${oldFrom}〜) はそのまま、新側を最新世代 (${newFrom}〜) にして比較します${same}…`,
+    zips_empty: "保存済みの zip はありません。ログイン中にアップロードすると自動保存されます。",
+    th_name: "表示名", th_size: "サイズ", th_saved: "保存日",
+    zip_reuse: "再利用は「zip をアップロード」タブのプルダウンから。",
+    my_fail: (m) => `読み込みに失敗しました: ${m} (ログインし直してください)`,
+  },
+  // en-dict-begin (CJK 監査対象: この範囲の値に日本語を書かない)
+  en: {
+    title: "GTFS Semantic Diff — compare two GTFS feed versions",
+    h1: "GTFS Semantic Diff",
+    intro: `Compare two versions of a GTFS feed and get a report of what
+changed: per-route changes (branches, routing, trip counts, times), stop
+changes, and feed-wide changes. Upload two zips — or pick a Japanese feed
+from the <a href="https://gtfs-data.jp" target="_blank"
+rel="noopener">GTFS Data Repository</a>.`,
+    tab_repo: "gtfs-data.jp (Japan)", tab_upload: "Upload zips",
+    tab_my: "My page",
+    repo_note: `Results for public feeds share one public URL per version pair
+(already-computed pairs open instantly).`,
+    lbl_pref: "Prefecture", lbl_feed: "Operator / feed",
+    lbl_old: "Older version (from)", lbl_new: "Newer version (to)",
+    btn_run: "Generate comparison report",
+    opt_select: "Select…", opt_select_pref: "Select a prefecture first",
+    loading: "Loading…",
+    terms_note_repo: `By running a comparison you agree to the
+<a href="/terms.html" target="_blank">terms</a> — usage logs are used for
+research only in anonymized, aggregated form (the contents of GTFS data are
+not used for research).`,
+    terms_note_upload: `By running a comparison you agree to the
+<a href="/terms.html" target="_blank">terms</a> — usage logs are used for
+research only in anonymized, aggregated form (the contents of GTFS data are
+not used for research). For data that must not leave your environment, use
+the <a href="https://github.com/niyalist/gtfs-semantic-diff" target="_blank"
+rel="noopener">CLI version</a> locally.`,
+    saved_note: `Signed in: uploaded zips are kept and can be reused from the
+dropdowns below next time. Result URLs are kept as well.`,
+    lbl_zip_old: "Older GTFS zip", lbl_zip_new: "Newer GTFS zip",
+    policy_anon: "Up to 100 MB per file. Uploaded zips and results are deleted automatically after 30 days.",
+    policy_authed: "Up to 100 MB per file. You are signed in, so zips and results are kept (reusable from My page).",
+    hist_title: "Comparison history", lbl_sort: "Sort by",
+    sort_date: "Date (newest first)", sort_operator: "Operator", sort_gen: "Version (start date)",
+    zips_title: "Saved uploaded zips",
+    footer: `A comparison takes tens of seconds to a few minutes depending on
+feed size. Detection is deterministic and rule-based; the report's
+verification mode reaches every raw difference. Maps: GSI tiles.
+APIs, MCP and machine-readable data: see the
+<a href="/developers.html">developer page</a>.`,
+    login_failed: "Sign-in failed",
+    login_error: (m) => `Sign-in error: ${m}`,
+    loggedin_as: (email) => `Signed in as <strong>${email}</strong>`,
+    btn_logout: "Sign out", btn_login: "Sign in with Google",
+    login_benefit: "Sign in to keep history, re-run comparisons and save zips",
+    feeds_fail: (m) => `Failed to load the feed list: ${m}`,
+    gens_fail: (m) => `Failed to load the version list: ${m}`,
+    no_two_gens: "This feed does not have two versions to compare.",
+    gen_range: (f) => `${f.rid} (${f.from_date || "?"} – ${f.to_date || "?"})`,
+    submitting: "Submitting the job…",
+    cached: (url) => `A result already exists → <a href="${url}">open the report</a>`,
+    done: (url) => `Done → <a href="${url}">open the report</a>`,
+    share_note: "You can share and revisit this URL later",
+    computing: (sec) => `Computing… (${sec}s elapsed). Large feeds can take a few minutes.`,
+    fail_head: "The comparison failed", fail_fallback: "The comparison failed",
+    fail_input_hint: `This is a problem in the input data, so retrying with the
+same data will not change the result. For repository feeds, try a different
+pair of versions; for uploads, fix the file in question and upload again.`,
+    same_gen: "The same version is selected on both sides.",
+    err: (m) => `Error: ${m}`,
+    geturl: "Requesting upload URLs…",
+    upload_fail: (code) => `Upload failed (HTTP ${code})`,
+    too_big: "The file exceeds the 100 MB limit",
+    uploading: (side) => `Uploading the ${side === "old" ? "older" : "newer"} zip…`,
+    new_upload_opt: "Upload a new file…",
+    saved_prefix: (name) => `Saved: ${name}`,
+    old_zip: "old zip", new_zip: "new zip",
+    upload_label: (name) => `(upload) ${name}`,
+    hist_empty: "No history yet. Comparisons you run will appear here.",
+    th_date: "Date", th_target: "Compared", open: "Open",
+    re_same: "Re-run", re_latest: "Re-run against latest", del: "Delete",
+    latest_note: `"Re-run against latest" keeps the older side and swaps the
+newer side for the current latest version.`,
+    del_hist_upload: "Delete this history entry and its result report (upload-based URL)?",
+    del_hist_repo: "Delete this history entry? (The shared public report itself remains.)",
+    del_fail: (m) => `Delete failed: ${m}`,
+    del_zip: (name) => `Delete the saved zip "${name}"?`,
+    checking_latest: "Checking the latest version…",
+    no_latest: "Could not fetch the latest version",
+    still_latest: " (the newer side of this comparison is still the latest)",
+    recompare_note: (oldFrom, newFrom, same) =>
+      `Keeping the older side (from ${oldFrom}) and comparing against the latest version (from ${newFrom})${same}…`,
+    zips_empty: "No saved zips. Zips you upload while signed in are saved automatically.",
+    th_name: "Name", th_size: "Size", th_saved: "Saved",
+    zip_reuse: 'Reuse them from the dropdowns on the "Upload zips" tab.',
+    my_fail: (m) => `Failed to load: ${m} (please sign in again)`,
+  },
+  // en-dict-end
+};
+
+let lang = localStorage.getItem("lang") ||
+  ((navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en");
+const T = (key, ...args) => {
+  const v = (L[lang] && L[lang][key]) ?? L.ja[key];
+  return typeof v === "function" ? v(...args) : v;
+};
 
 const $ = (id) => document.getElementById(id);
 const status = $("status");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-// ISO 8601 (UTC) をブラウザのタイムゾーンの日付文字列に (例: 2026/07/11)
-const jdate = (iso) => (iso ? new Date(iso).toLocaleDateString("ja-JP") : "");
+// ISO 8601 (UTC) を閲覧言語の日付文字列に (例: 2026/07/11)
+const jdate = (iso) => (iso
+  ? new Date(iso).toLocaleDateString(lang === "ja" ? "ja-JP" : "en-CA") : "");
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = T("title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.innerHTML = T(el.dataset.i18n);
+  });
+  document.querySelectorAll("#langbar button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.lang === lang));
+  $("tab-repo").textContent = T("tab_repo");
+  $("tab-upload").textContent = T("tab_upload");
+  $("tab-my").textContent = T("tab_my");
+  // en では日本のリポジトリ選択を控えめに (アップロードを先頭タブに)
+  $("tab-upload").style.order = lang === "en" ? 0 : 1;
+  $("tab-repo").style.order = lang === "en" ? 1 : 0;
+  $("tab-my").style.order = 2;
+  $("opt-pref-ph").textContent = T("opt_select");
+  $("opt-feed-ph").textContent = T("opt_select_pref");
+  // 都道府県リストの表示名を言語に合わせる (値 = 都道府県コードは不変)
+  const prefSel = $("pref");
+  for (const o of prefSel.options) {
+    if (o.value) o.textContent = (lang === "en" ? PREFS_EN : PREFS)[o.value - 1];
+  }
+  renderUserbar();
+  if (histItems.length) { renderHistory(); renderZips(); }
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem("lang", l);
+  applyLang();
+}
+document.querySelectorAll("#langbar button").forEach((b) =>
+  b.onclick = () => setLang(b.dataset.lang));
 
 function showStatus(html, isError = false) {
   status.style.display = "block";
@@ -150,6 +374,11 @@ async function getJson(url, headers = {}) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   return r.json();
 }
+
+// API エラー: 言語設定に応じて error / error_en を選ぶ
+const apiError = (obj, fallbackCode) =>
+  (lang === "en" && obj.error_en) ? obj.error_en
+    : (obj.error || `HTTP ${fallbackCode}`);
 
 // ---- ログイン (Cognito Hosted UI + Google、PKCE 付き認可コード) ----
 const AUTH = { cfg: { login_enabled: false }, token: null, email: null };
@@ -184,7 +413,7 @@ async function exchangeCode(code) {
   });
   sessionStorage.removeItem("pkce_verifier");
   const data = await r.json();
-  if (!data.id_token) throw new Error(data.error || "ログインに失敗しました");
+  if (!data.id_token) throw new Error(data.error || T("login_failed"));
   localStorage.setItem("id_token", data.id_token);
   localStorage.setItem("id_token_exp",
     String(Date.now() + (data.expires_in || 3600) * 1000));
@@ -206,24 +435,23 @@ function logout() {
   localStorage.removeItem("id_token");
   localStorage.removeItem("id_token_exp");
   AUTH.token = null; AUTH.email = null;
-  renderUserbar(); selectTab("repo");
+  renderUserbar(); selectTab(lang === "en" ? "upload" : "repo");
 }
 
 function renderUserbar() {
   const bar = $("userbar");
   $("tab-my").classList.toggle("hidden", !AUTH.token);
   $("saved-note").classList.toggle("hidden", !AUTH.token);
-  $("upload-policy").textContent = AUTH.token
-    ? "上限 100MB / ファイル。ログイン中のため zip と結果は保存されます (マイページから再利用可能)。"
-    : "上限 100MB / ファイル。アップロードされた zip と結果は30日後に自動削除されます。";
+  $("upload-policy").textContent =
+    AUTH.token ? T("policy_authed") : T("policy_anon");
   if (AUTH.token) {
-    bar.innerHTML = `<strong>${esc(AUTH.email)}</strong> でログイン中
-      <button id="btn-logout">ログアウト</button>`;
+    bar.innerHTML = `${T("loggedin_as", esc(AUTH.email))}
+      <button id="btn-logout">${T("btn_logout")}</button>`;
     $("btn-logout").onclick = logout;
     loadSavedZipSelectors();
   } else if (AUTH.cfg.login_enabled) {
-    bar.innerHTML = `<button id="btn-login">Google でログイン</button>
-      <br><span class="note">ログインすると履歴・再比較・zip の保存が使えます</span>`;
+    bar.innerHTML = `<button id="btn-login">${T("btn_login")}</button>
+      <br><span class="note">${T("login_benefit")}</span>`;
     $("btn-login").onclick = login;
   } else {
     bar.innerHTML = "";
@@ -235,7 +463,7 @@ async function initAuth() {
   const params = new URLSearchParams(location.search);
   if (params.get("code") && sessionStorage.getItem("pkce_verifier")) {
     try { await exchangeCode(params.get("code")); }
-    catch (e) { showStatus(`ログインエラー: ${esc(e.message)}`, true); }
+    catch (e) { showStatus(T("login_error", esc(e.message)), true); }
     history.replaceState(null, "", location.pathname);
   }
   loadToken();
@@ -267,10 +495,10 @@ $("pref").onchange = async () => {
   $("feed").disabled = true; $("gen-old").disabled = true;
   $("gen-new").disabled = true; $("run-repo").disabled = true;
   if (!$("pref").value) return;
-  $("feed").innerHTML = "<option>読み込み中…</option>";
+  $("feed").innerHTML = `<option>${T("loading")}</option>`;
   try {
     const data = await getJson(`/api/gtfs/feeds?pref=${$("pref").value}`);
-    $("feed").innerHTML = "<option value=''>選択してください</option>";
+    $("feed").innerHTML = `<option value=''>${T("opt_select")}</option>`;
     for (const f of data.feeds) {
       const o = document.createElement("option");
       o.value = `${f.org_id}/${f.feed_id}`;
@@ -278,7 +506,7 @@ $("pref").onchange = async () => {
       $("feed").appendChild(o);
     }
     $("feed").disabled = false;
-  } catch (e) { showStatus(`フィード一覧の取得に失敗: ${esc(e.message)}`, true); }
+  } catch (e) { showStatus(T("feeds_fail", esc(e.message)), true); }
 };
 
 $("feed").onchange = async () => {
@@ -286,17 +514,16 @@ $("feed").onchange = async () => {
   $("run-repo").disabled = true;
   if (!$("feed").value) return;
   const [org, feed] = $("feed").value.split("/");
-  $("gen-old").innerHTML = $("gen-new").innerHTML = "<option>読み込み中…</option>";
+  $("gen-old").innerHTML = $("gen-new").innerHTML = `<option>${T("loading")}</option>`;
   try {
     const data = await getJson(`/api/gtfs/files?org=${org}&feed=${feed}`);
     currentFiles = data.files;
-    const label = (f) => `${f.rid} (${f.from_date || "?"} 〜 ${f.to_date || "?"})`;
     for (const sel of [$("gen-old"), $("gen-new")]) {
       sel.innerHTML = "";
       for (const f of data.files) {
         const o = document.createElement("option");
         // uid = 世代の恒久 ID (rid は世代が進むとずれるため送らない)
-        o.value = f.uid || f.rid; o.textContent = label(f);
+        o.value = f.uid || f.rid; o.textContent = T("gen_range", f);
         sel.appendChild(o);
       }
       sel.disabled = false;
@@ -305,13 +532,13 @@ $("feed").onchange = async () => {
     if (data.files.length > 1) $("gen-old").selectedIndex = 1;
     $("run-repo").disabled = data.files.length < 2;
     if (data.files.length < 2)
-      showStatus("このフィードには比較できる世代が2つ以上ありません。", true);
-  } catch (e) { showStatus(`世代一覧の取得に失敗: ${esc(e.message)}`, true); }
+      showStatus(T("no_two_gens"), true);
+  } catch (e) { showStatus(T("gens_fail", esc(e.message)), true); }
 };
 
 // ---- ジョブ投入とポーリング ----
 async function submitAndPoll(body) {
-  showStatus("ジョブを投入しています…");
+  showStatus(T("submitting"));
   const endpoint = AUTH.token ? "/api/me/jobs" : "/api/jobs";
   const r = await fetch(endpoint, {
     method: "POST",
@@ -319,10 +546,9 @@ async function submitAndPoll(body) {
     body: JSON.stringify(body),
   });
   const job = await r.json();
-  if (!r.ok) throw new Error(job.error || `HTTP ${r.status}`);
+  if (!r.ok) throw new Error(apiError(job, r.status));
   if (job.status === "succeeded" && job.result_url) {
-    showStatus(`生成済みの結果があります → <a href="${job.result_url}">レポートを開く</a>` +
-      `<br><span class="note">この URL は後から共有・再訪できます</span>`);
+    showStatus(`${T("cached", job.result_url)}<br><span class="note">${T("share_note")}</span>`);
     return;
   }
   const started = Date.now();
@@ -331,22 +557,18 @@ async function submitAndPoll(body) {
     const st = await getJson(job.status_url);
     const sec = Math.round((Date.now() - started) / 1000);
     if (st.status === "succeeded") {
-      showStatus(`完成しました → <a href="${st.result_url}">レポートを開く</a>` +
-        `<br><span class="note">この URL は後から共有・再訪できます</span>`);
+      showStatus(`${T("done", st.result_url)}<br><span class="note">${T("share_note")}</span>`);
       return;
     }
     if (st.status === "failed") {
       // error_kind: input = 入力 GTFS データ起因 (再試行しても結果は同じ)
       const hint = st.error_kind === "input"
-        ? `<br><span class="note">入力データ側の問題のため、同じデータでは再試行しても` +
-          `結果は変わりません。フィード世代の比較なら別の世代の組み合わせを、` +
-          `アップロードなら該当ファイルを修正した zip をお試しください。</span>`
-        : "";
-      showStatus(`<strong>比較できませんでした</strong><br>` +
-        `${esc(st.error || "比較に失敗しました")}${hint}`, true);
+        ? `<br><span class="note">${T("fail_input_hint")}</span>` : "";
+      showStatus(`<strong>${T("fail_head")}</strong><br>` +
+        `${esc(apiError(st, "") || T("fail_fallback"))}${hint}`, true);
       return;
     }
-    showStatus(`計算中… (${sec}秒経過)。フィードの規模によっては数分かかります。`);
+    showStatus(T("computing", sec));
   }
 }
 
@@ -358,7 +580,7 @@ $("run-repo").onclick = async () => {
   const [org, feed] = $("feed").value.split("/");
   const oldUid = $("gen-old").value, newUid = $("gen-new").value;
   if (oldUid === newUid)
-    return showStatus("新旧に同じ世代が選ばれています。", true);
+    return showStatus(T("same_gen"), true);
   const byUid = Object.fromEntries(currentFiles.map((f) => [f.uid, f]));
   const feedLabel = $("feed").selectedOptions[0]?.textContent || "";
   const body = repoBody(org, feed, oldUid, newUid, {
@@ -369,7 +591,7 @@ $("run-repo").onclick = async () => {
   });
   $("run-repo").disabled = true;
   try { await submitAndPoll(body); }
-  catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
+  catch (e) { showStatus(T("err", esc(e.message)), true); }
   finally { $("run-repo").disabled = false; }
 };
 
@@ -397,11 +619,11 @@ async function loadSavedZipSelectors() {
   for (const side of ["old", "new"]) {
     const sel = $(`saved-${side}`);
     sel.classList.toggle("hidden", savedZips.length === 0);
-    sel.innerHTML = "<option value=''>新しくアップロードする…</option>";
+    sel.innerHTML = `<option value=''>${T("new_upload_opt")}</option>`;
     for (const z of savedZips) {
       const o = document.createElement("option");
       o.value = z.zip_id;
-      o.textContent = `保存済み: ${z.display_name}`;
+      o.textContent = T("saved_prefix", z.display_name);
       sel.appendChild(o);
     }
   }
@@ -412,7 +634,7 @@ async function uploadTo(post, file) {
   for (const [k, v] of Object.entries(post.fields)) form.append(k, v);
   form.append("file", file);
   const r = await fetch(post.url, { method: "POST", body: form });
-  if (!r.ok) throw new Error(`アップロードに失敗 (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(T("upload_fail", r.status));
 }
 
 $("run-upload").onclick = async () => {
@@ -426,15 +648,15 @@ $("run-upload").onclick = async () => {
       else { needUpload.push(side); }
     }
     if (needUpload.length) {
-      showStatus("アップロード用 URL を取得しています…");
+      showStatus(T("geturl"));
       const r = await fetch("/api/uploads", { method: "POST" });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(apiError(data, r.status));
       for (const side of needUpload) {
         const file = $(`file-${side}`).files[0];
         if (file.size > data.max_bytes)
-          throw new Error("ファイルが上限 (100MB) を超えています");
-        showStatus(`${side === "old" ? "旧" : "新"}世代をアップロード中…`);
+          throw new Error(T("too_big"));
+        showStatus(T("uploading", side));
         await uploadTo(data.uploads[side], file);
         body[`${side}_key`] = data.uploads[side].key;
         body[`${side}_name`] = file.name;
@@ -442,7 +664,7 @@ $("run-upload").onclick = async () => {
     }
     await submitAndPoll(body);
     loadSavedZipSelectors();  // 新規保存分をプルダウンへ反映
-  } catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
+  } catch (e) { showStatus(T("err", esc(e.message)), true); }
   finally { updateUploadButton(); }
 };
 
@@ -457,15 +679,15 @@ function histLabel(it) {
       ? `${it.old_from_date || "?"} → ${it.new_from_date || "?"}` : "";
     return { name, gens };
   }
-  const name = [it.old_label || it.old_name || "旧zip",
-                it.new_label || it.new_name || "新zip"].join(" ⇔ ");
-  return { name: `(アップロード) ${name}`, gens: "" };
+  const name = [it.old_label || it.old_name || T("old_zip"),
+                it.new_label || it.new_name || T("new_zip")].join(" ⇔ ");
+  return { name: T("upload_label", name), gens: "" };
 }
 
 function sortHist(items, mode) {
   const arr = [...items];
   if (mode === "operator")
-    arr.sort((a, b) => histLabel(a).name.localeCompare(histLabel(b).name, "ja"));
+    arr.sort((a, b) => histLabel(a).name.localeCompare(histLabel(b).name, lang));
   else if (mode === "gen")
     arr.sort((a, b) => (b.new_from_date || "").localeCompare(a.new_from_date || ""));
   else arr.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
@@ -475,27 +697,26 @@ function sortHist(items, mode) {
 function renderHistory() {
   const box = $("hist-box");
   if (!histItems.length) {
-    box.innerHTML = "<p class='note'>まだ履歴がありません。比較を実行するとここに残ります。</p>";
+    box.innerHTML = `<p class='note'>${T("hist_empty")}</p>`;
     return;
   }
   const sorted = sortHist(histItems, $("hist-sort").value);
   const rows = sorted.map((it, i) => {
     const { name, gens } = histLabel(it);
     const date = jdate(it.created_at);
-    const acts = [`<a href="${esc(it.result_url)}">開く</a>`];
+    const acts = [`<a href="${esc(it.result_url)}">${T("open")}</a>`];
     if (it.kind === "repo" && it.old_uid && it.new_uid) {
-      acts.push(`<button class="small" data-re="${i}">同条件で再比較</button>`);
-      acts.push(`<button class="small" data-latest="${i}">新側を最新にして再比較</button>`);
+      acts.push(`<button class="small" data-re="${i}">${T("re_same")}</button>`);
+      acts.push(`<button class="small" data-latest="${i}">${T("re_latest")}</button>`);
     }
-    acts.push(`<button class="small" data-del="${i}">削除</button>`);
+    acts.push(`<button class="small" data-del="${i}">${T("del")}</button>`);
     return `<tr><td>${esc(date)}</td><td>${esc(name)}` +
       (gens ? `<br><span class="note">${esc(gens)}</span>` : "") +
       `</td><td>${acts.join(" ")}</td></tr>`;
   });
-  box.innerHTML = `<table class="hist"><tr><th>日付</th><th>比較対象</th><th></th></tr>` +
+  box.innerHTML = `<table class="hist"><tr><th>${T("th_date")}</th><th>${T("th_target")}</th><th></th></tr>` +
     rows.join("") + `</table>` +
-    `<p class="note">「新側を最新にして再比較」は旧世代 (比較元) はそのまま、` +
-    `新側だけを現在の最新世代に差し替えて比較します。</p>`;
+    `<p class="note">${T("latest_note")}</p>`;
   box.querySelectorAll("button[data-re]").forEach((b) => {
     b.onclick = () => recompare(sorted[Number(b.dataset.re)], false);
   });
@@ -508,62 +729,60 @@ function renderHistory() {
 }
 
 async function deleteHistory(it) {
-  const msg = it.kind === "upload"
-    ? "この履歴と結果レポート (アップロード比較の URL) を削除します。よろしいですか?"
-    : "この履歴を削除します (共通の公開レポート自体は残ります)。よろしいですか?";
+  const msg = it.kind === "upload" ? T("del_hist_upload") : T("del_hist_repo");
   if (!confirm(msg)) return;
   try {
     const r = await fetch(`/api/me/history?sk=${encodeURIComponent(it.sk)}`,
       { method: "DELETE", headers: authHeaders() });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(apiError(await r.json().catch(() => ({})), r.status));
     loadMyPage();
-  } catch (e) { showStatus(`削除に失敗: ${esc(e.message)}`, true); }
+  } catch (e) { showStatus(T("del_fail", esc(e.message)), true); }
 }
 
 async function deleteZip(z) {
-  if (!confirm(`保存済み zip「${z.display_name}」を削除します。よろしいですか?`)) return;
+  if (!confirm(T("del_zip", z.display_name))) return;
   try {
     const r = await fetch(`/api/me/zips?id=${encodeURIComponent(z.zip_id)}`,
       { method: "DELETE", headers: authHeaders() });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(apiError(await r.json().catch(() => ({})), r.status));
     loadMyPage();
-  } catch (e) { showStatus(`削除に失敗: ${esc(e.message)}`, true); }
+  } catch (e) { showStatus(T("del_fail", esc(e.message)), true); }
 }
 
 async function recompare(it, useLatest) {
   try {
     let newUid = it.new_uid, newFrom = it.new_from_date || "";
     if (useLatest) {
-      showStatus("最新世代を確認しています…");
+      showStatus(T("checking_latest"));
       const data = await getJson(`/api/gtfs/files?org=${it.org}&feed=${it.feed}`);
       const latest = data.files[0];
-      if (!latest || !latest.uid) throw new Error("最新世代を取得できません");
+      if (!latest || !latest.uid) throw new Error(T("no_latest"));
       newUid = latest.uid; newFrom = latest.from_date || "";
-      const same = latest.uid === it.new_uid ? " (この比較の新側が現在も最新です)" : "";
-      showStatus(`旧世代 (${esc(it.old_from_date || "?")}〜) はそのまま、` +
-        `新側を最新世代 (${esc(newFrom || "?")}〜) にして比較します${same}…`);
+      const same = latest.uid === it.new_uid ? T("still_latest") : "";
+      showStatus(T("recompare_note", esc(it.old_from_date || "?"),
+        esc(newFrom || "?"), same));
     }
     await submitAndPoll(repoBody(it.org, it.feed, it.old_uid, newUid, {
       org_name: it.org_name || "", feed_name: it.feed_name || "",
       old_from_date: it.old_from_date || "", new_from_date: newFrom,
     }));
     loadMyPage();
-  } catch (e) { showStatus(`エラー: ${esc(e.message)}`, true); }
+  } catch (e) { showStatus(T("err", esc(e.message)), true); }
 }
 
 function renderZips() {
   const box = $("zips-box");
   if (!savedZips.length) {
-    box.innerHTML = "<p class='note'>保存済みの zip はありません。ログイン中にアップロードすると自動保存されます。</p>";
+    box.innerHTML = `<p class='note'>${T("zips_empty")}</p>`;
     return;
   }
   const mb = (n) => (Number(n || 0) / 1048576).toFixed(1);
-  box.innerHTML = `<table class="hist"><tr><th>表示名</th><th>サイズ</th><th>保存日</th><th></th></tr>` +
+  box.innerHTML = `<table class="hist"><tr><th>${T("th_name")}</th><th>${T("th_size")}</th><th>${T("th_saved")}</th><th></th></tr>` +
     savedZips.map((z, i) =>
       `<tr><td>${esc(z.display_name)}</td><td>${mb(z.size)} MB</td>` +
       `<td>${esc(jdate(z.created_at))}</td>` +
-      `<td><button class="small" data-zdel="${i}">削除</button></td></tr>`).join("") +
-    `</table><p class="note">再利用は「zip をアップロード」タブのプルダウンから。</p>`;
+      `<td><button class="small" data-zdel="${i}">${T("del")}</button></td></tr>`).join("") +
+    `</table><p class="note">${T("zip_reuse")}</p>`;
   box.querySelectorAll("button[data-zdel]").forEach((b) => {
     b.onclick = () => deleteZip(savedZips[Number(b.dataset.zdel)]);
   });
@@ -580,12 +799,13 @@ async function loadMyPage() {
     renderHistory();
     renderZips();
   } catch (e) {
-    $("hist-box").innerHTML =
-      `<p class='note'>読み込みに失敗しました: ${esc(e.message)} (ログインし直してください)</p>`;
+    $("hist-box").innerHTML = `<p class='note'>${T("my_fail", esc(e.message))}</p>`;
   }
 }
 $("hist-sort").onchange = renderHistory;
 
+applyLang();
+if (lang === "en") selectTab("upload");  // en の既定はアップロード (i18n.md I2)
 initAuth();
 </script>
 </body>
