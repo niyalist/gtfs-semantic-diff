@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/i18n.js";
+  import { lang, t } from "../lib/i18n.js";
   import StopChangeMap from "./StopChangeMap.svelte";
 
   // 第2部の本文 (部見出しは App 側)。変化がある場合のみ描画され、
@@ -25,7 +25,7 @@
 </script>
 
 {#if headParts.length}
-  <p><strong>{headParts.join("・")}</strong></p>
+  <p><strong>{headParts.join($lang === "en" ? " · " : "・")}</strong></p>
 {/if}
 
 {#if hasGeo}

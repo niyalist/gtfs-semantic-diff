@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/i18n.js";
+  import { lang, t } from "../lib/i18n.js";
   import { fmtTime } from "../lib/format.js";
 
   export let table; // {label, day_type, stop_axis, columns}
@@ -121,7 +121,7 @@
         {@const rowGen = mode === "old" ? "old" : "new"}
         <tr>
           <th class="stopname" class:gone-stop={stopMissing(st, rowGen)}>
-            {stop}{#if st === "old_only"}【{tt("col_removed")}】{/if}{#if st === "new_only"}【{tt("col_added")}】{/if}
+            {stop}{#if st === "old_only"}{$lang === "en" ? " [" : "【"}{tt("col_removed")}{$lang === "en" ? "]" : "】"}{/if}{#if st === "new_only"}{$lang === "en" ? " [" : "【"}{tt("col_added")}{$lang === "en" ? "]" : "】"}{/if}
           </th>
           {#each visibleCols as c}
             {@const cell = cellFor(c, i)}
@@ -131,7 +131,7 @@
               {:else if cell.sym === "pass"}
                 <span class="skip">✓</span>
               {:else if cell.sym === "gone"}
-                <span class="gone">・・</span>
+                <span class="gone">{$lang === "en" ? ".." : "・・"}</span>
               {:else if cell.sym === "blank"}
                 {""}
               {:else if cell.cls === "dropped"}

@@ -156,7 +156,7 @@
     return ["added", "removed", "rerouted", "shortened", "extended", "retimed", "retimed_minor"]
       .filter((k) => tb.label_counts?.[k])
       .map((k) => `${names[k]}${tb.label_counts[k]}`)
-      .join("・");
+      .join($lang === "en" ? ", " : "・");
   }
 </script>
 

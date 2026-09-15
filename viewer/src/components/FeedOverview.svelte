@@ -35,7 +35,7 @@
     if (s.day_type === "inactive") parts.push(tt("fo_special_inactive"));
     else if (s.replaces_regular) parts.push(tt("fo_special_replaces"));
     else if (s.dates) parts.push(tt("fo_special_extra"));
-    return parts.join("・");
+    return parts.join($lang === "en" ? " · " : "・");
   }
   $: scope = overview.comparison_scope;
   $: briefs = overview.data_briefs;

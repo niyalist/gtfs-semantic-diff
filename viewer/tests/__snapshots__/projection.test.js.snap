@@ -2,13 +2,13 @@
 
 exports[`表示射影 (en) 1`] = `
 [
-  "P1 Weekday 106→105trips▼",
-  "P1 Daily 11trips",
-  "P1 Irregular 28 trips total→16trips▼",
-  "P3 町営渡船しんぐう | Daily① 6trips Daily② 5trips",
+  "P1 Weekday 106→105 trips▼",
+  "P1 Daily 11 trips",
+  "P1 Irregular 28 trips total→16 trips▼",
+  "P3 町営渡船しんぐう | Daily① 6 trips Daily② 5 trips",
   "P3 町営渡船しんぐう [Daily①] Old: 2025/3/1–10/31 (245 days) → New: 2026/3/1–10/31 (245 days) (content)",
   "P3 町営渡船しんぐう [Daily②] Old: 2025/11/1–12/31, 2026/1/1–2/28 (120 days) → New: 2026/11/1–12/31, 2027/1/1–2/28 (120 days) (content)",
-  "P3 くるりんバス 西砂ルート | Irregular① 28 trips total→16trips▼",
+  "P3 くるりんバス 西砂ルート | Irregular① 28 trips total→16 trips▼",
   "P3 くるりんバス 西砂ルート [Irregular①] Old: 2025/2/28, 12/29–12/31 +1 (8 days) → New: 2026/12/29–12/31 +1 (7 days) (flow)",
 ]
 `;
