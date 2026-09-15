@@ -483,7 +483,8 @@ v0.8 (SD5/SD6) 設計 2026-07-25 — 検証: docs/verification/day_pattern_surve
 MCP は説明 en 一本化+本文は lang 引数、terms 英語は参考訳。
 実施順の推奨: I5 の README 先行 → I2 → I3 → I6 → I4 → I5 残り。
 
-- **I2: Web/UI の英語対応** — 入力 UI・規約 (参考訳)・**マイページ等ログイン後
+- **I2: Web/UI の英語対応** 【完了 2026-09-15 (docs/verification/I2_web_i18n.md)】
+  — 入力 UI・規約 (参考訳)・**マイページ等ログイン後
   UI 含む**の ja/en 化 (初期言語は navigator.language、en では gtfs-data.jp
   ピッカーを控えめに)、API エラーのコード化+動的メッセージは error_en 併記。
   DoD: 英語ブラウザでアップロード比較〜マイページまで英語で完結
