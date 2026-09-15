@@ -48,8 +48,20 @@ class StopCluster:
     route_families: set[str] = field(default_factory=set)  # 接続する route family 名
 
 
+# 裸の1字指標 (A〜F・数字・丸数字)。単語指標 (のりば等) と違い、ラテン文字
+# 名では名前の一部であることが多い — I4/G6 の実測 (docs/verification/
+# I4_intl_tech.md): trimet 0/5・stm 0/8・rome 19/119 しか「正しい乗り場」が
+# なく、"West A" (街路名)・"Milepost 8"・"-Zone B" 等を壊していた
+_BARE_INDICATORS = frozenset(
+    "ABCDEF" "123456789" "①②③④⑤⑥⑦⑧⑨" "１２３４５６７８９")
+
+
 def normalize_stop_base_name(name: str) -> str:
-    """stop_name からのりば表記を除いた基底名を返す。"""
+    """stop_name からのりば表記を除いた基底名を返す。
+
+    裸の1字指標は、剥がした残りが ASCII 英数字で終わる場合は適用しない
+    (日本語等の文脈でのみ乗り場番号とみなす — G6。剥がし損ねは
+    「別クラスタのまま」に退化するだけで誤結合しない)。"""
     base = name.strip()
     changed = True
     while changed:
@@ -57,7 +69,12 @@ def normalize_stop_base_name(name: str) -> str:
         for indicator in _PLATFORM_INDICATORS:
             for pattern in (indicator, " " + indicator, "　" + indicator):
                 if len(base) > len(pattern) and base.endswith(pattern):
-                    base = base[: -len(pattern)].strip()
+                    remaining = base[: -len(pattern)].strip()
+                    if (indicator in _BARE_INDICATORS and remaining
+                            and remaining[-1].isascii()
+                            and remaining[-1].isalnum()):
+                        continue  # "West A" / "Milepost 8" 型は名前の一部
+                    base = remaining
                     changed = True
     return base or name.strip()
 

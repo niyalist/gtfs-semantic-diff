@@ -309,3 +309,24 @@ def test_page_maps_tie_rescues_unmatched_new(tmp_path, config):
     )
     old_map, _ = page_family_maps(ident)
     assert old_map == {"旧往路": "新往路", "旧復路": "新復路"}
+
+
+def test_normalize_base_name_latin_guard():
+    """G6 (I4): 裸の1字指標はラテン文字文脈では剥がさない。
+
+    実測根拠 (docs/verification/I4_intl_tech.md): trimet/stm/rome で
+    末尾1字剥がしの 83〜100% が街路名等の破壊だった。"""
+    from gtfs_semantic_diff.identity.stop_clustering import (
+        normalize_stop_base_name as norm,
+    )
+
+    # 日本語文脈: 従来どおり剥がす (ja 回帰は永井ハッシュ一致で担保)
+    assert norm("駅前 A") == "駅前"
+    assert norm("市役所前 のりば1") == "市役所前"
+    assert norm("中央駅 ①") == "中央駅"
+    # ラテン文字文脈: 剥がさない (名前の一部)
+    assert norm("Willamette Dr & West A") == "Willamette Dr & West A"
+    assert norm("NW St Helens & Milepost 8") == "NW St Helens & Milepost 8"
+    assert norm("LITORANEA/VARCO 5") == "LITORANEA/VARCO 5"
+    # 単語指標はラテン文脈でも従来どおり (「のりば」等が付くのは日本語データ)
+    assert norm("Station ホーム2") == "Station"
