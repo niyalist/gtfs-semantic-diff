@@ -488,7 +488,8 @@ MCP は説明 en 一本化+本文は lang 引数、terms 英語は参考訳。
   UI 含む**の ja/en 化 (初期言語は navigator.language、en では gtfs-data.jp
   ピッカーを控えめに)、API エラーのコード化+動的メッセージは error_en 併記。
   DoD: 英語ブラウザでアップロード比較〜マイページまで英語で完結
-- **I3: レポート英語品質** — bundle への ja 焼き込み全数監査→キー化 (leg「循環」
+- **I3: レポート英語品質** 【完了 2026-09-15 (docs/verification/I3_report_i18n.md)】
+  — bundle への ja 焼き込み全数監査→キー化 (leg「循環」
   → kind 由来、分冊名・日付整形・注記、zip 表示名の構造化、OGP 題名)、
   ビューア初期言語、国際フィード実レポートの英語通読チェック。
   DoD: ja は PI 準拠で不変+en は CJK 監査ゼロ
