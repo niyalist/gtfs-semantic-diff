@@ -468,7 +468,7 @@ v0.8 (SD5/SD6) 設計 2026-07-25 — 検証: docs/verification/day_pattern_surve
   桑名 (変わる日 = 7/11〜10/3 の1ラン = 改正日が文で出る)・佐賀 (GW・海の日・
   山の日が振替として列挙) で確認。窓 550 日超は省略。
 
-## I: 国際化 (英語対応 + 国際 GTFS 検証) 【計画 2026-07-12、設計: docs/design/i18n.md】
+## I: 国際化 (英語対応 + 国際 GTFS 検証) 【**全マイルストーン完了 2026-09-16**。計画 2026-07-12、設計: docs/design/i18n.md】
 
 対応言語は日本語+英語。コア JSON は言語中立・ビューアは ja/en 辞書 (141キー・
 ずれゼロ) 済みが土台。詳細・監査結果 (G1〜G9)・DoD は i18n.md。
@@ -499,7 +499,7 @@ MCP は説明 en 一本化+本文は lang 引数、terms 英語は参考訳。
   (Fares v2 等)。DoD: I1 全ペアで動作記録 + 日本フィード回帰不変
 - **I5: 公開整備** 【完了 2026-09-16 — README (9/14 先行)・docs/api en 正+ja 併設・developers 導線】 — **README.md を en 正に、ja は README.ja.md** (先行実施)。
   docs/api の en 正+ja 併設、developers.html 導線
-- **I6: digest・MCP の言語対応**【実装済み 2026-09-15 (2026.9.15.5、docs/verification/I6_digest_mcp_i18n.md)。残: 英語実走記録】 — digest.en.md/.en.json 併設 (既存 ja
+- **I6: digest・MCP の言語対応** 【完了 2026-09-16 (2026.9.15.5、docs/verification/I6_digest_mcp_i18n.md — Claude Desktop / ChatGPT Work からの英語実走確認済み)】 — digest.en.md/.en.json 併設 (既存 ja
   URL バイト不変、artifacts/alias/rel=alternate 拡張)、数値一致テストの en 適用、
   MCP instructions・ツール説明 en 化+本文系ツールに lang 引数、llms.txt en 化。
   DoD: ja 不変+en 数値一致+contract test+英語での実走記録

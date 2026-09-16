@@ -51,9 +51,10 @@ roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/
 
 残タスク: RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
 G2 恒久化 (Lambda 同時実行クォータ引き上げ申請 = ユーザーアクション)・P3 (規模上限の
-明文化)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化)・I2〜I5 (国際化)・V6 (運賃
-深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。STM group46 の
-self_check 2件はその既知の露頭)。未実装イベント型は detection.md §7 に列挙。
+明文化)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
+含む)・V6 (運賃深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。
+STM group46 の self_check 2件はその既知の露頭)。I トラック (国際化) は 2026-09-16 全完了 —
+恒常ルールは i18n.md §4。未実装イベント型は detection.md §7 に列挙。
 
 ## 過去プロジェクトからの資産移植 (完了)
 
