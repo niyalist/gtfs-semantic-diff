@@ -50,7 +50,8 @@ roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/
 - バージョンは CalVer `YYYY.M.D.N` (同日通番付き)
 
 残タスク: RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
-G2 恒久化 (Lambda 同時実行クォータ引き上げ申請 = ユーザーアクション)・P3 (規模上限の
+G2 恒久化 (Lambda 同時実行クォータ引き上げ申請 = ユーザーアクション)・
+AN1 (Search Console プロパティ確立 — docs/ops/search_console.md、ユーザーアクション含む)・P3 (規模上限の
 明文化)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
 含む)・V6 (運賃深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。
 STM group46 の self_check 2件はその既知の露頭)。I トラック (国際化) は 2026-09-16 全完了 —

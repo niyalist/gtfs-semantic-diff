@@ -544,6 +544,21 @@ STM/swiss 型 (1ファイル内に複数シーズン+通年層が同居し毎年
 - **SP1: group_sheets の基準一本化** — 併合可否を「併合後も基準内」に変更、
   `sheet_max_gap_per_trip` へ config 統合
 
+## AN: アクセス計測 【計画 2026-09-17、手順: docs/ops/search_console.md】
+
+検索流入とインデックス状況の可視化。既存の www.gtfs.jp とは独立した
+プロパティとして diff.gtfs.jp を扱う (別サービスとしての計測)。
+
+- **AN1: Search Console プロパティ確立** — URL プレフィックス
+  `https://diff.gtfs.jp/` を登録 (ドメインプロパティは diff が CNAME のため
+  TXT 併置不可・不採用)。所有権確認は HTML タグ方式で、meta タグを
+  web/index.html に恒久設置 (repo 管理・削除禁止)。ユーザーアクション
+  (Search Console 側の操作) を含む。
+  DoD: (a) 所有権確認の成功 (b) 検証 meta タグが repo+本番に恒久設置
+  (c) 検索パフォーマンスの初回データ表示を確認し
+  docs/verification/AN1_search_console.md に記録
+  (d) sitemap.xml の要否判断を同記録に残す
+
 ## 将来 (スコープ外だが JSON 互換を壊さない)
 
 - report/presentation.py (約1,400行) の3分割 (axis/sheets 系ユーティリティ /
