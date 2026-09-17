@@ -150,10 +150,11 @@ class DeliveryStack(Stack):
             timeout=Duration.minutes(15),
             environment=common_env,
             description="gtfs-semantic-diff compare worker",
-            # G2 (mcp.md §9) の reserved concurrency は本アカウントでは設定不可
-            # (アカウント同時実行クォータが 10 = 最低未予約枠と同値のため
-            # 2026-08-19 のデプロイで 400)。当面はクォータ 10 自体が実質の
-            # バースト上限。恒久策: Service Quotas 引き上げ後に予約枠を設定
+            # G2 恒久化 (mcp.md §9、2026-09-17): アカウント同時実行クォータの
+            # 10→1000 引き上げ承認を受けて予約枠 4 を設定 — worker (3GB 級) の
+            # バーストコスト上限。非同期呼び出しは Lambda が自動キューするため
+            # 5件目以降は自然に直列化される
+            reserved_concurrent_executions=4,
         )
         # XL2: worker が結果を残さず死んだ (OOM/timeout) 直後にジョブを
         # failed に落とす。watchdog (16分) を待たせず数秒で誠実に知らせる

@@ -336,8 +336,9 @@ config ゲート + 別途議論)。
   残: HTML 自体のサイズ (prt 478MB — rawdiffs 全件埋め込み。hosted bundle /
   件数上限 / サイズガードの製品判断)。
   課題台帳: docs/verification/intl_feeds.md IN-1〜3
-- **P3: 規模上限の明文化** — 国家規模アグリゲート (swiss/NL、実測タイムアウト)
-  の扱い (対象外宣言 / per-agency 分割前処理の将来構想化)
+- **P3: 規模上限の明文化** 【完了 2026-09-17 — XL2 に吸収】 — Web の規模上限を
+  実測較正 (stop_times 非圧縮 100MB/世代) して投入時ゲート+公開文書化。
+  国家規模の正道は agency 抽出 (XL4、Summit 後判断) か CLI
 
 ## RD: レポート配信の再設計 【承認 2026-07-24、設計: docs/design/report_delivery.md】
 
@@ -390,8 +391,9 @@ config ゲート + 別途議論)。
       エンドクライアント単位で通す)。残 DoD: コールドスタート課題の実走
     - **G1/G2/G3 【実装 2026-08-19】**: G1 = 日次計算ジョブ数ガード
       (DynamoDB 原子カウンタ、全体200/送信元別30、超過429+Retry-After、
-      fail-open。キャッシュヒットは消費しない)。G2 = アカウントの同時実行クォータ 10 のため予約不可 (保留 —
-      引き上げ申請はユーザーアクション。当面は 10 が実質上限)。G3 = gtfs プロキシの Lambda 内 TTL キャッシュ (300s)。
+      fail-open。キャッシュヒットは消費しない)。G2 = 【恒久化 2026-09-17】
+      同時実行クォータ 10→1000 承認後に worker 予約 4 を設定 (XL3 前半)。
+      G3 = gtfs プロキシの Lambda 内 TTL キャッシュ (300s)。
       経緯: 2026-08-19 の精査で「コストガード」が Budgets 通知のみと判明
   - **RD4c-2: EXP2 エージェント版 A/B** — MCP あり vs URL+llms.txt のみで
     公式告知68項目の突合を自律実行させ、判定一致率・呼び出し回数・迷子率を
@@ -580,10 +582,10 @@ stop_times 2.5〜7.9M 行・zip 28〜63MB・agency 1〜5) と国家アグリゲ�
   400 を本番実証、prt は成功 190.7s/1856MB)。watchdog 文言の非断定化+
   Lambda Destinations OnFailure で worker 即死を数秒で failed に反映。
   developers / docs/api に規模上限を明文化
-- **XL3: Lambda 増強** — Service Quotas 申請済 (同時実行 10→1000: 2026-09-17
-  申請 PENDING。メモリ 3008→10240MB: サポートケース起票済 = ユーザーアクション)。
-  承認後に memory_size 引き上げ+G2 の予約同時実行設定、XL1 再実測で閾値更新。
-  DoD: 反映後に都市圏級1件以上が Web で成功
+- **XL3: Lambda 増強** 【前半完了 2026-09-17】 — 同時実行 10→1000 承認済み・
+  **G2 恒久化完了** (worker 予約 4 をデプロイ、mcp.md §9)。メモリ 3008→10240MB
+  はサポートケース審査中 (承認後: memory_size 引き上げ → trimet/rome/mbta/stm
+  再実測 → MAX_STOPTIMES_MB 更新)。DoD: 反映後に都市圏級1件以上が Web で成功
 - **XL4: agency 抽出比較** (SC1 前倒し) — 【Summit 後に着手判断】国家級 zip の
   agency 一覧提示→選択抽出→抽出後規模でゲート。ペア ID に抽出条件を含める
 - **XL5: 匿名利用の URL 保全** 【実装+配信 2026-09-17 (2026.9.17.1)】 —
