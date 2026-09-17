@@ -1,2 +1,6 @@
-aws-cdk-lib>=2.170,<3
+# aws-cdk-lib は == で固定する: 範囲指定だとマシンごとに補助リソース
+# (AwsCliLayer / BucketDeployment カスタムリソース等) が置換され、デプロイ
+# 内容が環境依存になる (2026-09-18 出張用 Mac で実証 — 2.269.0 に更新された)。
+# 上げるときは全マシンで install し直し、cdk diff を確認してから
+aws-cdk-lib==2.269.0
 constructs>=10,<11
