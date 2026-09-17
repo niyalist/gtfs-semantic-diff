@@ -1,11 +1,30 @@
+# Docker ビルドコンテキスト (infra/stacks/delivery.py の image_dir = リポジトリ
+# ルート、3つの DockerImageFunction が共有)。Dockerfile が COPY するのは
+# pyproject.toml / src / config / infra/runtime/*.py のみ — それ以外は極力
+# 除外する。ここに漏れがあるとマシンごとにイメージハッシュが変わり、
+# コード不変でも Worker/Api が置換される (2026-09-18 出張用 Mac で実証:
+# .claude/.pytest_cache/.ruff_cache の混入でハッシュ不一致)
 .git
+.gitignore
 .venv*
 .cache
+.claude
+.pytest_cache
+.ruff_cache
+.mypy_cache
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.DS_Store
 data
 node_modules
-viewer/node_modules
-viewer/dist
-infra/cdk.out
+viewer
+web
 docs
 tests
 scripts
+infra/cdk.out
+README.md
+README.ja.md
+CLAUDE.md
+LICENSE
