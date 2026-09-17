@@ -570,23 +570,26 @@ stop_times 2.5〜7.9M 行・zip 28〜63MB・agency 1〜5) と国家アグリゲ�
 断って CLI へ誘導」。agency 抽出 (XL4 = SC1 前倒し) は Summit 後に着手判断。
 ログイン別のサイズ上限は不採用 (2026-09-17 ユーザー判断 — 摩擦が大きく G1 で抑止済)。
 
-- **XL1: Lambda 実測と規模ゲート較正** — trimet/rome/mbta/stm を本番アップロード
-  投入し、行数→メモリ・時間の限界曲線を docs/perf に記録 (ゲート閾値の根拠)。
-  DoD: 4フィードの本番実測記録
-- **XL2: プリフライトと誠実なエラー** (P3 を吸収) — 投入時に zip の central
-  directory から stop_times 規模を推定し、上限超過は即時 400 (ja/en、CLI 案内)。
-  OOM を「時間超過」と誤報しない (規模を job に記録し失敗文言へ反映)。
-  developers / docs/api に規模上限と CLI 導線を明文化。
-  DoD: 超過 zip の投入が即時に理由+代替案を返す (本番実走)
+- **XL1: Lambda 実測と規模ゲート較正** 【完了 2026-09-17
+  (docs/perf/XL1_lambda_limits.md)】 — 4フィード全て 60〜90秒で OOM
+  (3008MB)。壁は時間でなくメモリ。成功錨 prt (76MB) との間に
+  上限 100MB/世代 (MAX_STOPTIMES_MB) を較正
+- **XL2: プリフライトと誠実なエラー** (P3 を吸収) 【完了 2026-09-17
+  (2026.9.17.1、実証は XL1 記録内)】 — preflight.py (S3 Range GET で
+  central directory のみ)、超過は即時 400 ja/en + CLI 案内 (trimet 0.5秒で
+  400 を本番実証、prt は成功 190.7s/1856MB)。watchdog 文言の非断定化+
+  Lambda Destinations OnFailure で worker 即死を数秒で failed に反映。
+  developers / docs/api に規模上限を明文化
 - **XL3: Lambda 増強** — Service Quotas 申請済 (同時実行 10→1000: 2026-09-17
   申請 PENDING。メモリ 3008→10240MB: サポートケース起票済 = ユーザーアクション)。
   承認後に memory_size 引き上げ+G2 の予約同時実行設定、XL1 再実測で閾値更新。
   DoD: 反映後に都市圏級1件以上が Web で成功
 - **XL4: agency 抽出比較** (SC1 前倒し) — 【Summit 後に着手判断】国家級 zip の
   agency 一覧提示→選択抽出→抽出後規模でゲート。ペア ID に抽出条件を含める
-- **XL5: 匿名利用の URL 保全** — 投入直後に結果 URL 表示+コピー導線、
-  localStorage 匿名履歴、実行中のページ離脱警告。
-  DoD: 匿名で投入→ページを閉じて再訪→URL に到達できる (実走)
+- **XL5: 匿名利用の URL 保全** 【実装+配信 2026-09-17 (2026.9.17.1)】 —
+  投入直後から再開 URL (?job=) を表示+コピー導線、localStorage 匿名履歴
+  (「この端末での比較履歴」ja/en)、実行中の離脱警告、?job= での再開。
+  残 DoD: ブラウザでの実走目視 (匿名投入→閉じる→再訪→URL 到達)
 
 ## 将来 (スコープ外だが JSON 互換を壊さない)
 

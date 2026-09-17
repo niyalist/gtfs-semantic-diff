@@ -42,6 +42,17 @@ Lambda は約×2) が 15 分天井に近く、処理は単スレッドのため 
 国家級 (swiss 1852MB / ovapi_nl 1038MB) はメモリ増強でも桁が届かず、
 agency 抽出 (XL4) か CLI が正解のまま。
 
+## XL2 ゲートの本番実証 (2026.9.17.1 デプロイ後、同日)
+
+- trimet 再投入 → **0.5秒で 400**: 「stop_times 非圧縮 new: 157MB /
+  old: 175MB、上限 100MB/世代」+ CLI 案内 (ja/en)。従来は16分後に
+  「時間超過」という誤報だった
+- prt 投入 → 受理・**成功 190.7s / ピーク 1856MB** (job anon-6e2850acc21f)。
+  ゲートが正当な規模を弾かないことの錨
+- 副作用事故: 初回デプロイで Dockerfile の COPY に preflight.py が漏れ、
+  API が約5分 500 (即修正・再デプロイ)。教訓: ランタイム新モジュール追加時は
+  Dockerfile の COPY 列を必ず確認
+
 ## 測定方法 (再現)
 
 - 投入: scratchpad の xl1_submit.py 相当 — /api/uploads → presigned POST →
