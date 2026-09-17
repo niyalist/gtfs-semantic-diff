@@ -34,6 +34,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_lambda_destinations as lambda_dest,
     aws_s3 as s3,
     aws_ses as ses,
     aws_s3_deployment as s3deploy,
@@ -154,9 +155,28 @@ class DeliveryStack(Stack):
             # 2026-08-19 のデプロイで 400)。当面はクォータ 10 自体が実質の
             # バースト上限。恒久策: Service Quotas 引き上げ後に予約枠を設定
         )
+        # XL2: worker が結果を残さず死んだ (OOM/timeout) 直後にジョブを
+        # failed に落とす。watchdog (16分) を待たせず数秒で誠実に知らせる
+        failure_fn = lambda_.DockerImageFunction(
+            self,
+            "WorkerFailure",
+            code=lambda_.DockerImageCode.from_image_asset(
+                image_dir,
+                file="infra/runtime/Dockerfile",
+                cmd=["handler.worker_failure"],
+            ),
+            architecture=lambda_.Architecture.ARM_64,
+            memory_size=512,
+            timeout=Duration.seconds(30),
+            environment=common_env,
+            description="gtfs-semantic-diff worker failure recorder",
+        )
         # 失敗ジョブ (OOM/タイムアウト) を Lambda が自動再実行しない。
         # 既定の2回リトライだと poison job が3回走り「終わらない」ように見える
-        worker_fn.configure_async_invoke(retry_attempts=0)
+        worker_fn.configure_async_invoke(
+            retry_attempts=0,
+            on_failure=lambda_dest.LambdaDestination(failure_fn),
+        )
         api_fn = lambda_.DockerImageFunction(
             self,
             "Api",
@@ -183,6 +203,10 @@ class DeliveryStack(Stack):
         bucket.grant_delete(api_fn, "userzips/*")
         jobs_table.grant_read_write_data(worker_fn)
         jobs_table.grant_read_write_data(api_fn)
+        jobs_table.grant_read_write_data(failure_fn)
+        # XL2 プリフライト: 投入時に zip の central directory を Range GET で読む
+        bucket.grant_read(api_fn, "uploads/*")
+        bucket.grant_read(api_fn, "userzips/*")
         userdata_table.grant_read_write_data(worker_fn)
         userdata_table.grant_read_write_data(api_fn)
         feedback_table.grant_read_write_data(api_fn)

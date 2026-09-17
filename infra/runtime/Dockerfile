@@ -14,6 +14,7 @@ ENV GTFS_SEMDIFF_CONFIG=${LAMBDA_TASK_ROOT}/config/default.toml
 ENV HOME=/tmp
 
 COPY infra/runtime/handler.py infra/runtime/versioning.py infra/runtime/webusers.py \
+     infra/runtime/preflight.py \
      infra/runtime/mcp_entry.py infra/runtime/mcp_tools.py ${LAMBDA_TASK_ROOT}/
 
 CMD ["handler.api"]

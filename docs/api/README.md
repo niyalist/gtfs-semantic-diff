@@ -185,5 +185,10 @@ the notice), list severity=major events and compare against the notice.
   limit applies and returns 429 with Retry-After when exceeded (re-reading
   cached pairs costs nothing). For bulk research workloads, run the CLI
   locally.
+- The web service has a size limit: uploads are capped at 100MB per zip, and
+  feeds whose uncompressed stop_times.txt exceeds ~100MB per version
+  (national aggregate feeds and the like) are declined at submission with
+  a 400 and an explanation. The CLI produces the same report locally with
+  no size limit.
 - Japanese text in the output comes from the data itself (stop and route
   names). Event type IDs and JSON keys are English and stable.

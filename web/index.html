@@ -122,6 +122,12 @@
 
 <div id="status" role="status"></div>
 
+<section id="anon-hist" class="hidden">
+  <h2 style="font-size:1.05rem" data-i18n="anon_hist_title"></h2>
+  <p class="note" data-i18n="anon_hist_note"></p>
+  <div id="anon-hist-box"></div>
+</section>
+
 <p class="note" data-i18n="footer"></p>
 
 <script>
@@ -207,6 +213,11 @@ API・MCP・機械可読データは <a href="/developers.html">開発者向け�
     old_zip: "旧zip", new_zip: "新zip",
     upload_label: (name) => `(アップロード) ${name}`,
     hist_empty: "まだ履歴がありません。比較を実行するとここに残ります。",
+    anon_hist_title: "この端末での比較履歴",
+    anon_hist_note: "ログインしていないため、この一覧はこのブラウザにのみ保存されています。結果 URL の控えとしてご利用ください (結果は30日で削除されます)。",
+    anon_running: "実行中", anon_failed: "失敗",
+    resume_note: "計算には数分かかることがあります。このページを閉じても、この URL で後から結果を確認できます:",
+    copy_url: "URL をコピー", copied: "コピーしました",
     th_date: "日付", th_target: "比較対象", open: "開く",
     re_same: "同条件で再比較", re_latest: "新側を最新にして再比較", del: "削除",
     latest_note: `「新側を最新にして再比較」は旧世代 (比較元) はそのまま、
@@ -296,6 +307,11 @@ pair of versions; for uploads, fix the file in question and upload again.`,
     old_zip: "old zip", new_zip: "new zip",
     upload_label: (name) => `(upload) ${name}`,
     hist_empty: "No history yet. Comparisons you run will appear here.",
+    anon_hist_title: "Comparisons from this browser",
+    anon_hist_note: "You are not signed in, so this list is kept only in this browser. Use it to find your result URLs again (results are deleted after 30 days).",
+    anon_running: "running", anon_failed: "failed",
+    resume_note: "Computation can take a few minutes. You can close this page and check the result later at this URL:",
+    copy_url: "Copy URL", copied: "Copied",
     th_date: "Date", th_target: "Compared", open: "Open",
     re_same: "Re-run", re_latest: "Re-run against latest", del: "Delete",
     latest_note: `"Re-run against latest" keeps the older side and swaps the
@@ -357,6 +373,7 @@ function applyLang() {
   }
   renderUserbar();
   if (histItems.length) { renderHistory(); renderZips(); }
+  renderAnonHist();
 }
 
 function setLang(l) {
@@ -541,6 +558,93 @@ $("feed").onchange = async () => {
 };
 
 // ---- ジョブ投入とポーリング ----
+// XL5: 匿名利用でも結果 URL を見失わないための localStorage 履歴と再開 URL。
+// ログイン時はサーバ側の履歴 (マイページ) に残るため対象外
+const ANON_HIST_KEY = "anon_history";
+const anonHist = () => {
+  try { return JSON.parse(localStorage.getItem(ANON_HIST_KEY) || "[]"); }
+  catch { return []; }
+};
+function anonHistUpsert(entry) {
+  if (AUTH.token) return;
+  try {
+    const items = anonHist().filter((x) => x.job_id !== entry.job_id);
+    items.unshift(entry);
+    localStorage.setItem(ANON_HIST_KEY, JSON.stringify(items.slice(0, 20)));
+  } catch { /* localStorage 不可 (プライベートモード等) でも比較は続行 */ }
+  renderAnonHist();
+}
+function renderAnonHist() {
+  const items = AUTH.token ? [] : anonHist();
+  $("anon-hist").classList.toggle("hidden", !items.length);
+  if (!items.length) return;
+  $("anon-hist-box").innerHTML = "<table><tbody>" + items.map((it) => {
+    const st = it.result_url
+      ? `<a href="${esc(it.result_url)}">${T("open")}</a>`
+      : it.status === "failed" ? esc(T("anon_failed"))
+      : `<a href="?job=${encodeURIComponent(it.job_id)}">${esc(T("anon_running"))}</a>`;
+    return `<tr><td>${esc(jdate(it.created_at))}</td>` +
+      `<td>${esc(it.name || it.job_id)}</td><td>${st}</td></tr>`;
+  }).join("") + "</tbody></table>";
+}
+
+let runningJobs = 0;  // 実行中はタブを閉じる前にブラウザの確認を出す
+window.addEventListener("beforeunload", (e) => {
+  if (runningJobs > 0) { e.preventDefault(); e.returnValue = ""; }
+});
+$("status").addEventListener("click", async (e) => {
+  const url = e.target.dataset ? e.target.dataset.copy : "";
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    e.target.textContent = T("copied");
+  } catch { /* clipboard 不許可時は手動コピーに任せる */ }
+});
+// 実行中の再開 URL (?job=)。閉じてもここから結果に戻れる
+const resumeLine = (jobId) => {
+  const url = `${location.origin}${location.pathname}?job=${encodeURIComponent(jobId)}`;
+  return `<br><span class="note">${T("resume_note")} <a href="${esc(url)}">${esc(url)}</a> ` +
+    `<button class="small" type="button" data-copy="${esc(url)}">${T("copy_url")}</button></span>`;
+};
+
+function jobDisplayName(body) {
+  if (body.type === "upload")
+    return [body.old_name || T("old_zip"), body.new_name || T("new_zip")].join(" ⇔ ");
+  const name = [body.org_name, body.feed_name].filter(Boolean).join(" — ")
+    || `${body.org || ""}/${body.feed || ""}`;
+  return (body.old_from_date || body.new_from_date)
+    ? `${name} ${body.old_from_date || "?"} → ${body.new_from_date || "?"}` : name;
+}
+
+async function pollJob(jobId, statusUrl, name) {
+  const started = Date.now();
+  runningJobs++;
+  try {
+    while (true) {
+      await new Promise((ok) => setTimeout(ok, 3000));
+      const st = await getJson(statusUrl);
+      const sec = Math.round((Date.now() - started) / 1000);
+      if (st.status === "succeeded") {
+        showStatus(`${T("done", st.result_url)}<br><span class="note">${T("share_note")}</span>`);
+        anonHistUpsert({ job_id: jobId, created_at: new Date().toISOString(),
+                         name, status: "succeeded", result_url: st.result_url });
+        return;
+      }
+      if (st.status === "failed") {
+        // error_kind: input = 入力 GTFS データ起因 (再試行しても結果は同じ)
+        const hint = st.error_kind === "input"
+          ? `<br><span class="note">${T("fail_input_hint")}</span>` : "";
+        showStatus(`<strong>${T("fail_head")}</strong><br>` +
+          `${esc(apiError(st, "") || T("fail_fallback"))}${hint}`, true);
+        anonHistUpsert({ job_id: jobId, created_at: new Date().toISOString(),
+                         name, status: "failed" });
+        return;
+      }
+      showStatus(T("computing", sec) + resumeLine(jobId));
+    }
+  } finally { runningJobs--; }
+}
+
 async function submitAndPoll(body) {
   showStatus(T("submitting"));
   const endpoint = AUTH.token ? "/api/me/jobs" : "/api/jobs";
@@ -551,29 +655,17 @@ async function submitAndPoll(body) {
   });
   const job = await r.json();
   if (!r.ok) throw new Error(apiError(job, r.status));
+  const name = jobDisplayName(body);
   if (job.status === "succeeded" && job.result_url) {
     showStatus(`${T("cached", job.result_url)}<br><span class="note">${T("share_note")}</span>`);
+    anonHistUpsert({ job_id: job.job_id, created_at: new Date().toISOString(),
+                     name, status: "succeeded", result_url: job.result_url });
     return;
   }
-  const started = Date.now();
-  while (true) {
-    await new Promise((ok) => setTimeout(ok, 3000));
-    const st = await getJson(job.status_url);
-    const sec = Math.round((Date.now() - started) / 1000);
-    if (st.status === "succeeded") {
-      showStatus(`${T("done", st.result_url)}<br><span class="note">${T("share_note")}</span>`);
-      return;
-    }
-    if (st.status === "failed") {
-      // error_kind: input = 入力 GTFS データ起因 (再試行しても結果は同じ)
-      const hint = st.error_kind === "input"
-        ? `<br><span class="note">${T("fail_input_hint")}</span>` : "";
-      showStatus(`<strong>${T("fail_head")}</strong><br>` +
-        `${esc(apiError(st, "") || T("fail_fallback"))}${hint}`, true);
-      return;
-    }
-    showStatus(T("computing", sec));
-  }
+  anonHistUpsert({ job_id: job.job_id, created_at: new Date().toISOString(),
+                   name, status: "running" });
+  showStatus(T("computing", 0) + resumeLine(job.job_id));
+  await pollJob(job.job_id, job.status_url, name);
 }
 
 function repoBody(org, feed, oldUid, newUid, extra = {}) {
@@ -823,6 +915,16 @@ $("hist-sort").onchange = renderHistory;
 applyLang();
 if (lang === "en") selectTab("upload");  // en の既定はアップロード (i18n.md I2)
 initAuth();
+
+// XL5: 再開 URL (?job=...) — 実行中に閉じたページから結果へ戻る導線
+const resumeId = new URLSearchParams(location.search).get("job");
+if (resumeId && /^[A-Za-z0-9_-]{1,64}$/.test(resumeId)) {
+  const known = anonHist().find((x) => x.job_id === resumeId);
+  showStatus(T("computing", 0));
+  pollJob(resumeId, `/api/jobs/${encodeURIComponent(resumeId)}`,
+          (known && known.name) || resumeId)
+    .catch((e) => showStatus(T("err", esc(e.message)), true));
+}
 </script>
 </body>
 </html>

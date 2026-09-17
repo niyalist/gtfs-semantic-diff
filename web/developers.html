@@ -108,6 +108,10 @@ curl -X POST https://diff.gtfs.jp/api/jobs \
 <p class="note">計算済みの世代ペアは即座に返ります (同一ペアは誰が実行しても
 同じ公開 URL)。新規計算には日次の回数上限があり、超過時は 429 が返ります。
 大量の処理は CLI をローカルでどうぞ (下記ドキュメント参照)。</p>
+<p class="note">処理規模の上限: アップロードは zip 100MB/ファイルに加え、
+stop_times.txt の非圧縮サイズが約 100MB/世代 (≈130万便区間) を超えるものは
+投入時にお断りします (国家規模の統合フィード等)。それ以上の規模は
+オープンソースの CLI 版で — 同じレポートを上限なしでローカル生成できます。</p>
 
 <h2>5. ドキュメント</h2>
 <table>
@@ -208,6 +212,11 @@ curl -X POST https://diff.gtfs.jp/api/jobs \
 the same public URL no matter who runs it). New computations are subject to a
 daily limit; when exceeded, the API returns 429. For bulk processing, run the
 CLI locally (see the documentation below).</p>
+<p class="note">Size limits: uploads are capped at 100MB per zip, and feeds
+whose uncompressed stop_times.txt exceeds ~100MB per version (≈1.3M rows —
+national aggregate feeds and the like) are declined at submission. For larger
+feeds use the open-source CLI — it produces the same report locally with no
+limits.</p>
 
 <h2>5. Documentation</h2>
 <table>

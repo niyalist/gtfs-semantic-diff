@@ -27,6 +27,7 @@ import urllib.parse
 from pathlib import Path
 
 import boto3
+import preflight
 import versioning
 import webusers
 from boto3.dynamodb.conditions import Key
@@ -47,6 +48,11 @@ COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
 GOOGLE_LOGIN = os.environ.get("GOOGLE_LOGIN", "")
 WORKER_FUNCTION = os.environ.get("WORKER_FUNCTION", "")
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+# XL2: Web 版で受ける stop_times 非圧縮サイズの上限 (MB/世代)。根拠は
+# docs/perf/XL1_lambda_limits.md の本番実測 — worker 3008MB で prt (76MB) は
+# 成功 (ピーク 2164MB)、trimet (157MB) は OOM。中間に安全側で設定。
+# XL3 (メモリ増強) 反映時に再実測して引き上げる
+MAX_STOPTIMES_MB = int(os.environ.get("MAX_STOPTIMES_MB", "100"))
 JOB_TTL_DAYS = 30
 MAX_PREV = 12  # 入力 UI に見せる世代数
 # uid → 世代の解決に使う遡り数。UI の選択肢 (MAX_PREV) より深いのは、
@@ -533,6 +539,38 @@ def _api_feedback(body: dict) -> dict:
     return _resp(200, {"ok": True, "feedback_id": item["feedback_id"]})
 
 
+class _S3RangeFile:
+    """zipfile 用の読み取り専用 file-like (S3 Range GET)。
+
+    central directory しか読まないため、100MB の zip でも転送は数十 KB。"""
+
+    def __init__(self, bucket: str, key: str):
+        head = s3.head_object(Bucket=bucket, Key=key)
+        self.size = int(head["ContentLength"])
+        self.bucket, self.key, self.pos = bucket, key, 0
+
+    def seekable(self) -> bool:
+        return True
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        base = (0, self.pos, self.size)[whence]
+        self.pos = max(0, base + offset) if whence else max(0, offset)
+        return self.pos
+
+    def tell(self) -> int:
+        return self.pos
+
+    def read(self, n: int = -1) -> bytes:
+        end = self.size if (n is None or n < 0) else min(self.pos + n, self.size)
+        if end <= self.pos:
+            return b""
+        resp = s3.get_object(Bucket=self.bucket, Key=self.key,
+                             Range=f"bytes={self.pos}-{end - 1}")
+        data = resp["Body"].read()
+        self.pos += len(data)
+        return data
+
+
 def _api_uploads() -> dict:
     token = secrets.token_hex(8)
     posts = {}
@@ -583,6 +621,7 @@ def _resolve_uids(org: str, feed: str, old_rid: str, new_rid: str) -> tuple[str,
 def _api_submit(body: dict, user_id: str | None = None,
                 source: str = "unknown") -> dict:
     input_type = body.get("type")
+    scale_mb: dict = {}  # XL2: stop_times 非圧縮 MB (アップロード時のみ計測)
     if input_type == "gtfs_data_jp":
         org = _safe_id(body.get("org", ""))
         feed = _safe_id(body.get("feed", ""))
@@ -656,6 +695,20 @@ def _api_submit(body: dict, user_id: str | None = None,
                 sides[side] = rec["s3_key"]
             else:
                 return _bad("invalid upload keys")
+        # XL2 プリフライト: 中身の規模を投入前に判定し、無理なものは即時に断る
+        # (OOM/タイムアウトを16分後に知らせるのではなく)。走査は central
+        # directory のみで数十 KB・1秒未満
+        scales = {}
+        for side, key in sides.items():
+            try:
+                scales[side] = preflight.zip_scale_mb(
+                    _S3RangeFile(RESULTS_BUCKET, key))
+            except Exception:
+                scales[side] = None  # 読めない場合はゲートせず worker に任せる
+        gate = preflight.gate_message(scales, MAX_STOPTIMES_MB)
+        if gate:
+            return _bad(gate[0], en=gate[1])
+        scale_mb = {side: sc["stop_times"] for side, sc in scales.items() if sc}
         prefix = "u" if user_id else "anon"
         job_id = f"{prefix}-{secrets.token_hex(6)}"
         status_url = f"/api/jobs/{urllib.parse.quote(job_id)}"
@@ -686,12 +739,16 @@ def _api_submit(body: dict, user_id: str | None = None,
                         " Retry later, or run the CLI locally for bulk work",
         }, headers={"retry-after": "3600"})
     now = int(time.time())
-    _jobs_table().put_item(Item={
+    item = {
         "job_id": job_id,
         "status": "queued",
         "created_at": now,
         "expire_at": now + JOB_TTL_DAYS * 86400,
-    })
+    }
+    if scale_mb:
+        # 失敗時 (watchdog) に規模起因かどうかを言い当てるために保存 (XL2)
+        item["scale_mb"] = scale_mb
+    _jobs_table().put_item(Item=item)
     lam.invoke(
         FunctionName=WORKER_FUNCTION,
         InvocationType="Event",
@@ -714,9 +771,16 @@ def _api_status(job_id: str) -> dict:
         since = int(item.get("running_since") or item.get("created_at") or 0)
         if since and time.time() - since > WORKER_MAX_SECONDS:
             status = "failed"
-            _update(job_id, status="failed",
-                    error="処理が制限時間 (15分) を超えました",
-                    error_en="The job exceeded the 15-minute time limit")
+            # XL2: OOM も timeout もここに来る (worker は例外ハンドラを走れず
+            # に死ぬ)。「時間超過」と断定せず、規模起因なら明示して CLI へ誘導
+            ja, en, kind = preflight.failure_message(
+                item.get("scale_mb") or {}, MAX_STOPTIMES_MB)
+            item["error"], item["error_en"] = ja, en
+            extra = {}
+            if kind:
+                item["error_kind"] = kind
+                extra["error_kind"] = kind
+            _update(job_id, status="failed", error=ja, error_en=en, **extra)
     body = {"job_id": job_id, "status": status}
     if "result_url" in item:
         body["result_url"] = item["result_url"]
@@ -770,6 +834,30 @@ def _load_labeled(label_ja: str, label_en: str, path, config, meta=None):
     except GtfsLoadError as e:
         raise GtfsLoadError(f"{label_ja}: {e}",
                             en=f"{label_en}: {e.en}") from e
+
+
+def worker_failure(event, context):  # noqa: ARG001 - Lambda signature
+    """worker の非同期呼び出しが失敗した直後に Lambda Destinations
+    (OnFailure) から呼ばれる (XL2)。
+
+    OOM / Lambda timeout では worker 自身の例外ハンドラが走れないため、
+    ここでジョブを即時 failed に落とす。これが無いと利用者は watchdog
+    (16分) まで「実行中」を見せられる。"""
+    payload = event.get("requestPayload") or {}
+    job_id = str(payload.get("job_id", ""))
+    if not job_id:
+        logger.warning("worker_failure: job_id なし: %s", json.dumps(event)[:500])
+        return
+    item = _jobs_table().get_item(Key={"job_id": job_id}).get("Item") or {}
+    if item.get("status") not in ("", None, "queued", "running"):
+        return  # 既に終端状態 (成功後の遅延通知等) は触らない
+    ja, en, kind = preflight.failure_message(
+        item.get("scale_mb") or {}, MAX_STOPTIMES_MB)
+    extra = {"error_kind": kind} if kind else {}
+    _update(job_id, status="failed", error=ja, error_en=en,
+            finished_at=int(time.time()), **extra)
+    logger.info("worker failure recorded: %s (condition=%s)", job_id,
+                (event.get("requestContext") or {}).get("condition"))
 
 
 def worker(event, context):  # noqa: ARG001 - Lambda signature
