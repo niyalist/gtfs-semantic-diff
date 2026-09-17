@@ -23,6 +23,7 @@ Python 3.14 と uv が前提 (`brew install uv` → uv が Python も入れる):
 
 ```sh
 uv venv .venv.nosync --python 3.14
+rm -rf .venv   # エディタ等が空の .venv 実ディレクトリを作っていると ln -s が失敗する
 ln -s .venv.nosync .venv
 uv pip install -e '.[dev]' --python .venv.nosync/bin/python
 uv pip install -r infra/requirements.txt --python .venv.nosync/bin/python  # CDK 用
@@ -34,7 +35,9 @@ infra/cdk.json の app は `../.venv.nosync/bin/python app.py` を指すため�
 
 ## 2. Node (viewer + cdk CLI)
 
-Node 22/24 系 (`brew install node`)。
+Node 22/24 系 (`brew install node`)。26 でも動作実績あり (viewer テスト・
+build_viewer.sh・cdk synth/deploy とも成功。jsii が「未検証バージョン」警告を
+出すだけ — `JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1` で黙らせられる)。
 
 ```sh
 cd viewer && npm install && npm test && cd ..   # vitest 36 件
@@ -100,3 +103,13 @@ https://diff.gtfs.jp/api/uploads` が 200 を返すことを確認する習慣
 2. `.venv.nosync/bin/python -m pytest -q` — 緑か
 3. デプロイするなら: `aws sso login` 済みか、Docker 起動済みか
 4. 終わったら `git push` (別マシン間の受け渡しは常に git 経由)
+
+## 実績
+
+- **2026-09-18**: 出張用 Mac (Apple Silicon、新規環境) で本手順により
+  clone → pytest → viewer → cdk deploy (main 797dc3e) → 本番動作確認
+  (POST /api/uploads 200・サイト 200・MCP list_pairs 正常) まで完走。
+  この検証で見つかった問題は同日修正済み: mcp/httpx を dev extra 化
+  (pytest 294 が一発再現)、ruff 規則セット固定 (バージョン差の揺れ解消)、
+  .dockerignore 拡充 (イメージハッシュのマシン非依存化)、aws-cdk-lib 固定
+  (2.269.0)。次回の通常デプロイで .dockerignore 変更後のハッシュに揃う
