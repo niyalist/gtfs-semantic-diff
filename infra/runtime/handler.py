@@ -32,7 +32,11 @@ import versioning
 import webusers
 from boto3.dynamodb.conditions import Key
 
+# Lambda の Python ランタイムは root logger に既にハンドラを付けているため
+# basicConfig は無効 (2026-09-19 に本番 14 日分で INFO が 0 件と判明)。root の
+# レベルを直接下げる — ローカル実行 (テスト・手元起動) でも同じ挙動になる
 logging.basicConfig(level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 import os  # noqa: E402
