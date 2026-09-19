@@ -59,7 +59,8 @@ REGISTRY: dict[str, dict] = {
     },
     "ovapi_nl": {  # calendar_dates 主体 + 国家規模 (大・ストレステスト)
         "old": "http://gtfs.ovapi.nl/nl/archive/NL-20260101.gtfs.zip",
-        "new": "http://gtfs.ovapi.nl/nl/NL-20260711.gtfs.zip",
+        # 最新版置き場 (nl/ 直下) は次版公開で archive/ へ移され 404 になる — archive/ が恒久
+        "new": "http://gtfs.ovapi.nl/nl/archive/NL-20260711.gtfs.zip",
     },
 }
 
