@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
+import logging
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -47,6 +49,45 @@ pair="nagai-unyu__Nagaibus__4a4a81e7__b1be1add"). Upload-based results \
 (r/u/{id}.html / r/anon/{id}.html) use pair="u/{id}"; a bare id (u-xxxx) is \
 also auto-completed by each tool.
 """
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # 利用記録は INFO — root の設定に依存せず出す
+
+# AN2 (docs/ops/analytics.md): 利用記録に残すツール引数。pair/lang/org/feed は
+# 公開 ID で、それ以外の引数 (自由文の query 等) は記録しない
+_LOGGED_ARGS = ("pair", "lang", "org", "feed", "old", "new", "route", "pref")
+
+
+def request_log_fields(body: bytes, headers: dict) -> dict | None:
+    """MCP リクエスト 1 件の利用記録 (CloudWatch Logs に 1 行の JSON で残す)。
+
+    CloudFront ログには `POST /mcp` としか残らないため、AI エージェント経由の
+    利用 (どのツールが・どのペアに・どのクライアントから) はここでしか分からない。
+    IP は含めない (G1 ガード用のハッシュとも別)。tools/call と initialize
+    (クライアント名・版) だけを記録し、他の JSON-RPC (ping/tools/list 等) と
+    解釈できない body は None。"""
+    try:
+        msg = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(msg, dict):
+        return None
+    method = msg.get("method")
+    params = msg.get("params") or {}
+    hdrs = {k.lower(): v for k, v in (headers or {}).items()}
+    rec = {"mcp": method, "ua": (hdrs.get("user-agent") or "")[:120]}
+    if method == "tools/call":
+        args = params.get("arguments") or {}
+        rec["tool"] = str(params.get("name") or "")[:64]
+        rec["args"] = {k: str(args[k])[:120] for k in _LOGGED_ARGS if k in args}
+        return rec
+    if method == "initialize":
+        info = params.get("clientInfo") or {}
+        rec["client"] = str(info.get("name") or "")[:64]
+        rec["client_version"] = str(info.get("version") or "")[:32]
+        return rec
+    return None
+
 
 server = MCPServer(
     name="gtfs-semantic-diff",
@@ -227,6 +268,9 @@ def lambda_handler(event, context):  # noqa: ARG001 - Lambda signature
     T.set_request_source("mcp:" + hashlib.sha256(_ip.encode()).hexdigest()[:12])
     raw = event.get("body") or ""
     body = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode()
+    rec = request_log_fields(body, event.get("headers") or {})
+    if rec:
+        logger.info("mcp_request %s", json.dumps(rec, ensure_ascii=False))
     headers = [(k.lower().encode(), v.encode())
                for k, v in (event.get("headers") or {}).items()]
     scope = {

@@ -561,6 +561,20 @@ STM/swiss 型 (1ファイル内に複数シーズン+通年層が同居し毎年
   docs/verification/AN1_search_console.md に記録
   (d) sitemap.xml の要否判断を同記録に残す
 
+- **AN2: アクセス計測はサーバ側ログ中心** 【決定・実装 2026-09-19、
+  docs/ops/analytics.md】 — GA4 を実装まで進めたうえで見送り (理由は同文書 §1:
+  本命の API/MCP/エージェント利用が GA では測れない、国際コミュニティでの
+  受け止め、規約 §3 の範囲内で足りる)。実装: CloudFront 標準ログ → S3
+  `AccessLogs` (Cookie なし、IP を含むため 90 日で削除)、MCP ツール呼出の
+  構造化ログ (IP なし)、集計 scripts/access_stats.py (IP を出力しない。
+  render = ビューアのデータ JSON 取得数、クライアント種別に AI エージェント/
+  クローラ判定)。CLI へのテレメトリはどの案でも入れない。
+  DoD: (a) デプロイ後にログが S3 に届き、集計スクリプトが本番ログで走る
+  【完了 2026-09-19、docs/verification/AN2_access_stats.md — 副産物として
+  Lambda の INFO ログが出ていなかった潜在バグを修正】
+  (b) 初回の月次集計を同記録に追記 (2026-10 月初)
+  (c) 月次集計の運用 (§4) を開始
+
 ## XL: 大規模フィード対応 【承認 2026-09-17 (MobilityData Summit 前)、実測: docs/perf/XL1_lambda_limits.md】
 
 背景 (2026-09-17 規模調査): 日本は gtfs-data.jp 全603フィード中最大 8.3MB

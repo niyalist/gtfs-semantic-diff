@@ -53,7 +53,9 @@ roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/
 承認後: memory_size 引き上げ→XL1 再実測→MAX_STOPTIMES_MB 更新)**・
 XL5 のブラウザ実走目視・XL4 (agency 抽出 — Summit 後判断)・
 RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
-AN1 (Search Console プロパティ確立 — docs/ops/search_console.md、ユーザーアクション含む)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
+AN1 (Search Console プロパティ確立 — docs/ops/search_console.md、ユーザーアクション含む)・
+AN2 (アクセス計測 — docs/ops/analytics.md。GA は見送り、CloudFront ログ + scripts/access_stats.py
+の月次集計。初回集計の記録待ち)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
 含む)・V6 (運賃深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。
 STM group46 の self_check 2件はその既知の露頭)。I トラック (国際化) は 2026-09-16 全完了 —
 恒常ルールは i18n.md §4。未実装イベント型は detection.md §7 に列挙。
@@ -117,6 +119,9 @@ trip_matcher など「原則不使用」とした部分のみ)。
   今後の改訂で非推奨方向にあるため、データに存在しても同定・分類ロジックの入力には
   使わない。標準 GTFS の内容 (名称・座標・停車列・時刻) から再構成する。
   ※ L0 diff がこれらのファイルを列挙・記帳すること自体は網羅性の要請であり継続する。
+- **クライアント側の計測タグ (GA 等) と CLI へのテレメトリは入れない** (2026-09-19
+  決定、docs/ops/analytics.md §1): 利用状況はサーバ側ログ (CloudFront 標準ログ・
+  MCP 構造化ログ) を集計して把握する。集計出力に IP を含めない。
 - **色だけで情報を表さない** (開発者は色弱): レポート・地図・表・UI のすべてで、
   太字・記号 (▲▼・新/廃)・線種・数値を第1チャネルとし、色はその補強に限る。
 - 日本語出力が第一級。イベントタイプは英語 ID + 日本語表示名を対で管理 (model/event_types.py)。

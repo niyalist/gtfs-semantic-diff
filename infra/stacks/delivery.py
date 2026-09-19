@@ -83,6 +83,24 @@ class DeliveryStack(Stack):
             ],
         )
 
+        # AN2 (docs/ops/analytics.md): CloudFront 標準ログの置き場。クライアント側の
+        # 計測タグ (GA 等) は置かない方針で、閲覧・API・MCP の利用はこのログで数える。
+        # 生ログは IP を含むため 90 日で削除 (利用規約 §3「IP は最長 90 日」)。
+        # 集計 (scripts/access_stats.py) は IP を出力しない。
+        # 標準ログ (legacy) は ACL 書き込みが必要 → OBJECT_WRITER
+        log_bucket = s3.Bucket(
+            self,
+            "AccessLogs",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            object_ownership=s3.ObjectOwnership.OBJECT_WRITER,
+            removal_policy=RemovalPolicy.RETAIN,
+            lifecycle_rules=[
+                s3.LifecycleRule(id="expire-raw-logs", expiration=Duration.days(90)),
+            ],
+        )
+
         # --- ジョブ実行 (W3-1) ---
 
         jobs_table = dynamodb.Table(
@@ -294,6 +312,11 @@ class DeliveryStack(Stack):
             comment="gtfs-semantic-diff results",
             default_root_object="index.html",
             **domain_kwargs,
+            # AN2: 標準ログ (Cookie は含めない — 認証トークンをログに落とさない)
+            enable_logging=True,
+            log_bucket=log_bucket,
+            log_file_prefix="cloudfront/",
+            log_includes_cookies=False,
             default_behavior=cloudfront.BehaviorOptions(
                 origin=origins.S3BucketOrigin.with_origin_access_control(bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -501,6 +524,7 @@ class DeliveryStack(Stack):
             )
 
         CfnOutput(self, "BucketName", value=bucket.bucket_name)
+        CfnOutput(self, "AccessLogBucket", value=log_bucket.bucket_name)
         CfnOutput(self, "DistributionId", value=distribution.distribution_id)
         CfnOutput(self, "DistributionDomain", value=distribution.distribution_domain_name)
         CfnOutput(self, "ApiEndpoint", value=http_api.api_endpoint)

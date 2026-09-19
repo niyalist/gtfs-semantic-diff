@@ -16,6 +16,8 @@ dependencies = [
 # mcp は MCP サーバーの contract test 用 — バージョン指定は実行環境
 # (infra/runtime/Dockerfile の "mcp~=2.0") と揃えて更新すること
 dev = ["pytest>=8.0", "ruff", "mypy", "mcp~=2.0", "httpx"]
+# 運用スクリプト用 (scripts/access_stats.py が S3 のログを読む — docs/ops/analytics.md)
+ops = ["boto3"]
 
 [project.scripts]
 gtfs-semantic-diff = "gtfs_semantic_diff.cli:main"
