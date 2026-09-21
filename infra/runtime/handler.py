@@ -53,10 +53,11 @@ GOOGLE_LOGIN = os.environ.get("GOOGLE_LOGIN", "")
 WORKER_FUNCTION = os.environ.get("WORKER_FUNCTION", "")
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 # XL2: Web 版で受ける stop_times 非圧縮サイズの上限 (MB/世代)。根拠は
-# docs/perf/XL1_lambda_limits.md の本番実測 — worker 3008MB で prt (76MB) は
-# 成功 (ピーク 2164MB)、trimet (157MB) は OOM。中間に安全側で設定。
-# XL3 (メモリ増強) 反映時に再実測して引き上げる
-MAX_STOPTIMES_MB = int(os.environ.get("MAX_STOPTIMES_MB", "100"))
+# docs/perf/XL1_lambda_limits.md の本番実測。XL3 (worker 10240MB、2026-09-22)
+# 後の再実測: trimet 157MB は 427s/4.7GB で余裕、rome 237MB は 892s (15分天井の
+# 99%)、mbta 240MB はタイムアウト、stm 300MB は 822s。237MB 以上は時間の綱渡り
+# なので、確実圏 (157MB) と綱渡り圏 (237MB) の間に安全側で設定
+MAX_STOPTIMES_MB = int(os.environ.get("MAX_STOPTIMES_MB", "200"))
 JOB_TTL_DAYS = 30
 MAX_PREV = 12  # 入力 UI に見せる世代数
 # uid → 世代の解決に使う遡り数。UI の選択肢 (MAX_PREV) より深いのは、

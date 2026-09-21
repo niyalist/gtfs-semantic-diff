@@ -596,10 +596,13 @@ stop_times 2.5〜7.9M 行・zip 28〜63MB・agency 1〜5) と国家アグリゲ�
   400 を本番実証、prt は成功 190.7s/1856MB)。watchdog 文言の非断定化+
   Lambda Destinations OnFailure で worker 即死を数秒で failed に反映。
   developers / docs/api に規模上限を明文化
-- **XL3: Lambda 増強** 【前半完了 2026-09-17】 — 同時実行 10→1000 承認済み・
-  **G2 恒久化完了** (worker 予約 4 をデプロイ、mcp.md §9)。メモリ 3008→10240MB
-  はサポートケース審査中 (承認後: memory_size 引き上げ → trimet/rome/mbta/stm
-  再実測 → MAX_STOPTIMES_MB 更新)。DoD: 反映後に都市圏級1件以上が Web で成功
+- **XL3: Lambda 増強** 【完了 2026-09-22】 — 同時実行 10→1000 承認済み・
+  **G2 恒久化完了** (worker 予約 4、mcp.md §9)。メモリ 3008→**10240MB**
+  (AWS サポート回答: MemorySize はクォータ対象外・申請不要。3008 は初期制限)。
+  再実測 (docs/perf/XL1_lambda_limits.md「XL3 再実測」): trimet 427s ✓ /
+  rome 892s ✓ (天井 99%) / mbta timeout ✗ / stm 822s ✓ — 壁はメモリから
+  時間へ。**MAX_STOPTIMES_MB = 200** に較正 (2026.9.22.1)。DoD 達成
+  (都市圏級 3 件が Web で成功)
 - **XL4: agency 抽出比較** (SC1 前倒し) — 【Summit 後に着手判断】国家級 zip の
   agency 一覧提示→選択抽出→抽出後規模でゲート。ペア ID に抽出条件を含める
 - **XL5: 匿名利用の URL 保全** 【実装+配信 2026-09-17 (2026.9.17.1)】 —

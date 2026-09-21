@@ -186,7 +186,7 @@ the notice), list severity=major events and compare against the notice.
   cached pairs costs nothing). For bulk research workloads, run the CLI
   locally.
 - The web service has a size limit: uploads are capped at 100MB per zip, and
-  feeds whose uncompressed stop_times.txt exceeds ~100MB per version
+  feeds whose uncompressed stop_times.txt exceeds ~200MB per version
   (national aggregate feeds and the like) are declined at submission with
   a 400 and an explanation. The CLI produces the same report locally with
   no size limit.

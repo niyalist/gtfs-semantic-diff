@@ -149,6 +149,8 @@ class DeliveryStack(Stack):
             # G1 (mcp.md §9): 日次の計算ジョブ数ガード (超過は 429)
             "DAILY_COMPUTE_LIMIT": "200",
             "DAILY_COMPUTE_LIMIT_PER_SOURCE": "30",
+            # XL2 の規模ゲート MAX_STOPTIMES_MB は handler.py の既定値が正
+            # (再実測時だけここで一時的に上書きする — docs/perf/XL1_lambda_limits.md)
         }
         worker_fn = lambda_.DockerImageFunction(
             self,
@@ -160,10 +162,12 @@ class DeliveryStack(Stack):
             ),
             # Apple Silicon でのローカルビルド (arm64) と一致させる
             architecture=lambda_.Architecture.ARM_64,
-            # 大規模フィード (産交バス: stop_times 55万行×2世代) に耐えるサイズ。
-            # Lambda は memory に比例して vCPU も増える。4096 はこのアカウントの
-            # クォータ (3008MB) を超えたため上限値を使う (引き上げ申請は任意)
-            memory_size=3008,
+            # XL3 (2026-09-22): Lambda の上限 10240MB。3008 はこのアカウントの
+            # 初期制限で、AWS サポート回答 (2026-09-22) により MemorySize は
+            # クォータ対象外・申請不要と判明。都市圏級 (trimet〜stm、
+            # stop_times 157〜300MB) を Web で通すため上限値にする。
+            # コスト上限: 予約同時実行 4 × 15分 × 10GB ≈ 1 ジョブ最大 $0.12
+            memory_size=10240,
             ephemeral_storage_size=Size.gibibytes(2),
             timeout=Duration.minutes(15),
             environment=common_env,

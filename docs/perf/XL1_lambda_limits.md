@@ -59,3 +59,44 @@ agency 抽出 (XL4) か CLI が正解のまま。
   /api/jobs {type:"upload"}
 - 計測: CloudWatch `/aws/lambda/...Worker...` の REPORT 行
   (Duration / Max Memory Used / Error Type)
+
+## XL3 再実測 (2026-09-22、worker **10240MB** / 15分 / 2026.9.22.1)
+
+AWS サポート回答 (2026-09-22): MemorySize はクォータ対象外で申請不要、
+10240MB は全アカウント共通の上限。3008 は初期制限だった (CloudFormation は
+10240 をそのまま受理)。再実測のためゲートを暫定 320MB に上げて 4 件を投入
+(scripts/web_submit_upload.py — ブラウザと同じ API 経路)。
+
+| feed | stop_times 非圧縮 (new) | 結果 | Duration | ピーク RSS | ジョブ |
+|---|--:|---|--:|--:|---|
+| trimet | 157MB | ✓ | 427s (天井の 47%) | 4723MB (46%) | anon-6eed91d4355a |
+| rome | 237MB | ✓ | **892s (99%)** | 9238MB (90%) | anon-1bbc0bad2a4f |
+| mbta | 240MB | ✗ **timeout** | 900s | 8137MB | anon-31681145ddb2 |
+| stm | 300MB | ✓ | 822s (91%) | 9439MB (92%) | anon-7c46857c2243 |
+
+- **壁はメモリから時間に移った**。3008MB で 60〜90 秒で OOM だった 4 件が、
+  10240MB では 3 件完走。ただし 237MB 以上は 15 分天井の 90〜99% で綱渡り
+- **stop_times サイズは時間の予測子として弱い**: mbta (240MB) は stm (300MB)
+  より重い。mbta はルール段を 14 分時点で完了 (explained_ratio 0.9527 を
+  記録) したあと出力段で天井に到達。イベント数 (mbta 26,788 vs stm 20,685、
+  ローカル実測でルール段 616s vs 387s) が効いている。プリフライトは central
+  directory しか読まないため、事前に分かるのは stop_times サイズだけ
+- XL2 の誠実な失敗が機能: mbta は 905 秒で「制限時間15分またはメモリ上限
+  … stop_times 非圧縮 最大 240MB … CLI 版なら」と ja/en で返った
+- 副産物: 2026-09-19 のログレベル修正により、worker の pipeline INFO
+  (explained_ratio 等) が CloudWatch で読めるようになった。上の「どこまで
+  進んだか」はこれで判定した
+
+### 較正: **MAX_STOPTIMES_MB = 200** (handler.py 既定値、2026.9.22.1)
+
+確実圏 (trimet 157MB、時間・メモリとも 50% 未満) と綱渡り圏 (rome 237MB、
+時間 99%) の間に安全側で置く。線形内挿で 200MB は約 680s・7GB。237〜300MB
+は「成功することもある」規模だが、失敗時に利用者が 16 分待たされる体験
+(XL2 の動機) を避けるため受け付けない。CDK 側の環境変数上書きは外し、
+handler 既定値の 1 箇所を正とする (再実測時だけ delivery.py で一時上書き)。
+
+### 次に効く手 (XL 残)
+
+- 時間天井に対して vCPU 増は効かなかった (単スレッド)。出力段 (HTML/JSON
+  逐次書き出し) の短縮か、ルール段の重い規則の特定が次の伸びしろ
+- 国家級 (swiss 1852MB / ovapi_nl 1038MB) は依然桁違い — XL4 (agency 抽出) か CLI

@@ -28,14 +28,16 @@ input (zip x N generations | gtfs-data.jp API)
 - docs/design/ontology.md — イベントカタログ (設計。現行 v0.2.4)
 - **docs/spec/detection.md — 変化検出仕様書 (実装準拠・網羅)。検出ロジックを変更したら必ず同期更新する**
 
-## 現在の状態 (2026-09-14 更新)
+## 現在の状態 (2026-09-22 更新)
 
 roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/UQ/SP/G/RD4a〜c/IM1) は
 **完了**。経緯・完了記録の正は docs/design/roadmap.md、検証ログは docs/verification/、
 性能記録は docs/perf/ — このファイルには要約と運用情報のみ置く。
 
-- コア: 検証3フィードで explained_ratio 1.0000、pytest 276件。最大ペア (RawDiff 3万)
-  約2秒、国家規模フィード (swiss・ovapi_nl 等) も完走 (docs/perf/P2_*.md)
+- コア: 検証3フィードで explained_ratio 1.0000、pytest 299件。最大ペア (RawDiff 3万)
+  約2秒、国家規模フィード (swiss・ovapi_nl 等) も完走 (docs/perf/P2_*.md)。
+  Web の worker は 10240MB/15分、規模ゲート stop_times 200MB/世代 (XL3、
+  docs/perf/XL1_lambda_limits.md)
 - 出力: HTML レポート (`compare --html` 自己完結 / `--html-lite` / `--html-dir` 分割)、
   AI digest (`--digest*`)、routes.digest.json、mapping.json (ID 対応 — 説明台帳が採択した
   対応のみ)、events/rawdiffs。AI/API 体系の設計は docs/design/ai_interface.md、
@@ -49,9 +51,7 @@ roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/
   src/gtfs_semantic_diff/report/viewer_template.html に同梱 (vitest 組込済み)
 - バージョンは CalVer `YYYY.M.D.N` (同日通番付き)
 
-残タスク: **XL3 後半 (Lambda メモリ 3008→10240 — AWS サポートケース承認待ち。
-承認後: memory_size 引き上げ→XL1 再実測→MAX_STOPTIMES_MB 更新)**・
-XL5 のブラウザ実走目視・XL4 (agency 抽出 — Summit 後判断)・
+残タスク: XL5 のブラウザ実走目視・XL4 (agency 抽出 — Summit 後判断)・
 RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
 AN1 (Search Console プロパティ確立 — docs/ops/search_console.md、ユーザーアクション含む)・
 AN2 (アクセス計測 — docs/ops/analytics.md。GA は見送り、CloudFront ログ + scripts/access_stats.py
