@@ -23,7 +23,10 @@ web
 docs
 tests
 scripts
-infra/cdk.out
+# infra/ は runtime/ (COPY 対象) 以外を除外 — スタック定義 (stacks/) の編集で
+# イメージが再ビルドされないように (2026-09-22、XL3 のメモリ変更時に判明)
+infra/*
+!infra/runtime
 README.md
 README.ja.md
 CLAUDE.md
