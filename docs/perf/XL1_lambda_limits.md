@@ -83,6 +83,9 @@ AWS サポート回答 (2026-09-22): MemorySize はクォータ対象外で申�
   directory しか読まないため、事前に分かるのは stop_times サイズだけ
 - XL2 の誠実な失敗が機能: mbta は 905 秒で「制限時間15分またはメモリ上限
   … stop_times 非圧縮 最大 240MB … CLI 版なら」と ja/en で返った
+- 再実測は運用アラームを鳴らす (想定内): WorkerSlowAlarm (>13分) が rome/
+  mbta/stm で、WorkerErrorAlarm が mbta のタイムアウトで発報。この規模を
+  流すときはアラートメールが来る前提で行う
 - 副産物: 2026-09-19 のログレベル修正により、worker の pipeline INFO
   (explained_ratio 等) が CloudWatch で読めるようになった。上の「どこまで
   進んだか」はこれで判定した
