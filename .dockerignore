@@ -27,6 +27,9 @@ scripts
 # イメージが再ビルドされないように (2026-09-22、XL3 のメモリ変更時に判明)
 infra/*
 !infra/runtime
+# ↑の再包含 (!) は後勝ちで **/__pycache__ の除外も打ち消すため、明示的に
+# 再除外する (2026-09-28、復帰チェックで .pyc 6個の混入によるハッシュ不一致を実証)
+infra/runtime/__pycache__
 README.md
 README.ja.md
 CLAUDE.md
