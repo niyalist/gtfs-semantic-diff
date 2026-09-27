@@ -104,6 +104,32 @@ https://diff.gtfs.jp/api/uploads` が 200 を返すことを確認する習慣
 3. デプロイするなら: `aws sso login` 済みか、Docker 起動済みか
 4. 終わったら `git push` (別マシン間の受け渡しは常に git 経由)
 
+## 7. 別マシンで作業した後に元マシンへ戻るとき (復帰チェックリスト)
+
+前提: 出先のマシンで `git push` を済ませ、本番は main と一致している。
+
+```sh
+git pull
+uv pip install -e '.[dev,ops]' --python .venv.nosync/bin/python   # extra が増えていることがある
+uv pip install -r infra/requirements.txt --python .venv.nosync/bin/python
+.venv.nosync/bin/python -m pytest -q && .venv.nosync/bin/ruff check src tests
+cd viewer && npm install --no-audit --no-fund && npm test && cd ..
+aws sso login --profile AdministratorAccess-948645358251
+cd infra && AWS_PROFILE=AdministratorAccess-948645358251 npx cdk diff && cd ..
+```
+
+- **`cdk diff` が「差分なし」なら環境は揃っている** (これが決定打。イメージ
+  ハッシュはビルドコンテキスト = pyproject/src/config/infra/runtime だけで
+  決まる)。差分が出たら、どのマシンでも同じ差分になるかを確認してから
+  デプロイする — 片方だけで出るなら環境が割れている
+- データ: `data/` は git 管理外。API 系はキャッシュが再取得される。国際
+  フィードは `scripts/fetch_intl_feeds.py` で再取得 (URL は恒久固定)。
+  集計出力 (`data/stats/`) は出先のものを持ち帰る必要はない (再集計可能。
+  ただし生ログは 90 日で消える — docs/ops/analytics.md §4)
+- Claude Code のプロジェクトメモリはマシン別。恒常事項は CLAUDE.md にあるので
+  同期不要。出先で CLAUDE.md の「現在の状態」「残タスク」を更新していれば
+  それが引き継ぎ書になる
+
 ## 実績
 
 - **2026-09-18**: 出張用 Mac (Apple Silicon、新規環境) で本手順により
@@ -113,3 +139,6 @@ https://diff.gtfs.jp/api/uploads` が 200 を返すことを確認する習慣
   (pytest 294 が一発再現)、ruff 規則セット固定 (バージョン差の揺れ解消)、
   .dockerignore 拡充 (イメージハッシュのマシン非依存化)、aws-cdk-lib 固定
   (2.269.0)。次回の通常デプロイで .dockerignore 変更後のハッシュに揃う
+- **2026-09-18〜27**: 出張中は同 Mac のみで開発・デプロイ (AN2 サーバ側計測、
+  XL3 完了、2026.9.22.1)。帰宅時点で main = origin = 本番 (aaaf237)。
+  元マシンへの復帰は §7 の手順で行う
