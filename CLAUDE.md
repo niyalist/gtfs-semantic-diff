@@ -54,8 +54,8 @@ roadmap の全マイルストーン (M0〜M10) と主要トラック (V/W3/SD/P/
 残タスク: XL5 のブラウザ実走目視・XL4 (agency 抽出 — Summit 後判断)・
 RD4c-2 (EXP2 エージェント版 A/B 検証)・IM3 (ID 対応の消費者シミュレーション)・
 AN1 (Search Console プロパティ確立 — docs/ops/search_console.md、ユーザーアクション含む)・
-AN2 (アクセス計測 — docs/ops/analytics.md。GA は見送り、CloudFront ログ + scripts/access_stats.py
-の月次集計。初回集計の記録待ち)・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
+**AN2 は月次運用中 (毎月初に前月分を scripts/access_stats.py で集計 —
+analytics.md §4。生ログ 90 日。初回 2026-10-06 完了)**・RD2 (検証モードの生データ DL)・RD3 (地図リッチ化 — 基図の PMTiles 自前配信
 含む)・V6 (運賃深掘り)・SC1〜SC3 (STM 型シーズン同居 — docs/design/scope_and_seasons.md。
 STM group46 の self_check 2件はその既知の露頭)。I トラック (国際化) は 2026-09-16 全完了 —
 恒常ルールは i18n.md §4。未実装イベント型は detection.md §7 に列挙。
