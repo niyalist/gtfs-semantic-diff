@@ -75,19 +75,30 @@ AWS_PROFILE=AdministratorAccess-948645358251 \
 - 分類の追加 (新しい AI エージェントの UA 等) は `KNOWN_AGENTS` に足し、
   tests/test_access_stats.py に例を追加する。
 
-MCP のツール別集計は CloudWatch Logs Insights で (ロググループは api Lambda):
+**MCP の「実利用」は CloudFront ログでは測れない** (POST /mcp には
+initialize 等のハンドシェイクが大量に混ざる — 2026-11-02 の深掘りで、45日間の
+POST /mcp 約3,000 に対し実際の tools/call は3件だった)。実利用は CloudWatch
+Logs Insights で数える (ロググループは api Lambda):
 
 ```
+# 実呼出 (tools/call) の件数と中身 — 月次でこれを確認する
 fields @timestamp, @message
+| filter @message like /tools.call/ and @message like /mcp_request/
+| sort @timestamp asc
+
+# method 別 (initialize vs tools/call の比率)
+fields @message
 | filter @message like /mcp_request/
-| parse @message '"tool": "*"' as tool
-| stats count() by tool
+| parse @message '"mcp": "*"' as method
+| stats count() by method
 ```
 
 ## 4. 運用
 
 - **月初**: 前月分を `access_stats.py` で集計し `data/stats/YYYY-MM.{md,json}` に
-  保存 (90 日で生ログが消えるため、3 か月以上空けない)。
+  保存 (90 日で生ログが消えるため、3 か月以上空けない)。あわせて §3 の
+  Logs Insights で **tools/call (MCP 実呼出) の件数と中身**を確認し、
+  **要点を docs/ops/usage.md の月次トレンド表に1行追記**する。
 - 研究・発表に使う数字は、集計済みの出力からのみ引用する (規約 §3:
   匿名化・集計した形でのみ研究利用)。
 - 規約 §3 の範囲を超える計測 (個人の識別、ログイン ID との突合、CLI への

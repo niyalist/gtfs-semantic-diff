@@ -76,6 +76,9 @@ def test_classify_ua():
         == ("crawler", "Googlebot")
     assert c("Mozilla/5.0 (compatible; Applebot-Extended/0.1)")[1] == "Applebot-Extended"
     assert c("python-httpx/0.28.1") == ("program", "python-httpx")
+    # MCP クライアント (ハンドシェイク主体 — 実呼出は CloudWatch 側で数える)
+    assert c("codex-mcp-client/0.163.0-alpha.11") == ("mcp_client", "codex-mcp-client")
+    assert c("openai-mcp/1.0.0 (Codex)") == ("mcp_client", "openai-mcp")
     assert c("curl/8.7.1") == ("program", "curl")
     assert c("Twitterbot/1.0") == ("preview", "Twitterbot")
     assert c("gtfs-semdiff-mcp") == ("internal", "mcp-server")  # 本番実ログで確認 (2026-09-19)

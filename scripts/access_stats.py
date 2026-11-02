@@ -44,6 +44,12 @@ TOP_N = 30
 KNOWN_AGENTS: list[tuple[str, str, str]] = [
     # 自サーバー (MCP サーバーが台帳・成果物を CloudFront 経由で読む — mcp_tools.py)
     ("gtfs-semdiff-mcp", "internal", "mcp-server"),
+    # MCP クライアント (登録済みサーバーへの initialize ハンドシェイクが大半 —
+    # 実際のツール呼出は CloudWatch の mcp_request tools/call で数える。
+    # 2026-11-02 の深掘りで定常性を確認して追加: 33日/38IP)
+    ("codex-mcp-client", "mcp_client", "codex-mcp-client"),
+    ("openai-mcp", "mcp_client", "openai-mcp"),
+    ("mcp-remote", "mcp_client", "mcp-remote"),
     # AI エージェント (利用者の代理で取得) と AI クローラ (学習・索引)
     ("ChatGPT-User", "ai_agent", "ChatGPT-User"),
     ("OAI-SearchBot", "ai_agent", "OAI-SearchBot"),
